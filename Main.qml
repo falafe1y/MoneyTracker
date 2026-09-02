@@ -34,23 +34,10 @@ ApplicationWindow {
         { code: "EUR", symbol: "€", name: "Евро" }
     ]
 
-    property var incomeCategories: [
-        { label: "Зарплата", value: "salary", icon: "₽" },
-        { label: "Фриланс", value: "freelance", icon: "↗" },
-        { label: "Подарок", value: "gift", icon: "◇" },
-        { label: "Инвестиции", value: "investment", icon: "↟" },
-        { label: "Другой доход", value: "other_income", icon: "+" }
-    ]
-
-    property var expenseCategories: [
-        { label: "Продукты", value: "groceries", icon: "▦" },
-        { label: "Транспорт", value: "transport", icon: "↔" },
-        { label: "Жилье", value: "housing", icon: "⌂" },
-        { label: "Здоровье", value: "health", icon: "+" },
-        { label: "Развлечения", value: "entertainment", icon: "☆" },
-        { label: "Покупки", value: "shopping", icon: "▱" },
-        { label: "Другое", value: "other_expense", icon: "•••" }
-    ]
+    readonly property var incomeCategories: financeController.categories.filter(
+        function(category) { return category.type === "income" })
+    readonly property var expenseCategories: financeController.categories.filter(
+        function(category) { return category.type === "expense" })
 
     function currencyIndex(code) {
         for (let i = 0; i < currencyData.length; ++i) {
@@ -85,15 +72,6 @@ ApplicationWindow {
                 return all[i].label
         }
         return "Без категории"
-    }
-
-    function categoryIcon(id) {
-        const all = incomeCategories.concat(expenseCategories)
-        for (let i = 0; i < all.length; ++i) {
-            if (all[i].value === id)
-                return all[i].icon
-        }
-        return "•"
     }
 
     Rectangle {
@@ -169,6 +147,32 @@ ApplicationWindow {
 
                 RowLayout {
                     spacing: 10
+
+                    Button {
+                        id: categoriesButton
+                        implicitWidth: 108
+                        implicitHeight: 38
+                        hoverEnabled: true
+
+                        contentItem: Text {
+                            text: "Категории"
+                            color: root.textPrimary
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        background: Rectangle {
+                            radius: 12
+                            color: categoriesButton.hovered
+                                   ? root.surfaceSoft : root.surfaceColor
+                            border.width: 1
+                            border.color: root.borderColor
+                        }
+
+                        onClicked: categoryDialog.openForManagement()
+                    }
 
                     Text {
                         text: "Валюта"
@@ -551,21 +555,6 @@ ApplicationWindow {
                                 anchors.rightMargin: 14
                                 spacing: 13
 
-                                Rectangle {
-                                    Layout.preferredWidth: 42
-                                    Layout.preferredHeight: 42
-                                    radius: 13
-                                    color: modelData.type === "income" ? root.incomeSoft : "#F1F4F9"
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: root.categoryIcon(modelData.categoryId)
-                                        color: modelData.type === "income" ? root.incomeColor : "#52627A"
-                                        font.pixelSize: 16
-                                        font.weight: Font.DemiBold
-                                    }
-                                }
-
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 3
@@ -574,7 +563,7 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         text: modelData.description.length > 0
                                               ? modelData.description
-                                              : root.categoryTitle(modelData.categoryId)
+                                              : modelData.categoryName
                                         color: root.textPrimary
                                         font.pixelSize: 13
                                         font.weight: Font.DemiBold
@@ -585,7 +574,7 @@ ApplicationWindow {
                                         spacing: 7
 
                                         Text {
-                                            text: root.categoryTitle(modelData.categoryId)
+                                            text: modelData.categoryName
                                             color: root.textSecondary
                                             font.pixelSize: 10
                                         }
@@ -648,10 +637,388 @@ ApplicationWindow {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.bottom: parent.bottom
-                            anchors.leftMargin: 72
+                            anchors.leftMargin: 20
                             anchors.rightMargin: 20
                             height: index === transactionList.count - 1 ? 0 : 1
                             color: "#F0F2F5"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: categoryDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape
+        width: Math.min(520, root.width - 52)
+        height: Math.min(580, root.height - 40)
+        anchors.centerIn: parent
+        padding: 0
+
+        property int typeIndex: 1
+        property string editingId: ""
+        readonly property string categoryType: typeIndex === 0 ? "income" : "expense"
+        readonly property var visibleCategories: typeIndex === 0
+            ? root.incomeCategories : root.expenseCategories
+
+        function openForManagement() {
+            typeIndex = 1
+            categoryNameField.text = ""
+            categoryError.text = ""
+            editingId = ""
+            open()
+        }
+
+        function beginEdit(category) {
+            editingId = category.value
+            categoryNameField.text = category.label
+            categoryError.text = ""
+            categoryNameField.forceActiveFocus()
+            categoryNameField.selectAll()
+        }
+
+        function cancelEdit() {
+            editingId = ""
+            categoryNameField.text = ""
+            categoryError.text = ""
+        }
+
+        function saveCurrentCategory() {
+            if (categoryNameField.text.trim().length === 0)
+                return
+
+            const saved = editingId.length > 0
+                ? financeController.renameCategory(editingId, categoryNameField.text)
+                : financeController.addCategory(categoryNameField.text, categoryType)
+
+            if (saved) {
+                cancelEdit()
+            } else {
+                categoryError.text = "Категория уже существует или не может быть сохранена"
+            }
+        }
+
+        onTypeIndexChanged: cancelEdit()
+
+        Overlay.modal: Rectangle { color: "#740B1220" }
+
+        background: Rectangle {
+            radius: 24
+            color: root.surfaceColor
+            border.width: 1
+            border.color: root.borderColor
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 22
+            spacing: 14
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    spacing: 2
+                    Text {
+                        text: "Категории"
+                        color: root.textPrimary
+                        font.pixelSize: 20
+                        font.weight: Font.Bold
+                    }
+                    Text {
+                        text: "Создание категорий доходов и расходов"
+                        color: root.textSecondary
+                        font.pixelSize: 11
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    flat: true
+                    contentItem: Text {
+                        text: "×"
+                        color: root.textSecondary
+                        font.pixelSize: 21
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle { color: "transparent" }
+                    onClicked: categoryDialog.close()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                radius: 14
+                color: "#F2F4F7"
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    spacing: 4
+
+                    Repeater {
+                        model: ["Доходы", "Расходы"]
+                        delegate: Button {
+                            required property string modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            flat: true
+                            contentItem: Text {
+                                text: modelData
+                                color: root.textPrimary
+                                font.pixelSize: 12
+                                font.weight: categoryDialog.typeIndex === index
+                                             ? Font.DemiBold : Font.Medium
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: 11
+                                color: categoryDialog.typeIndex === index
+                                       ? root.surfaceColor : "transparent"
+                                border.width: categoryDialog.typeIndex === index ? 1 : 0
+                                border.color: root.borderColor
+                            }
+                            onClicked: categoryDialog.typeIndex = index
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: categoryDialog.editingId.length > 0
+                      ? "Изменить категорию" : "Добавить категорию"
+                color: root.textPrimary
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                TextField {
+                    id: categoryNameField
+                    Layout.fillWidth: true
+                    implicitHeight: 44
+                    maximumLength: 60
+                    placeholderText: "Название категории"
+                    color: root.textPrimary
+                    leftPadding: 13
+                    rightPadding: 13
+                    background: Rectangle {
+                        radius: 12
+                        color: root.surfaceSoft
+                        border.width: categoryNameField.activeFocus ? 1.5 : 1
+                        border.color: categoryNameField.activeFocus
+                                      ? root.accentColor : root.borderColor
+                    }
+                    onAccepted: categoryDialog.saveCurrentCategory()
+                }
+
+                Button {
+                    id: addCategoryButton
+                    implicitWidth: 104
+                    implicitHeight: 44
+                    enabled: categoryNameField.text.trim().length > 0
+                    contentItem: Text {
+                        text: categoryDialog.editingId.length > 0
+                              ? "Сохранить" : "Добавить"
+                        color: "white"
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 12
+                        color: addCategoryButton.enabled
+                               ? root.accentColor : "#AEBBEB"
+                    }
+                    onClicked: categoryDialog.saveCurrentCategory()
+                }
+
+                Button {
+                    visible: categoryDialog.editingId.length > 0
+                    implicitWidth: 80
+                    implicitHeight: 44
+                    contentItem: Text {
+                        text: "Отмена"
+                        color: root.textPrimary
+                        font.pixelSize: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 12
+                        color: root.surfaceColor
+                        border.width: 1
+                        border.color: root.borderColor
+                    }
+                    onClicked: categoryDialog.cancelEdit()
+                }
+            }
+
+            Text {
+                id: categoryError
+                Layout.fillWidth: true
+                color: root.expenseColor
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 14
+                color: root.surfaceSoft
+                border.width: 1
+                border.color: root.borderColor
+
+                ListView {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    clip: true
+                    model: categoryDialog.visibleCategories
+                    delegate: Item {
+                        id: categoryRow
+                        required property var modelData
+                        width: ListView.view.width
+                        height: 48
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 6
+                            spacing: 6
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: categoryRow.modelData.label
+                                color: root.textPrimary
+                                font.pixelSize: 12
+                                elide: Text.ElideRight
+                            }
+
+                            Button {
+                                id: editCategoryButton
+                                implicitWidth: 76
+                                implicitHeight: 32
+                                flat: true
+                                contentItem: Text {
+                                    text: "Изменить"
+                                    color: root.accentColor
+                                    font.pixelSize: 11
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 9
+                                    color: editCategoryButton.hovered
+                                           ? "#EEF2FF" : "transparent"
+                                }
+                                onClicked: categoryDialog.beginEdit(categoryRow.modelData)
+                            }
+
+                            Button {
+                                id: removeCategoryButton
+                                implicitWidth: 64
+                                implicitHeight: 32
+                                flat: true
+                                contentItem: Text {
+                                    text: "Удалить"
+                                    color: root.expenseColor
+                                    font.pixelSize: 11
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 9
+                                    color: removeCategoryButton.hovered
+                                           ? root.expenseSoft : "transparent"
+                                }
+                                onClicked: deleteCategoryDialog.openForCategory(
+                                               categoryRow.modelData)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: deleteCategoryDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape
+        width: Math.min(420, root.width - 52)
+        height: 220
+        anchors.centerIn: parent
+        padding: 0
+
+        property string categoryId: ""
+        property string categoryName: ""
+
+        function openForCategory(category) {
+            categoryId = category.value
+            categoryName = category.label
+            open()
+        }
+
+        background: Rectangle {
+            radius: 20
+            color: root.surfaceColor
+            border.width: 1
+            border.color: root.borderColor
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 22
+            spacing: 16
+            Text {
+                Layout.fillWidth: true
+                text: "Удалить категорию «" + deleteCategoryDialog.categoryName + "»?"
+                color: root.textPrimary
+                font.pixelSize: 16
+                font.weight: Font.Bold
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Старые транзакции сохранят название категории. Для новых операций она больше не будет доступна."
+                color: root.textSecondary
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: "Отмена"
+                    onClicked: deleteCategoryDialog.close()
+                }
+                Button {
+                    text: "Удалить"
+                    onClicked: {
+                        if (financeController.deleteCategory(
+                                deleteCategoryDialog.categoryId)) {
+                            if (categoryDialog.editingId ===
+                                    deleteCategoryDialog.categoryId)
+                                categoryDialog.cancelEdit()
+                            deleteCategoryDialog.close()
                         }
                     }
                 }
@@ -1005,21 +1372,23 @@ ApplicationWindow {
                             const currencyCode = root.currencyData[transactionCurrency.currentIndex].code
                             const categoryId = categoryPicker.currentValue
 
+                            let saved = false
                             if (transactionDialog.isIncome) {
-                                financeController.addIncome(
+                                saved = financeController.addIncome(
                                     minorUnits,
                                     descriptionField.text.trim(),
                                     categoryId,
                                     currencyCode)
                             } else {
-                                financeController.addExpense(
+                                saved = financeController.addExpense(
                                     minorUnits,
                                     descriptionField.text.trim(),
                                     categoryId,
                                     currencyCode)
                             }
 
-                            transactionDialog.close()
+                            if (saved)
+                                transactionDialog.close()
                         }
                     }
                 }

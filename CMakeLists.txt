@@ -4,7 +4,7 @@ project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -37,6 +37,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/TestCurrencyRateProvider.h
         SOURCES interface/FinanceController.h
         SOURCES interface/FinanceController.cpp
+        SOURCES persistence/FinanceRepository.h
+        SOURCES persistence/FinanceRepository.cpp
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
@@ -54,6 +56,7 @@ target_link_libraries(appMoneyTracker
     PRIVATE
         Qt6::Quick
         Qt6::QuickControls2
+        Qt6::Sql
 )
 
 install(TARGETS appMoneyTracker
@@ -89,8 +92,6 @@ add_executable(BalanceCalculatorTest
     core/Currency.cpp
     services/CurrencyConverter.cpp
     services/BalanceCalculator.cpp
-    interface/FinanceController.h
-    interface/FinanceController.cpp
 )
 
 target_link_libraries(BalanceCalculatorTest

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/Transaction.h"
+#include "../persistence/FinanceRepository.h"
 #include "../services/BalanceCalculator.h"
 #include "../services/CurrencyConverter.h"
 #include "../services/TestCurrencyRateProvider.h"
@@ -8,6 +9,9 @@
 #include <QObject>
 #include <QVariantList>
 #include <QVector>
+#include <QSet>
+
+#include <array>
 
 class FinanceController final : public QObject
 {
@@ -50,6 +54,12 @@ class FinanceController final : public QObject
                 NOTIFY transactionsChanged
         )
 
+    Q_PROPERTY(
+        QVariantList categories
+            READ categories
+                NOTIFY categoriesChanged
+        )
+
 public:
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -63,15 +73,29 @@ public:
     void setAppCurrency(const QString& currency);
 
     QVariantList transactions() const;
+    QVariantList categories() const;
 
-    Q_INVOKABLE void addIncome(
+    Q_INVOKABLE bool addCategory(
+        const QString& name,
+        const QString& type
+        );
+
+    Q_INVOKABLE bool renameCategory(
+        const QString& id,
+        const QString& name
+        );
+
+    Q_INVOKABLE bool deleteCategory(const QString& id);
+    Q_INVOKABLE QString categoryName(const QString& id) const;
+
+    Q_INVOKABLE bool addIncome(
         qint64 minorUnits,
         const QString& description,
         const QString& categoryId,
         const QString& currency
         );
 
-    Q_INVOKABLE void addExpense(
+    Q_INVOKABLE bool addExpense(
         qint64 minorUnits,
         const QString& description,
         const QString& categoryId,
@@ -86,10 +110,17 @@ public:
 signals:
     void balanceChanged();
     void transactionsChanged();
+    void categoriesChanged();
     void appCurrencyChanged();
 
 private:
-    void addTransaction(
+    static int currencyIndex(Currency currency);
+
+    qint64 convertedTotal(
+        const std::array<qint64, 3>& amounts
+        ) const;
+
+    bool addTransaction(
         qint64 minorUnits,
         TransactionType type,
         const QString& description,
@@ -101,11 +132,15 @@ private:
         const QString& currency
         );
 
+    FinanceRepository repository_;
     TestCurrencyRateProvider rateProvider_;
     CurrencyConverter currencyConverter_;
     BalanceCalculator balanceCalculator_;
 
     QVector<Transaction> transactions_;
+    QVector<Category> categories_;
+    QSet<QString> archivedCategoryIds_;
+    FinanceRepository::Summary summary_;
 
     Currency appCurrency_ = Currency::RUB;
 };

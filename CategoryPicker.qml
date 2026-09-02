@@ -38,32 +38,13 @@ Item {
                 required property int index
 
                 Layout.fillWidth: true
-                Layout.preferredHeight: 58
+                Layout.preferredHeight: 48
                 Layout.minimumWidth: 120
                 hoverEnabled: true
                 flat: true
 
                 contentItem: RowLayout {
                     spacing: 10
-
-                    Rectangle {
-                        Layout.preferredWidth: 36
-                        Layout.preferredHeight: 36
-                        radius: 11
-                        color: tile.index === control.currentIndex
-                               ? (control.incomeMode ? "#EAF8F2" : "#EEF2FF")
-                               : "#F4F6F8"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: tile.modelData.icon
-                            color: tile.index === control.currentIndex
-                                   ? (control.incomeMode ? "#168A5B" : control.accentColor)
-                                   : control.textSecondary
-                            font.pixelSize: 16
-                            font.weight: Font.DemiBold
-                        }
-                    }
 
                     Text {
                         Layout.fillWidth: true
