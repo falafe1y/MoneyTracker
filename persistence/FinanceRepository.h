@@ -2,6 +2,7 @@
 
 #include "../core/Transaction.h"
 #include "../core/Category.h"
+#include "../core/Account.h"
 
 #include <QSqlDatabase>
 #include <QSet>
@@ -29,17 +30,22 @@ public:
     QString lastError() const;
     QVector<Transaction> loadTransactions();
     QVector<Category> loadCategories();
+    QVector<Account> loadAccounts();
     QSet<QString> loadArchivedCategoryIds();
     Summary loadSummary();
     bool insertTransaction(const Transaction& transaction);
     bool insertCategory(const Category& category);
+    bool insertAccount(const Account& account);
     bool updateCategoryName(const QString& id, const QString& name);
     bool archiveCategory(const QString& id);
     QString loadAppCurrency() const;
     bool saveAppCurrency(const QString& currency);
+    QString loadSelectedAsset() const;
+    bool saveSelectedAsset(const QString& asset);
 
 private:
     bool initializeSchema();
+    bool migrateLegacySchema();
     bool seedDefaults();
     QString accountIdForCurrency(Currency currency) const;
     void setLastError(const QString& error);

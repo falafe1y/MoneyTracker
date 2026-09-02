@@ -34,6 +34,20 @@ ApplicationWindow {
         { code: "EUR", symbol: "€", name: "Евро" }
     ]
 
+    readonly property var assetData: [
+        { code: "fiat", title: "Фиат" },
+        { code: "crypto", title: "Крипта" },
+        { code: "investment", title: "Инвестиции" }
+    ]
+
+    function assetTitle(code) {
+        for (let i = 0; i < assetData.length; ++i) {
+            if (assetData[i].code === code)
+                return assetData[i].title
+        }
+        return "Фиат"
+    }
+
     readonly property var incomeCategories: financeController.categories.filter(
         function(category) { return category.type === "income" })
     readonly property var expenseCategories: financeController.categories.filter(
@@ -146,7 +160,69 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
 
                 RowLayout {
+                    spacing: 5
+
+                    Repeater {
+                        model: root.assetData
+                        delegate: Button {
+                            id: assetButton
+                            required property var modelData
+                            implicitWidth: 92
+                            implicitHeight: 38
+                            flat: true
+
+                            contentItem: Text {
+                                text: assetButton.modelData.title
+                                color: financeController.selectedAsset ===
+                                       assetButton.modelData.code
+                                       ? "white" : root.textSecondary
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                radius: 12
+                                color: financeController.selectedAsset ===
+                                       assetButton.modelData.code
+                                       ? root.heroColor : root.surfaceSoft
+                            }
+                            onClicked: financeController.selectedAsset =
+                                           assetButton.modelData.code
+                        }
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                RowLayout {
                     spacing: 10
+
+                    Button {
+                        id: accountsButton
+                        implicitWidth: 92
+                        implicitHeight: 38
+                        hoverEnabled: true
+
+                        contentItem: Text {
+                            text: "Счета"
+                            color: root.textPrimary
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        background: Rectangle {
+                            radius: 12
+                            color: accountsButton.hovered
+                                   ? root.surfaceSoft : root.surfaceColor
+                            border.width: 1
+                            border.color: root.borderColor
+                        }
+
+                        onClicked: accountDialog.openForSelectedAsset()
+                    }
 
                     Button {
                         id: categoriesButton
@@ -641,6 +717,274 @@ ApplicationWindow {
                             anchors.rightMargin: 20
                             height: index === transactionList.count - 1 ? 0 : 1
                             color: "#F0F2F5"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: accountDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape
+        width: Math.min(560, root.width - 52)
+        height: Math.min(630, root.height - 30)
+        anchors.centerIn: parent
+        padding: 0
+
+        readonly property var accountTypes: {
+            if (financeController.selectedAsset === "crypto")
+                return [
+                    { label: "Криптокошелёк", value: "crypto_wallet" },
+                    { label: "Другое", value: "other" }
+                ]
+            if (financeController.selectedAsset === "investment")
+                return [
+                    { label: "Брокер", value: "brokerage" },
+                    { label: "Вклад", value: "deposit" },
+                    { label: "Другое", value: "other" }
+                ]
+            return [
+                { label: "Наличные", value: "cash" },
+                { label: "Дебетовая карта", value: "debit_card" },
+                { label: "Кредитная карта", value: "credit_card" },
+                { label: "Накопительный счёт", value: "savings" },
+                { label: "Другое", value: "other" }
+            ]
+        }
+
+        function openForSelectedAsset() {
+            accountNameField.text = ""
+            initialBalanceField.text = ""
+            accountTypeBox.currentIndex = 0
+            accountCurrencyBox.currentIndex = root.currencyIndex(
+                financeController.appCurrency)
+            accountError.text = ""
+            open()
+        }
+
+        function initialBalanceMinor() {
+            if (initialBalanceField.text.trim().length === 0)
+                return 0
+            const value = Number(initialBalanceField.text.trim().replace(",", "."))
+            return isFinite(value) ? Math.round(value * 100) : 0
+        }
+
+        function saveAccount() {
+            if (accountNameField.text.trim().length === 0)
+                return
+
+            const saved = financeController.addAccount(
+                accountNameField.text,
+                accountTypes[accountTypeBox.currentIndex].value,
+                root.currencyData[accountCurrencyBox.currentIndex].code,
+                initialBalanceMinor())
+            if (saved) {
+                accountNameField.text = ""
+                initialBalanceField.text = ""
+                accountError.text = ""
+            } else {
+                accountError.text = "Счёт с таким названием уже существует или не может быть сохранён"
+            }
+        }
+
+        Overlay.modal: Rectangle { color: "#740B1220" }
+
+        background: Rectangle {
+            radius: 24
+            color: root.surfaceColor
+            border.width: 1
+            border.color: root.borderColor
+        }
+
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 22
+            spacing: 13
+
+            RowLayout {
+                Layout.fillWidth: true
+                ColumnLayout {
+                    spacing: 2
+                    Text {
+                        text: "Счета · " + root.assetTitle(financeController.selectedAsset)
+                        color: root.textPrimary
+                        font.pixelSize: 20
+                        font.weight: Font.Bold
+                    }
+                    Text {
+                        text: "Новый счёт будет добавлен в выбранный актив"
+                        color: root.textSecondary
+                        font.pixelSize: 11
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    flat: true
+                    contentItem: Text {
+                        text: "×"
+                        color: root.textSecondary
+                        font.pixelSize: 21
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle { color: "transparent" }
+                    onClicked: accountDialog.close()
+                }
+            }
+
+            Text {
+                text: "Новый счёт"
+                color: root.textPrimary
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+            }
+
+            TextField {
+                id: accountNameField
+                Layout.fillWidth: true
+                implicitHeight: 44
+                maximumLength: 60
+                placeholderText: financeController.selectedAsset === "fiat"
+                                 ? "Например, Карта Альфа"
+                                 : (financeController.selectedAsset === "crypto"
+                                    ? "Например, MetaMask" : "Например, БКС")
+                color: root.textPrimary
+                leftPadding: 13
+                rightPadding: 13
+                background: Rectangle {
+                    radius: 12
+                    color: root.surfaceSoft
+                    border.width: accountNameField.activeFocus ? 1.5 : 1
+                    border.color: accountNameField.activeFocus
+                                  ? root.accentColor : root.borderColor
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                ComboBox {
+                    id: accountTypeBox
+                    Layout.fillWidth: true
+                    implicitHeight: 44
+                    model: accountDialog.accountTypes
+                    textRole: "label"
+                }
+
+                ComboBox {
+                    id: accountCurrencyBox
+                    Layout.preferredWidth: 130
+                    implicitHeight: 44
+                    model: root.currencyData
+                    textRole: "code"
+                }
+            }
+
+            TextField {
+                id: initialBalanceField
+                Layout.fillWidth: true
+                implicitHeight: 44
+                placeholderText: "Начальный баланс, например 15000"
+                color: root.textPrimary
+                leftPadding: 13
+                rightPadding: 13
+                inputMethodHints: Qt.ImhFormattedNumbersOnly
+                validator: RegularExpressionValidator {
+                    regularExpression: /^-?[0-9]+([\.,][0-9]{0,2})?$/
+                }
+                background: Rectangle {
+                    radius: 12
+                    color: root.surfaceSoft
+                    border.width: initialBalanceField.activeFocus ? 1.5 : 1
+                    border.color: initialBalanceField.activeFocus
+                                  ? root.accentColor : root.borderColor
+                }
+                onAccepted: accountDialog.saveAccount()
+            }
+
+            Button {
+                id: saveAccountButton
+                Layout.fillWidth: true
+                implicitHeight: 44
+                enabled: accountNameField.text.trim().length > 0
+                contentItem: Text {
+                    text: "Добавить счёт в «" +
+                          root.assetTitle(financeController.selectedAsset) + "»"
+                    color: "white"
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    radius: 12
+                    color: saveAccountButton.enabled
+                           ? root.accentColor : "#AEBBEB"
+                }
+                onClicked: accountDialog.saveAccount()
+            }
+
+            Text {
+                id: accountError
+                Layout.fillWidth: true
+                color: root.expenseColor
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: "Счета в активе"
+                color: root.textPrimary
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 14
+                color: root.surfaceSoft
+                border.width: 1
+                border.color: root.borderColor
+
+                ListView {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    clip: true
+                    model: financeController.accounts
+                    delegate: Item {
+                        id: accountRow
+                        required property var modelData
+                        width: ListView.view.width
+                        height: 48
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            Text {
+                                Layout.fillWidth: true
+                                text: accountRow.modelData.name
+                                color: root.textPrimary
+                                font.pixelSize: 12
+                                font.weight: Font.Medium
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: root.formatAmount(
+                                    accountRow.modelData.initialBalanceMinor,
+                                    accountRow.modelData.currency,
+                                    false, "")
+                                color: root.textSecondary
+                                font.pixelSize: 11
+                            }
                         }
                     }
                 }

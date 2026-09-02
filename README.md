@@ -18,6 +18,21 @@ Existing categories can be renamed or removed. Removal is implemented as
 archiving, so transactions that already reference the category keep their
 category name while the category disappears from new-operation pickers.
 
+## Asset hierarchy
+
+The domain separates the fixed top-level asset sections from concrete user
+accounts:
+
+`Asset (Fiat / Crypto / Investment) -> Account -> Transaction`
+
+An account represents a concrete source of value: cash, a debit or credit
+card, a savings account, a crypto wallet, a broker, or a deposit. In SQLite,
+`accounts.asset_type` assigns every account to its top-level asset section.
+
+The selected asset is exposed by `FinanceController.selectedAsset` and saved in
+the settings table. The Accounts menu lists only accounts belonging to that
+asset and creates new accounts with the selected asset type.
+
 The default transaction currency and application currency are RUB.
 
 ## Storage

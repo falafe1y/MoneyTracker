@@ -15,8 +15,10 @@ FinanceController::FinanceController(QObject* parent)
     }
 
     appCurrency_ = currencyFromString(repository_.loadAppCurrency());
+    selectedAsset_ = assetTypeFromString(repository_.loadSelectedAsset());
     transactions_ = repository_.loadTransactions();
     categories_ = repository_.loadCategories();
+    accounts_ = repository_.loadAccounts();
     archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
     summary_ = repository_.loadSummary();
 }
@@ -120,6 +122,102 @@ QVariantList FinanceController::categories() const
         result.append(item);
     }
     return result;
+}
+
+QVariantList FinanceController::accounts() const
+{
+    QVariantList result;
+    for (const Account& account : accounts_) {
+        if (account.assetType() != selectedAsset_) {
+            continue;
+        }
+
+        QVariantMap item;
+        item["id"] = account.id();
+        item["name"] = account.name();
+        item["type"] = accountTypeToString(account.type());
+        item["currency"] = currencyCode(account.currency());
+        item["initialBalanceMinor"] = account.initialBalanceMinor();
+        result.append(item);
+    }
+    return result;
+}
+
+QString FinanceController::selectedAsset() const
+{
+    return assetTypeToString(selectedAsset_);
+}
+
+void FinanceController::setSelectedAsset(const QString& asset)
+{
+    const AssetType newAsset = assetTypeFromString(asset);
+    if (newAsset == selectedAsset_) {
+        return;
+    }
+
+    selectedAsset_ = newAsset;
+    if (!repository_.saveSelectedAsset(assetTypeToString(newAsset))) {
+        qWarning() << "Failed to save selected asset:"
+                   << repository_.lastError();
+    }
+
+    emit selectedAssetChanged();
+    emit accountsChanged();
+}
+
+bool FinanceController::addAccount(
+    const QString& name,
+    const QString& type,
+    const QString& currency,
+    const qint64 initialBalanceMinor
+    )
+{
+    const QString normalizedName = name.trimmed();
+    if (normalizedName.isEmpty() || normalizedName.size() > 60) {
+        return false;
+    }
+
+    for (const Account& existing : accounts_) {
+        if (existing.assetType() == selectedAsset_ &&
+            existing.name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
+            return false;
+        }
+    }
+
+    const AccountType accountType = accountTypeFromString(type);
+    const bool validType =
+        (selectedAsset_ == AssetType::Fiat &&
+         static_cast<int>(accountType) <= static_cast<int>(AccountType::Other)) ||
+        (selectedAsset_ == AssetType::Crypto &&
+         (accountType == AccountType::CryptoWallet ||
+          accountType == AccountType::Other)) ||
+        (selectedAsset_ == AssetType::Investment &&
+         (accountType == AccountType::Brokerage ||
+          accountType == AccountType::Deposit ||
+          accountType == AccountType::Other));
+    if (!validType) {
+        return false;
+    }
+
+    const Currency accountCurrency = currencyFromString(currency);
+    const Account account(
+        QUuid::createUuid().toString(QUuid::WithoutBraces),
+        normalizedName,
+        selectedAsset_,
+        accountType,
+        accountCurrency,
+        initialBalanceMinor);
+
+    if (!repository_.insertAccount(account)) {
+        qWarning() << "Failed to save account:" << repository_.lastError();
+        return false;
+    }
+
+    accounts_.append(account);
+    summary_.balance[currencyIndex(accountCurrency)] += initialBalanceMinor;
+    emit accountsChanged();
+    emit balanceChanged();
+    return true;
 }
 
 bool FinanceController::addCategory(
@@ -344,6 +442,58 @@ bool FinanceController::addTransaction(
 int FinanceController::currencyIndex(const Currency currency)
 {
     return static_cast<int>(currency);
+}
+
+AssetType FinanceController::assetTypeFromString(const QString& asset)
+{
+    if (asset.trimmed().toLower() == QStringLiteral("crypto")) {
+        return AssetType::Crypto;
+    }
+    if (asset.trimmed().toLower() == QStringLiteral("investment")) {
+        return AssetType::Investment;
+    }
+    return AssetType::Fiat;
+}
+
+QString FinanceController::assetTypeToString(const AssetType asset)
+{
+    switch (asset) {
+    case AssetType::Fiat:
+        return QStringLiteral("fiat");
+    case AssetType::Crypto:
+        return QStringLiteral("crypto");
+    case AssetType::Investment:
+        return QStringLiteral("investment");
+    }
+    return QStringLiteral("fiat");
+}
+
+AccountType FinanceController::accountTypeFromString(const QString& type)
+{
+    const QString value = type.trimmed().toLower();
+    if (value == QStringLiteral("cash")) return AccountType::Cash;
+    if (value == QStringLiteral("debit_card")) return AccountType::DebitCard;
+    if (value == QStringLiteral("credit_card")) return AccountType::CreditCard;
+    if (value == QStringLiteral("savings")) return AccountType::Savings;
+    if (value == QStringLiteral("crypto_wallet")) return AccountType::CryptoWallet;
+    if (value == QStringLiteral("brokerage")) return AccountType::Brokerage;
+    if (value == QStringLiteral("deposit")) return AccountType::Deposit;
+    return AccountType::Other;
+}
+
+QString FinanceController::accountTypeToString(const AccountType type)
+{
+    switch (type) {
+    case AccountType::Cash: return QStringLiteral("cash");
+    case AccountType::DebitCard: return QStringLiteral("debit_card");
+    case AccountType::CreditCard: return QStringLiteral("credit_card");
+    case AccountType::Savings: return QStringLiteral("savings");
+    case AccountType::CryptoWallet: return QStringLiteral("crypto_wallet");
+    case AccountType::Brokerage: return QStringLiteral("brokerage");
+    case AccountType::Deposit: return QStringLiteral("deposit");
+    case AccountType::Other: return QStringLiteral("other");
+    }
+    return QStringLiteral("other");
 }
 
 qint64 FinanceController::convertedTotal(

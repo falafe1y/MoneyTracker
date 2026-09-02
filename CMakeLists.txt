@@ -24,6 +24,7 @@ qt_add_qml_module(appMoneyTracker
         BankComboBox.qml
         CategoryPicker.qml
         SOURCES core/Account.h
+        SOURCES core/Asset.h
         SOURCES core/Category.h
         SOURCES core/Currency.h
         SOURCES core/Currency.cpp

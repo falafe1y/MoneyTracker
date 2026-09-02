@@ -26,6 +26,17 @@ Currency currencyFromCode(const QString& code)
     }
     return Currency::RUB;
 }
+
+AssetType assetTypeFromInt(const int value)
+{
+    if (value == 1) {
+        return AssetType::Crypto;
+    }
+    if (value == 2) {
+        return AssetType::Investment;
+    }
+    return AssetType::Fiat;
+}
 }
 
 FinanceRepository::FinanceRepository()
@@ -53,7 +64,7 @@ FinanceRepository::FinanceRepository()
         return;
     }
 
-    if (!initializeSchema() || !seedDefaults()) {
+    if (!initializeSchema() || !migrateLegacySchema() || !seedDefaults()) {
         database_.close();
     }
 }
@@ -113,6 +124,31 @@ QVector<Category> FinanceRepository::loadCategories()
             query.value(2).toInt() == 0
                 ? CategoryType::Income
                 : CategoryType::Expense));
+    }
+    return result;
+}
+
+QVector<Account> FinanceRepository::loadAccounts()
+{
+    QVector<Account> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT id, name, asset_type, account_type, currency, "
+            "       initial_balance_minor "
+            "FROM accounts WHERE is_archived = 0 "
+            "ORDER BY asset_type, created_at, name COLLATE NOCASE"))) {
+        setLastError(query.lastError().text());
+        return result;
+    }
+
+    while (query.next()) {
+        result.append(Account(
+            query.value(0).toString(),
+            query.value(1).toString(),
+            assetTypeFromInt(query.value(2).toInt()),
+            static_cast<AccountType>(query.value(3).toInt()),
+            currencyFromCode(query.value(4).toString()),
+            query.value(5).toLongLong()));
     }
     return result;
 }
@@ -231,6 +267,28 @@ bool FinanceRepository::insertCategory(const Category& category)
     return true;
 }
 
+bool FinanceRepository::insertAccount(const Account& account)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO accounts(id, name, asset_type, account_type, currency, "
+        "initial_balance_minor, is_archived, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, 0, ?)"));
+    query.addBindValue(account.id());
+    query.addBindValue(account.name());
+    query.addBindValue(static_cast<int>(account.assetType()));
+    query.addBindValue(static_cast<int>(account.type()));
+    query.addBindValue(currencyCode(account.currency()));
+    query.addBindValue(account.initialBalanceMinor());
+    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::updateCategoryName(
     const QString& id,
     const QString& name
@@ -294,13 +352,38 @@ bool FinanceRepository::saveAppCurrency(const QString& currency)
     return true;
 }
 
+QString FinanceRepository::loadSelectedAsset() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings WHERE key = 'selected_asset'")) &&
+        query.next()) {
+        return query.value(0).toString();
+    }
+    return QStringLiteral("fiat");
+}
+
+bool FinanceRepository::saveSelectedAsset(const QString& asset)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO settings(key, value) VALUES('selected_asset', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"));
+    query.addBindValue(asset);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
         QStringLiteral("CREATE TABLE IF NOT EXISTS accounts ("
                        "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
-                       "group_type INTEGER NOT NULL CHECK(group_type IN (0,1,2)), "
-                       "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,3,4)), "
+                       "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
+                       "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,3,4,5,6,7)), "
                        "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
                        "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
@@ -339,6 +422,37 @@ bool FinanceRepository::initializeSchema()
     return true;
 }
 
+bool FinanceRepository::migrateLegacySchema()
+{
+    QSqlQuery columns(database_);
+    if (!columns.exec(QStringLiteral("PRAGMA table_info(accounts)"))) {
+        setLastError(columns.lastError().text());
+        return false;
+    }
+
+    bool hasLegacyGroupType = false;
+    bool hasAssetType = false;
+    while (columns.next()) {
+        const QString name = columns.value(1).toString();
+        hasLegacyGroupType = hasLegacyGroupType ||
+            name == QStringLiteral("group_type");
+        hasAssetType = hasAssetType ||
+            name == QStringLiteral("asset_type");
+    }
+
+    if (!hasLegacyGroupType || hasAssetType) {
+        return true;
+    }
+
+    QSqlQuery migration(database_);
+    if (!migration.exec(QStringLiteral(
+            "ALTER TABLE accounts RENAME COLUMN group_type TO asset_type"))) {
+        setLastError(migration.lastError().text());
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::seedDefaults()
 {
     if (!database_.transaction()) {
@@ -349,7 +463,7 @@ bool FinanceRepository::seedDefaults()
     const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
     QSqlQuery account(database_);
     account.prepare(QStringLiteral(
-        "INSERT OR IGNORE INTO accounts(id,name,group_type,account_type,currency,created_at) "
+        "INSERT OR IGNORE INTO accounts(id,name,asset_type,account_type,currency,created_at) "
         "VALUES (?, ?, 0, 4, ?, ?)"));
     const std::array<QString, 3> currencies{
         QStringLiteral("RUB"), QStringLiteral("USD"), QStringLiteral("EUR")};
@@ -398,6 +512,8 @@ bool FinanceRepository::seedDefaults()
     QSqlQuery setting(database_);
     if (!setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) VALUES('app_currency','RUB')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) VALUES('selected_asset','fiat')")) ||
         !database_.commit()) {
         setLastError(setting.lastError().isValid()
                          ? setting.lastError().text()
