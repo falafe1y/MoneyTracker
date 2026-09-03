@@ -3,6 +3,7 @@
 #include "../core/Currency.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStandardPaths>
@@ -39,19 +40,22 @@ AssetType assetTypeFromInt(const int value)
 }
 }
 
-FinanceRepository::FinanceRepository()
+FinanceRepository::FinanceRepository(const QString& databasePath)
     : connectionName_(QUuid::createUuid().toString(QUuid::WithoutBraces))
     , database_(QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName_))
 {
-    const QString directory =
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString resolvedDatabasePath = databasePath.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QStringLiteral("/moneytracker.sqlite3")
+        : databasePath;
+    const QString directory = QFileInfo(resolvedDatabasePath).absolutePath();
 
     if (!QDir().mkpath(directory)) {
         setLastError(QStringLiteral("Cannot create application data directory"));
         return;
     }
 
-    database_.setDatabaseName(directory + QStringLiteral("/moneytracker.sqlite3"));
+    database_.setDatabaseName(resolvedDatabasePath);
     if (!database_.open()) {
         setLastError(database_.lastError().text());
         return;
@@ -231,7 +235,7 @@ bool FinanceRepository::insertTransaction(const Transaction& transaction)
         "amount_minor, occurred_at, description, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
     query.addBindValue(transaction.id());
-    query.addBindValue(accountIdForCurrency(transaction.money().currency()));
+    query.addBindValue(transaction.accountId());
     query.addBindValue(transaction.categoryId());
     query.addBindValue(transaction.type() == TransactionType::Income ? 0 : 1);
     query.addBindValue(transaction.money().minorUnits());
@@ -522,11 +526,6 @@ bool FinanceRepository::seedDefaults()
         return false;
     }
     return true;
-}
-
-QString FinanceRepository::accountIdForCurrency(const Currency currency) const
-{
-    return QStringLiteral("household-") + currencyCode(currency).toLower();
 }
 
 void FinanceRepository::setLastError(const QString& error) { lastError_ = error; }

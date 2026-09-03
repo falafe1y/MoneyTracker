@@ -20,7 +20,7 @@ public:
         std::array<qint64, 3> expense{};
     };
 
-    FinanceRepository();
+    explicit FinanceRepository(const QString& databasePath = {});
     ~FinanceRepository();
 
     FinanceRepository(const FinanceRepository&) = delete;
@@ -47,7 +47,6 @@ private:
     bool initializeSchema();
     bool migrateLegacySchema();
     bool seedDefaults();
-    QString accountIdForCurrency(Currency currency) const;
     void setLastError(const QString& error);
 
     QString connectionName_;
