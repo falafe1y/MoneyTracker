@@ -442,6 +442,117 @@ bool FinanceController::addExpense(
         );
 }
 
+bool FinanceController::updateTransaction(
+    const QString& id,
+    const qint64 minorUnits,
+    const QString& description,
+    const QString& categoryId,
+    const QString& accountId,
+    const QString& type
+    )
+{
+    if (id.isEmpty() || minorUnits <= 0) {
+        return false;
+    }
+
+    int transactionIndex = -1;
+    for (int index = 0; index < transactions_.size(); ++index) {
+        if (transactions_[index].id() == id) {
+            transactionIndex = index;
+            break;
+        }
+    }
+    if (transactionIndex < 0) {
+        return false;
+    }
+    const Transaction& original = transactions_[transactionIndex];
+
+    const Account* selectedAccount = nullptr;
+    for (const Account& account : accounts_) {
+        if (account.id() == accountId) {
+            selectedAccount = &account;
+            break;
+        }
+    }
+    if (!selectedAccount || selectedAccount->assetType() != selectedAsset_) {
+        return false;
+    }
+
+    const TransactionType transactionType =
+        type.trimmed().toLower() == QStringLiteral("income")
+            ? TransactionType::Income
+            : TransactionType::Expense;
+    const CategoryType requiredCategoryType =
+        transactionType == TransactionType::Income
+            ? CategoryType::Income
+            : CategoryType::Expense;
+
+    bool categoryIsValid = false;
+    for (const Category& category : categories_) {
+        if (category.id() == categoryId &&
+            category.type() == requiredCategoryType &&
+            (!archivedCategoryIds_.contains(categoryId) ||
+             original.categoryId() == categoryId)) {
+            categoryIsValid = true;
+            break;
+        }
+    }
+    if (!categoryIsValid) {
+        return false;
+    }
+
+    const Transaction updated(
+        original.id(),
+        selectedAccount->id(),
+        categoryId,
+        Money(minorUnits, selectedAccount->currency()),
+        transactionType,
+        original.date(),
+        description
+        );
+
+    if (!repository_.isOpen() || !repository_.updateTransaction(updated)) {
+        qWarning() << "Failed to update transaction:"
+                   << repository_.lastError();
+        return false;
+    }
+
+    transactions_[transactionIndex] = updated;
+    summary_ = repository_.loadSummary();
+
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
+    return true;
+}
+
+bool FinanceController::deleteTransaction(const QString& id)
+{
+    int transactionIndex = -1;
+    for (int index = 0; index < transactions_.size(); ++index) {
+        if (transactions_[index].id() == id) {
+            transactionIndex = index;
+            break;
+        }
+    }
+    if (transactionIndex < 0) {
+        return false;
+    }
+    if (!repository_.isOpen() || !repository_.deleteTransaction(id)) {
+        qWarning() << "Failed to delete transaction:"
+                   << repository_.lastError();
+        return false;
+    }
+
+    transactions_.removeAt(transactionIndex);
+    summary_ = repository_.loadSummary();
+
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
+    return true;
+}
+
 bool FinanceController::addTransaction(
     qint64 minorUnits,
     TransactionType type,

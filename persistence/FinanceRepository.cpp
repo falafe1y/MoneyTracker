@@ -253,6 +253,47 @@ bool FinanceRepository::insertTransaction(const Transaction& transaction)
     return true;
 }
 
+bool FinanceRepository::updateTransaction(const Transaction& transaction)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE transactions "
+        "SET account_id = ?, category_id = ?, type = ?, amount_minor = ?, "
+        "    occurred_at = ?, description = ? "
+        "WHERE id = ?"));
+    query.addBindValue(transaction.accountId());
+    query.addBindValue(transaction.categoryId());
+    query.addBindValue(transaction.type() == TransactionType::Income ? 0 : 1);
+    query.addBindValue(transaction.money().minorUnits());
+    query.addBindValue(transaction.date().toMSecsSinceEpoch());
+    query.addBindValue(transaction.description());
+    query.addBindValue(transaction.id());
+
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Transaction was not found"));
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::deleteTransaction(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "DELETE FROM transactions WHERE id = ?"));
+    query.addBindValue(id);
+
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Transaction was not found"));
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::insertCategory(const Category& category)
 {
     QSqlQuery query(database_);

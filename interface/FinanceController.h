@@ -144,6 +144,17 @@ public:
         const QString& accountId
         );
 
+    Q_INVOKABLE bool updateTransaction(
+        const QString& id,
+        qint64 minorUnits,
+        const QString& description,
+        const QString& categoryId,
+        const QString& accountId,
+        const QString& type
+        );
+
+    Q_INVOKABLE bool deleteTransaction(const QString& id);
+
     Q_INVOKABLE qint64 convertTransaction(
         int transactionIndex,
         const QString& targetCurrency

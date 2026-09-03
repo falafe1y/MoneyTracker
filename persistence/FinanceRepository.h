@@ -34,6 +34,8 @@ public:
     QSet<QString> loadArchivedCategoryIds();
     Summary loadSummary();
     bool insertTransaction(const Transaction& transaction);
+    bool updateTransaction(const Transaction& transaction);
+    bool deleteTransaction(const QString& id);
     bool insertCategory(const Category& category);
     bool insertAccount(const Account& account);
     bool updateCategoryName(const QString& id, const QString& name);

@@ -105,6 +105,35 @@ ApplicationWindow {
         return "Другой счёт";
     }
 
+    function amountForInput(minor) {
+        const value = Math.round(Math.abs(Number(minor)));
+        const whole = Math.floor(value / 100);
+        const cents = value % 100;
+        return cents === 0 ? String(whole)
+                           : String(whole) + "." + (cents < 10 ? "0" : "") + String(cents);
+    }
+
+    function indexByRole(model, role, value) {
+        for (let i = 0; i < model.length; ++i)
+            if (model[i][role] === value)
+                return i;
+        return model.length > 0 ? 0 : -1;
+    }
+
+    function openTransactionContextMenu(row, sourceItem, localX, localY) {
+        const point = sourceItem.mapToItem(root.contentItem, localX, localY);
+        transactionContextMenu.transactionData = row;
+        transactionContextMenu.x = Math.max(
+            8,
+            Math.min(point.x, root.contentItem.width - transactionContextMenu.width - 8)
+        );
+        transactionContextMenu.y = Math.max(
+            8,
+            Math.min(point.y, root.contentItem.height - transactionContextMenu.implicitHeight - 8)
+        );
+        transactionContextMenu.open();
+    }
+
     function visibleTransactions() {
         const result = [], ids = {}, accounts = financeController.accounts;
         for (let i = 0; i < accounts.length; ++i)
@@ -152,11 +181,12 @@ ApplicationWindow {
     }
     component SoftButton: Button {
         id: control
+        property bool destructive: false
         hoverEnabled: true
         implicitHeight: 42
         contentItem: Text {
             text: control.text
-            color: control.highlighted ? root.white : root.ink
+            color: control.destructive || control.highlighted ? root.white : root.ink
             font.pixelSize: 14
             font.weight: Font.Medium
             horizontalAlignment: Text.AlignHCenter
@@ -164,9 +194,37 @@ ApplicationWindow {
         }
         background: Rectangle {
             radius: 10
-            color: control.highlighted ? (control.down ? root.greenDark : root.green) : (control.hovered ? root.soft : root.panel)
-            border.width: control.highlighted ? 0 : 1
+            color: control.destructive
+                   ? (control.down || control.hovered ? Qt.darker(root.red, 1.08) : root.red)
+                   : control.highlighted
+                     ? (control.down ? root.greenDark : root.green)
+                     : (control.hovered ? root.soft : root.panel)
+            border.width: control.destructive || control.highlighted ? 0 : 1
             border.color: root.line
+        }
+    }
+
+    component AppMenuItem: MenuItem {
+        id: menuItem
+        property bool destructive: false
+        hoverEnabled: true
+        implicitHeight: 40
+        leftPadding: 12
+        rightPadding: 12
+
+        contentItem: Text {
+            text: menuItem.text
+            color: menuItem.destructive ? root.red : root.ink
+            font.pixelSize: 14
+            font.weight: Font.Medium
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        background: Rectangle {
+            radius: 8
+            color: menuItem.highlighted || menuItem.hovered
+                   ? (menuItem.destructive ? root.expensePanel : root.controlHovered)
+                   : root.transparentColor
         }
     }
     component AppTextField: TextField {
@@ -992,7 +1050,9 @@ ApplicationWindow {
 
                             Rectangle {
                                 anchors.fill: parent
-                                color: index % 2 ? root.tableRowAlt : root.panel
+                                color: overviewRowMenuArea.containsMouse
+                                       ? root.controlHovered
+                                       : (index % 2 ? root.tableRowAlt : root.panel)
                             }
 
                             RowLayout {
@@ -1035,6 +1095,22 @@ ApplicationWindow {
                                     horizontalAlignment: Text.AlignRight
                                 }
                             }
+
+                            MouseArea {
+                                id: overviewRowMenuArea
+                                anchors.fill: parent
+                                acceptedButtons: Qt.RightButton
+                                hoverEnabled: true
+                                onPressed: function (mouse) {
+                                    if (mouse.button === Qt.RightButton)
+                                        root.openTransactionContextMenu(
+                                            modelData,
+                                            overviewRowMenuArea,
+                                            mouse.x,
+                                            mouse.y
+                                        );
+                                }
+                            }
                         }
                     }
                 }
@@ -1057,7 +1133,9 @@ ApplicationWindow {
 
                         Rectangle {
                             anchors.fill: parent
-                            color: index % 2 ? root.tableRowAlt : root.panel
+                            color: operationsRowMenuArea.containsMouse
+                                   ? root.controlHovered
+                                   : (index % 2 ? root.tableRowAlt : root.panel)
                         }
 
                         RowLayout {
@@ -1098,6 +1176,22 @@ ApplicationWindow {
                                 font.weight: Font.DemiBold
                                 Layout.preferredWidth: 130
                                 horizontalAlignment: Text.AlignRight
+                            }
+                        }
+
+                        MouseArea {
+                            id: operationsRowMenuArea
+                            anchors.fill: parent
+                            acceptedButtons: Qt.RightButton
+                            hoverEnabled: true
+                            onPressed: function (mouse) {
+                                if (mouse.button === Qt.RightButton)
+                                    root.openTransactionContextMenu(
+                                        modelData,
+                                        operationsRowMenuArea,
+                                        mouse.x,
+                                        mouse.y
+                                    );
                             }
                         }
                     }
@@ -1622,19 +1716,217 @@ ApplicationWindow {
         }
     }
 
+    Menu {
+        id: transactionContextMenu
+        width: 224
+        padding: 6
+        property var transactionData: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        AppMenuItem {
+            width: transactionContextMenu.availableWidth
+            text: "Редактировать"
+            onTriggered: {
+                if (transactionContextMenu.transactionData)
+                    operationDialog.openForEdit(transactionContextMenu.transactionData);
+            }
+        }
+
+        MenuSeparator {
+            width: transactionContextMenu.availableWidth
+            topPadding: 4
+            bottomPadding: 4
+            contentItem: Rectangle {
+                implicitHeight: 1
+                color: root.line
+            }
+        }
+
+        AppMenuItem {
+            width: transactionContextMenu.availableWidth
+            text: "Удалить"
+            destructive: true
+            onTriggered: {
+                if (transactionContextMenu.transactionData)
+                    deleteTransactionDialog.openFor(transactionContextMenu.transactionData);
+            }
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 12
+            border.width: 1
+            border.color: root.line
+        }
+    }
+
+    Dialog {
+        id: deleteTransactionDialog
+        width: 460
+        modal: true
+        anchors.centerIn: parent
+        padding: 24
+        closePolicy: Popup.CloseOnEscape
+        property var transactionData: null
+
+        function openFor(row) {
+            transactionData = row;
+            deleteTransactionError.text = "";
+            open();
+        }
+
+        onClosed: transactionData = null
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: "Удалить операцию?"
+                color: root.ink
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Это действие нельзя отменить. Баланс и статистика будут пересчитаны."
+                color: root.muted
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+
+            Panel {
+                Layout.fillWidth: true
+                implicitHeight: 78
+                color: root.soft
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 4
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: deleteTransactionDialog.transactionData
+                              ? (deleteTransactionDialog.transactionData.description
+                                 || (deleteTransactionDialog.transactionData.type === "income"
+                                     ? "Доход"
+                                     : "Расход"))
+                              : ""
+                        color: root.ink
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: deleteTransactionDialog.transactionData
+                              ? root.accountName(deleteTransactionDialog.transactionData.accountId)
+                                + " · "
+                                + root.money(
+                                    deleteTransactionDialog.transactionData.type === "income"
+                                        ? deleteTransactionDialog.transactionData.amount
+                                        : -deleteTransactionDialog.transactionData.amount,
+                                    deleteTransactionDialog.transactionData.currency,
+                                    true
+                                )
+                              : ""
+                        color: root.muted
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            Text {
+                id: deleteTransactionError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Item {
+                    Layout.fillWidth: true
+                }
+                SoftButton {
+                    text: "Отмена"
+                    onClicked: deleteTransactionDialog.close()
+                }
+                SoftButton {
+                    text: "Удалить"
+                    destructive: true
+                    onClicked: {
+                        const row = deleteTransactionDialog.transactionData;
+                        if (row && financeController.deleteTransaction(row.id))
+                            deleteTransactionDialog.close();
+                        else
+                            deleteTransactionError.text = "Не удалось удалить операцию";
+                    }
+                }
+            }
+        }
+    }
+
     Dialog {
         id: operationDialog
         width: 520
         modal: true
         anchors.centerIn: parent
         padding: 24
+        property string editingId: ""
+        property var editingTransaction: null
+
         function openForNew() {
+            editingId = "";
+            editingTransaction = null;
             operationError.text = "";
             operationAmount.clear();
             operationDescription.clear();
             operationType.currentIndex = 1;
+            operationAccount.currentIndex = root.indexByRole(
+                financeController.accounts,
+                "id",
+                financeController.selectedAccountId
+            );
+            operationCategory.currentIndex = 0;
             open();
         }
+
+        function openForEdit(row) {
+            editingId = row.id;
+            editingTransaction = row;
+            operationError.text = "";
+            operationType.currentIndex = row.type === "income" ? 0 : 1;
+            operationAccount.currentIndex = root.indexByRole(
+                financeController.accounts,
+                "id",
+                row.accountId
+            );
+            operationCategory.currentIndex = root.indexByRole(
+                operationCategory.model,
+                "value",
+                row.categoryId
+            );
+            operationAmount.text = root.amountForInput(row.amount);
+            operationDescription.text = row.description || "";
+            open();
+        }
+
+        onClosed: {
+            editingId = "";
+            editingTransaction = null;
+        }
+
         background: Rectangle {
             color: root.panel
             radius: 18
@@ -1644,7 +1936,9 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             Text {
-                text: "Новая операция"
+                text: operationDialog.editingId
+                      ? "Редактирование операции"
+                      : "Новая операция"
                 color: root.ink
                 font.pixelSize: 21
                 font.weight: Font.Bold
@@ -1653,6 +1947,7 @@ ApplicationWindow {
                 id: operationType
                 Layout.fillWidth: true
                 model: ["Доход", "Расход"]
+                onActivated: operationCategory.currentIndex = 0
             }
             AppComboBox {
                 id: operationAccount
@@ -1663,9 +1958,27 @@ ApplicationWindow {
             AppComboBox {
                 id: operationCategory
                 Layout.fillWidth: true
-                model: financeController.categories.filter(function (c) {
-                    return c.type === (operationType.currentIndex === 0 ? "income" : "expense");
-                })
+                model: {
+                    const selectedType = operationType.currentIndex === 0
+                                       ? "income"
+                                       : "expense";
+                    const result = financeController.categories.filter(function (category) {
+                        return category.type === selectedType;
+                    });
+                    const editing = operationDialog.editingTransaction;
+                    if (editing && editing.type === selectedType) {
+                        let found = false;
+                        for (let i = 0; i < result.length; ++i)
+                            found = found || result[i].value === editing.categoryId;
+                        if (!found)
+                            result.push({
+                                label: editing.categoryName,
+                                value: editing.categoryId,
+                                type: editing.type
+                            });
+                    }
+                    return result;
+                }
                 textRole: "label"
             }
             AppTextField {
@@ -1708,12 +2021,42 @@ ApplicationWindow {
                             operationError.text = "Сначала добавьте категорию";
                             return;
                         }
-                        const account = financeController.accounts[operationAccount.currentIndex], category = operationCategory.model[operationCategory.currentIndex], minor = Math.round((Number(operationAmount.text.replace(",", ".")) || 0) * 100);
-                        const ok = operationType.currentIndex === 0 ? financeController.addIncome(minor, operationDescription.text, category.value, account.currency, account.id) : financeController.addExpense(minor, operationDescription.text, category.value, account.currency, account.id);
+                        const account = financeController.accounts[operationAccount.currentIndex];
+                        const category = operationCategory.model[operationCategory.currentIndex];
+                        const minor = Math.round(
+                            (Number(operationAmount.text.replace(",", ".")) || 0) * 100
+                        );
+                        const type = operationType.currentIndex === 0
+                                   ? "income"
+                                   : "expense";
+                        const ok = operationDialog.editingId
+                                 ? financeController.updateTransaction(
+                                     operationDialog.editingId,
+                                     minor,
+                                     operationDescription.text,
+                                     category.value,
+                                     account.id,
+                                     type
+                                 )
+                                 : type === "income"
+                                   ? financeController.addIncome(
+                                       minor,
+                                       operationDescription.text,
+                                       category.value,
+                                       account.currency,
+                                       account.id
+                                   )
+                                   : financeController.addExpense(
+                                       minor,
+                                       operationDescription.text,
+                                       category.value,
+                                       account.currency,
+                                       account.id
+                                   );
                         if (ok)
                             operationDialog.close();
                         else
-                            operationError.text = "Укажите корректную сумму и счёт";
+                            operationError.text = "Проверьте сумму, счёт и категорию";
                     }
                 }
             }
