@@ -73,6 +73,19 @@ class FinanceController final : public QObject
                 NOTIFY accountsChanged
         )
 
+    Q_PROPERTY(
+        QVariantList assetSummaries
+            READ assetSummaries
+                NOTIFY balanceChanged
+        )
+
+    Q_PROPERTY(
+        QString selectedAccountId
+            READ selectedAccountId
+                WRITE setSelectedAccountId
+                    NOTIFY selectedAccountIdChanged
+        )
+
 public:
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -88,9 +101,12 @@ public:
     QVariantList transactions() const;
     QVariantList categories() const;
     QVariantList accounts() const;
+    QVariantList assetSummaries() const;
 
     QString selectedAsset() const;
     void setSelectedAsset(const QString& asset);
+    QString selectedAccountId() const;
+    void setSelectedAccountId(const QString& accountId);
 
     Q_INVOKABLE bool addAccount(
         const QString& name,
@@ -116,14 +132,16 @@ public:
         qint64 minorUnits,
         const QString& description,
         const QString& categoryId,
-        const QString& currency
+        const QString& currency,
+        const QString& accountId
         );
 
     Q_INVOKABLE bool addExpense(
         qint64 minorUnits,
         const QString& description,
         const QString& categoryId,
-        const QString& currency
+        const QString& currency,
+        const QString& accountId
         );
 
     Q_INVOKABLE qint64 convertTransaction(
@@ -136,6 +154,7 @@ signals:
     void transactionsChanged();
     void categoriesChanged();
     void selectedAssetChanged();
+    void selectedAccountIdChanged();
     void accountsChanged();
     void appCurrencyChanged();
 
@@ -155,8 +174,12 @@ private:
         TransactionType type,
         const QString& description,
         const QString& categoryId,
-        Currency currency
+        Currency currency,
+        const QString& accountId
         );
+
+    qint64 accountBalanceMinor(const Account& account) const;
+    qint64 assetBalanceMinor(AssetType asset) const;
 
     static Currency currencyFromString(
         const QString& currency
@@ -175,4 +198,5 @@ private:
 
     Currency appCurrency_ = Currency::RUB;
     AssetType selectedAsset_ = AssetType::Fiat;
+    QString selectedAccountId_;
 };

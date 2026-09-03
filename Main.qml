@@ -4,1739 +4,341 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: root
-
-    width: 1180
-    height: 800
-    minimumWidth: 940
-    minimumHeight: 680
+    width: 1440
+    height: 900
+    minimumWidth: 1080
+    minimumHeight: 720
     visible: true
-    title: "Money Tracker"
-    color: "#F4F6F8"
+    title: "Ledgera"
+    color: "#F4F2ED"
 
-    readonly property color backgroundColor: "#F4F6F8"
-    readonly property color surfaceColor: "#FFFFFF"
-    readonly property color surfaceSoft: "#F8FAFC"
-    readonly property color borderColor: "#E5E9EF"
-    readonly property color textPrimary: "#101828"
-    readonly property color textSecondary: "#788395"
-    readonly property color accentColor: "#315EF4"
-    readonly property color accentPressed: "#244AC7"
-    readonly property color heroColor: "#111B31"
-    readonly property color heroSoftColor: "#192640"
-    readonly property color incomeColor: "#168A5B"
-    readonly property color incomeSoft: "#E9F7F0"
-    readonly property color expenseColor: "#C94A55"
-    readonly property color expenseSoft: "#FCEDEF"
+    readonly property color panel: "#FBFAF7"
+    readonly property color soft: "#F0F0E9"
+    readonly property color line: "#E2E0D9"
+    readonly property color ink: "#17201B"
+    readonly property color muted: "#687069"
+    readonly property color green: "#344B3B"
+    readonly property color green2: "#56745B"
+    readonly property color pale: "#DDE4D5"
+    readonly property color red: "#D74D36"
 
-    property var currencyData: [
-        { code: "RUB", symbol: "₽", name: "Российский рубль" },
-        { code: "USD", symbol: "$", name: "Доллар США" },
-        { code: "EUR", symbol: "€", name: "Евро" }
+    property string page: "overview"
+    property string searchText: ""
+    readonly property var assets: [
+        { code: "fiat", title: "Фиат", icon: "▣" },
+        { code: "crypto", title: "Крипта", icon: "₿" },
+        { code: "investment", title: "Инвестиции", icon: "▥" }
     ]
 
-    readonly property var assetData: [
-        { code: "fiat", title: "Фиат" },
-        { code: "crypto", title: "Крипта" },
-        { code: "investment", title: "Инвестиции" }
-    ]
-
+    function symbol(code) { return code === "USD" ? "$" : code === "EUR" ? "€" : "₽" }
+    function money(minor, code, sign) {
+        const value = Number(minor) / 100
+        const prefix = sign ? (value >= 0 ? "+" : "−") : (value < 0 ? "−" : "")
+        return prefix + Math.abs(value).toLocaleString(Qt.locale("ru_RU"), "f", 0)
+                + " " + symbol(code || financeController.appCurrency)
+    }
     function assetTitle(code) {
-        for (let i = 0; i < assetData.length; ++i) {
-            if (assetData[i].code === code)
-                return assetData[i].title
-        }
+        for (let i = 0; i < assets.length; ++i) if (assets[i].code === code) return assets[i].title
         return "Фиат"
     }
-
-    readonly property var incomeCategories: financeController.categories.filter(
-        function(category) { return category.type === "income" })
-    readonly property var expenseCategories: financeController.categories.filter(
-        function(category) { return category.type === "expense" })
-
-    function currencyIndex(code) {
-        for (let i = 0; i < currencyData.length; ++i) {
-            if (currencyData[i].code === code)
-                return i
-        }
+    function assetAmount(code) {
+        const rows = financeController.assetSummaries
+        for (let i = 0; i < rows.length; ++i) if (rows[i].code === code) return rows[i].balanceMinor
         return 0
     }
-
-    function currencySymbol(code) {
-        const index = currencyIndex(code)
-        return currencyData[index].symbol
+    function accountName(id) {
+        const rows = financeController.accounts
+        for (let i = 0; i < rows.length; ++i) if (rows[i].id === id) return rows[i].name
+        return "Другой счёт"
     }
-
-    function formatAmount(minorUnits, currency, includeSign, transactionType) {
-        const absoluteValue = Math.abs(Number(minorUnits)) / 100.0
-        const formatted = absoluteValue.toLocaleString(Qt.locale("ru_RU"), "f", 2)
-        let sign = ""
-
-        if (includeSign)
-            sign = transactionType === "income" ? "+" : "−"
-        else if (Number(minorUnits) < 0)
-            sign = "−"
-
-        return sign + formatted + " " + currencySymbol(currency)
-    }
-
-    function categoryTitle(id) {
-        const all = incomeCategories.concat(expenseCategories)
-        for (let i = 0; i < all.length; ++i) {
-            if (all[i].value === id)
-                return all[i].label
+    function visibleTransactions() {
+        const result = [], ids = {}, accounts = financeController.accounts
+        for (let i = 0; i < accounts.length; ++i) ids[accounts[i].id] = true
+        const rows = financeController.transactions, query = searchText.trim().toLowerCase()
+        for (let j = 0; j < rows.length; ++j) {
+            const row = rows[j]
+            if (!ids[row.accountId]) continue
+            if (financeController.selectedAccountId && row.accountId !== financeController.selectedAccountId) continue
+            const text = (row.description + " " + row.categoryName + " " + accountName(row.accountId)).toLowerCase()
+            if (!query || text.indexOf(query) >= 0) result.push(row)
         }
-        return "Без категории"
+        return result
+    }
+    function categoryTotals() {
+        const values = {}, names = {}, rows = visibleTransactions()
+        for (let i = 0; i < rows.length; ++i) {
+            if (rows[i].type !== "expense") continue
+            const id = rows[i].categoryId || "none"
+            values[id] = (values[id] || 0) + Number(rows[i].displayAmount)
+            names[id] = rows[i].categoryName || "Без категории"
+        }
+        const result = []
+        for (const id in values) result.push({ label: names[id], amount: values[id] })
+        result.sort(function(a, b) { return b.amount - a.amount })
+        return result.slice(0, 5)
     }
 
-    Rectangle {
-        id: topBar
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: parent.top
-        height: 76
-        color: root.surfaceColor
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: 1
-            color: root.borderColor
+    component Panel: Rectangle { color: root.panel; radius: 16; border.width: 1; border.color: root.line }
+    component SoftButton: Button {
+        id: control
+        hoverEnabled: true; implicitHeight: 42
+        contentItem: Text { text: control.text; color: control.highlighted ? "white" : root.ink; font.pixelSize: 14; font.weight: Font.Medium; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+        background: Rectangle { radius: 10; color: control.highlighted ? (control.down ? "#283C2F" : root.green) : (control.hovered ? root.soft : root.panel); border.width: control.highlighted ? 0 : 1; border.color: root.line }
+    }
+    component NavButton: Button {
+        id: nav
+        property string glyph: ""
+        property string target: ""
+        flat: true; hoverEnabled: true; implicitHeight: 54
+        contentItem: RowLayout { spacing: 14
+            Text { text: nav.glyph; color: root.ink; font.pixelSize: 20; Layout.preferredWidth: 26; horizontalAlignment: Text.AlignHCenter }
+            Text { text: nav.text; color: root.ink; font.pixelSize: 15; Layout.fillWidth: true }
         }
+        background: Rectangle { radius: 14; color: root.page === nav.target ? "#E5E5DB" : (nav.hovered ? "#F0EFE9" : "transparent") }
+        onClicked: root.page = target
+    }
 
-        Item {
-            width: Math.min(root.width - 64, 1120)
-            height: parent.height
-            anchors.horizontalCenter: parent.horizontalCenter
-
-            RowLayout {
-                anchors.fill: parent
-                spacing: 16
-
-                RowLayout {
-                    spacing: 11
-
-                    Rectangle {
-                        width: 36
-                        height: 36
-                        radius: 12
-                        color: root.heroColor
-
-                        Rectangle {
-                            width: 14
-                            height: 14
-                            radius: 7
-                            anchors.centerIn: parent
-                            color: root.accentColor
-
-                            Rectangle {
-                                width: 5
-                                height: 5
-                                radius: 2.5
-                                anchors.centerIn: parent
-                                color: "white"
-                            }
-                        }
-                    }
-
-                    ColumnLayout {
-                        spacing: 0
-
-                        Text {
-                            text: "Money"
-                            color: root.textPrimary
-                            font.pixelSize: 17
-                            font.weight: Font.Bold
-                        }
-
-                        Text {
-                            text: "Личные финансы"
-                            color: root.textSecondary
-                            font.pixelSize: 11
-                        }
-                    }
+    RowLayout {
+        anchors.fill: parent; anchors.margins: 6; spacing: 24
+        Panel {
+            Layout.preferredWidth: 252; Layout.fillHeight: true
+            ColumnLayout {
+                anchors.fill: parent; anchors.margins: 20; spacing: 8
+                RowLayout { Layout.bottomMargin: 34; spacing: 12
+                    Rectangle { width: 36; height: 36; radius: 12; color: root.green; Text { anchors.centerIn: parent; text: "◆"; color: "white"; font.pixelSize: 17 } }
+                    Text { text: "Ledgera"; color: root.ink; font.pixelSize: 25; font.weight: Font.Bold }
                 }
-
-                Item { Layout.fillWidth: true }
-
-                RowLayout {
-                    spacing: 5
-
-                    Repeater {
-                        model: root.assetData
-                        delegate: Button {
-                            id: assetButton
-                            required property var modelData
-                            implicitWidth: 92
-                            implicitHeight: 38
-                            flat: true
-
-                            contentItem: Text {
-                                text: assetButton.modelData.title
-                                color: financeController.selectedAsset ===
-                                       assetButton.modelData.code
-                                       ? "white" : root.textSecondary
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            background: Rectangle {
-                                radius: 12
-                                color: financeController.selectedAsset ===
-                                       assetButton.modelData.code
-                                       ? root.heroColor : root.surfaceSoft
-                            }
-                            onClicked: financeController.selectedAsset =
-                                           assetButton.modelData.code
-                        }
-                    }
-                }
-
-                Item { Layout.fillWidth: true }
-
-                RowLayout {
-                    spacing: 10
-
-                    Button {
-                        id: accountsButton
-                        implicitWidth: 92
-                        implicitHeight: 38
-                        hoverEnabled: true
-
-                        contentItem: Text {
-                            text: "Счета"
-                            color: root.textPrimary
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        background: Rectangle {
-                            radius: 12
-                            color: accountsButton.hovered
-                                   ? root.surfaceSoft : root.surfaceColor
-                            border.width: 1
-                            border.color: root.borderColor
-                        }
-
-                        onClicked: accountDialog.openForSelectedAsset()
-                    }
-
-                    Button {
-                        id: categoriesButton
-                        implicitWidth: 108
-                        implicitHeight: 38
-                        hoverEnabled: true
-
-                        contentItem: Text {
-                            text: "Категории"
-                            color: root.textPrimary
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        background: Rectangle {
-                            radius: 12
-                            color: categoriesButton.hovered
-                                   ? root.surfaceSoft : root.surfaceColor
-                            border.width: 1
-                            border.color: root.borderColor
-                        }
-
-                        onClicked: categoryDialog.openForManagement()
-                    }
-
-                    Text {
-                        text: "Валюта"
-                        color: root.textSecondary
-                        font.pixelSize: 12
-                    }
-
-                    BankComboBox {
-                        id: appCurrencyBox
-                        Layout.preferredWidth: 142
-                        compact: true
-                        model: root.currencyData
-                        textRole: "code"
-                        secondaryRole: "symbol"
-                        currentIndex: root.currencyIndex(financeController.appCurrency)
-                        surfaceColor: root.surfaceColor
-                        surfaceHoverColor: root.surfaceSoft
-                        borderColor: root.borderColor
-                        focusColor: root.accentColor
-                        textPrimary: root.textPrimary
-                        textSecondary: root.textSecondary
-
-                        onActivated: function(index) {
-                            financeController.appCurrency = root.currencyData[index].code
-                        }
-                    }
-                }
+                NavButton { Layout.fillWidth: true; text: "Обзор"; glyph: "▦"; target: "overview" }
+                NavButton { Layout.fillWidth: true; text: "Счета"; glyph: "▣"; target: "accounts" }
+                NavButton { Layout.fillWidth: true; text: "Категории"; glyph: "◇"; target: "categories" }
+                NavButton { Layout.fillWidth: true; text: "Операции"; glyph: "⇄"; target: "operations" }
+                NavButton { Layout.fillWidth: true; text: "Аналитика"; glyph: "▥"; target: "analytics" }
+                Item { Layout.fillHeight: true }
+                Rectangle { Layout.fillWidth: true; height: 1; color: root.line }
+                NavButton { Layout.fillWidth: true; text: "Настройки"; glyph: "⚙"; target: "settings" }
             }
         }
-    }
-
-    Item {
-        id: page
-        anchors.top: topBar.bottom
-        anchors.bottom: parent.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: Math.min(root.width - 64, 1120)
 
         ColumnLayout {
-            anchors.fill: parent
-            anchors.topMargin: 26
-            anchors.bottomMargin: 28
-            spacing: 20
-
-            Rectangle {
-                id: balanceCard
-                Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: Math.min(650, page.width)
-                Layout.preferredHeight: 194
-                radius: 24
-                color: root.heroColor
-                clip: true
-
-                Rectangle {
-                    width: 220
-                    height: 220
-                    radius: 110
-                    x: balanceCard.width - 110
-                    y: -105
-                    color: "#12FFFFFF"
-                }
-
-                Rectangle {
-                    width: 120
-                    height: 120
-                    radius: 60
-                    x: -54
-                    y: balanceCard.height - 55
-                    color: "#0CFFFFFF"
-                }
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 24
-                    spacing: 7
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        Text {
-                            text: "Общий баланс"
-                            color: "#AEB8CA"
-                            font.pixelSize: 12
-                            font.weight: Font.Medium
-                        }
-
-                        Item { Layout.fillWidth: true }
-
-                        Rectangle {
-                            Layout.preferredWidth: 76
-                            Layout.preferredHeight: 28
-                            radius: 14
-                            color: "#16FFFFFF"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: financeController.balanceCurrency
-                                color: "#D8DEEA"
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 52
-                        text: root.formatAmount(
-                                  financeController.balanceMinorUnits,
-                                  financeController.balanceCurrency,
-                                  false,
-                                  "")
-                        color: "white"
-                        font.pixelSize: 40
-                        minimumPixelSize: 25
-                        fontSizeMode: Text.Fit
-                        font.weight: Font.Bold
-                        font.letterSpacing: -0.8
-                        verticalAlignment: Text.AlignVCenter
-                        maximumLineCount: 1
-                    }
-
-                    Item { Layout.fillHeight: true }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 52
-                            radius: 15
-                            color: "#10FFFFFF"
-                            border.width: 1
-                            border.color: "#12FFFFFF"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 13
-                                anchors.rightMargin: 13
-                                spacing: 10
-
-                                Rectangle {
-                                    width: 28
-                                    height: 28
-                                    radius: 9
-                                    color: "#153CCB8B"
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "↗"
-                                        color: "#67D7A9"
-                                        font.pixelSize: 14
-                                        font.weight: Font.Bold
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 0
-
-                                    Text {
-                                        text: "Доходы"
-                                        color: "#96A3B7"
-                                        font.pixelSize: 10
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.formatAmount(financeController.incomeMinorUnits, financeController.balanceCurrency, false, "")
-                                        color: "#EAFBF4"
-                                        font.pixelSize: 13
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
-                                    }
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 52
-                            radius: 15
-                            color: "#10FFFFFF"
-                            border.width: 1
-                            border.color: "#12FFFFFF"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 13
-                                anchors.rightMargin: 13
-                                spacing: 10
-
-                                Rectangle {
-                                    width: 28
-                                    height: 28
-                                    radius: 9
-                                    color: "#18DC7180"
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "↘"
-                                        color: "#F398A3"
-                                        font.pixelSize: 14
-                                        font.weight: Font.Bold
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 0
-
-                                    Text {
-                                        text: "Расходы"
-                                        color: "#96A3B7"
-                                        font.pixelSize: 10
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.formatAmount(financeController.expenseMinorUnits, financeController.balanceCurrency, false, "")
-                                        color: "#FFF0F2"
-                                        font.pixelSize: 13
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
+            Layout.fillWidth: true; Layout.fillHeight: true; Layout.topMargin: 12; Layout.rightMargin: 18; spacing: 14
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 14
-
-                ColumnLayout {
-                    spacing: 2
-
-                    Text {
-                        text: "Операции"
-                        color: root.textPrimary
-                        font.pixelSize: 20
-                        font.weight: Font.Bold
-                    }
-
-                    Text {
-                        text: financeController.transactions.length === 0
-                              ? "История доходов и расходов появится здесь"
-                              : "Последние транзакции"
-                        color: root.textSecondary
-                        font.pixelSize: 11
-                    }
-                }
-
+                Text { text: page === "overview" ? "Мои финансы" : page === "accounts" ? "Счета" : page === "categories" ? "Категории" : page === "operations" ? "Операции" : page === "analytics" ? "Аналитика" : "Настройки"; color: root.ink; font.pixelSize: 28; font.weight: Font.Bold }
                 Item { Layout.fillWidth: true }
-
-                Button {
-                    id: newTransactionButton
-                    implicitHeight: 44
-                    implicitWidth: 166
-                    hoverEnabled: true
-
-                    contentItem: Row {
-                        anchors.centerIn: parent
-                        spacing: 8
-
-                        Text {
-                            text: "+"
-                            color: "white"
-                            font.pixelSize: 17
-                            font.weight: Font.Medium
-                        }
-
-                        Text {
-                            text: "Новая операция"
-                            color: "white"
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-
-                    background: Rectangle {
-                        radius: 14
-                        color: newTransactionButton.down
-                               ? root.accentPressed
-                               : (newTransactionButton.hovered ? "#2B56E3" : root.accentColor)
-                    }
-
-                    onClicked: transactionDialog.openForNewTransaction()
-                }
+                TextField { visible: page === "overview" || page === "operations"; Layout.preferredWidth: 265; implicitHeight: 42; placeholderText: "Поиск по операциям..."; onTextChanged: root.searchText = text; leftPadding: 16; background: Rectangle { color: root.panel; radius: 12; border.width: 1; border.color: root.line } }
+                ComboBox { id: currencyBox; Layout.preferredWidth: 126; implicitHeight: 42; model: ["RUB", "USD", "EUR"]; currentIndex: Math.max(0, model.indexOf(financeController.appCurrency)); onActivated: financeController.appCurrency = currentText; background: Rectangle { color: root.panel; radius: 12; border.width: 1; border.color: root.line } }
             }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.minimumHeight: 210
-                radius: 20
-                color: root.surfaceColor
-                border.width: 1
-                border.color: root.borderColor
-                clip: true
-
-                Item {
-                    anchors.fill: parent
-                    visible: financeController.transactions.length === 0
-
-                    Column {
-                        anchors.centerIn: parent
-                        spacing: 9
-
-                        Rectangle {
-                            width: 48
-                            height: 48
-                            radius: 16
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            color: "#EEF2FF"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "↕"
-                                color: root.accentColor
-                                font.pixelSize: 20
-                            }
-                        }
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Пока без операций"
-                            color: root.textPrimary
-                            font.pixelSize: 14
-                            font.weight: Font.DemiBold
-                        }
-
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Добавьте доход или расход"
-                            color: root.textSecondary
-                            font.pixelSize: 11
-                        }
-                    }
-                }
-
-                ListView {
-                    id: transactionList
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    visible: financeController.transactions.length > 0
-                    model: financeController.transactions
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-
-                    ScrollBar.vertical: ScrollBar {
-                        policy: ScrollBar.AsNeeded
-                        width: 6
-                    }
-
-                    delegate: Item {
-                        id: transactionRow
-                        required property var modelData
-                        required property int index
-
-                        width: transactionList.width
-                        height: 76
-
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.leftMargin: 5
-                            anchors.rightMargin: 5
-                            anchors.topMargin: 3
-                            anchors.bottomMargin: 3
-                            radius: 14
-                            color: rowHover.containsMouse ? "#F8FAFC" : "transparent"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 14
-                                spacing: 13
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 3
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelData.description.length > 0
-                                              ? modelData.description
-                                              : modelData.categoryName
-                                        color: root.textPrimary
-                                        font.pixelSize: 13
-                                        font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
-                                    }
-
-                                    RowLayout {
-                                        spacing: 7
-
-                                        Text {
-                                            text: modelData.categoryName
-                                            color: root.textSecondary
-                                            font.pixelSize: 10
-                                        }
-
-                                        Rectangle {
-                                            width: 3
-                                            height: 3
-                                            radius: 1.5
-                                            color: "#C4CAD3"
-                                        }
-
-                                        Text {
-                                            text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy · HH:mm")
-                                            color: root.textSecondary
-                                            font.pixelSize: 10
-                                        }
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.preferredWidth: 200
-                                    Layout.maximumWidth: 200
-                                    spacing: 2
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: root.formatAmount(modelData.amount, modelData.currency, true, modelData.type)
-                                        color: modelData.type === "income" ? root.incomeColor : root.textPrimary
-                                        font.pixelSize: 13
-                                        font.weight: Font.Bold
-                                        horizontalAlignment: Text.AlignRight
-                                        elide: Text.ElideLeft
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        visible: modelData.currency !== financeController.appCurrency
-                                        text: "≈ " + root.formatAmount(
-                                                  financeController.convertTransaction(transactionRow.index, financeController.appCurrency),
-                                                  financeController.appCurrency,
-                                                  false,
-                                                  "")
-                                        color: root.textSecondary
-                                        font.pixelSize: 10
-                                        horizontalAlignment: Text.AlignRight
-                                        elide: Text.ElideLeft
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: rowHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                acceptedButtons: Qt.NoButton
-                            }
-                        }
-
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            anchors.leftMargin: 20
-                            anchors.rightMargin: 20
-                            height: index === transactionList.count - 1 ? 0 : 1
-                            color: "#F0F2F5"
-                        }
-                    }
-                }
-            }
+            Loader { Layout.fillWidth: true; Layout.fillHeight: true; sourceComponent: page === "overview" ? overviewPage : page === "accounts" ? accountsPage : page === "categories" ? categoriesPage : page === "operations" ? operationsPage : page === "analytics" ? analyticsPage : settingsPage }
         }
     }
 
-    Dialog {
-        id: accountDialog
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape
-        width: Math.min(560, root.width - 52)
-        height: Math.min(630, root.height - 30)
-        anchors.centerIn: parent
-        padding: 0
-
-        readonly property var accountTypes: {
-            if (financeController.selectedAsset === "crypto")
-                return [
-                    { label: "Криптокошелёк", value: "crypto_wallet" },
-                    { label: "Другое", value: "other" }
-                ]
-            if (financeController.selectedAsset === "investment")
-                return [
-                    { label: "Брокер", value: "brokerage" },
-                    { label: "Вклад", value: "deposit" },
-                    { label: "Другое", value: "other" }
-                ]
-            return [
-                { label: "Наличные", value: "cash" },
-                { label: "Дебетовая карта", value: "debit_card" },
-                { label: "Кредитная карта", value: "credit_card" },
-                { label: "Накопительный счёт", value: "savings" },
-                { label: "Другое", value: "other" }
-            ]
-        }
-
-        function openForSelectedAsset() {
-            accountNameField.text = ""
-            initialBalanceField.text = ""
-            accountTypeBox.currentIndex = 0
-            accountCurrencyBox.currentIndex = root.currencyIndex(
-                financeController.appCurrency)
-            accountError.text = ""
-            open()
-        }
-
-        function initialBalanceMinor() {
-            if (initialBalanceField.text.trim().length === 0)
-                return 0
-            const value = Number(initialBalanceField.text.trim().replace(",", "."))
-            return isFinite(value) ? Math.round(value * 100) : 0
-        }
-
-        function saveAccount() {
-            if (accountNameField.text.trim().length === 0)
-                return
-
-            const saved = financeController.addAccount(
-                accountNameField.text,
-                accountTypes[accountTypeBox.currentIndex].value,
-                root.currencyData[accountCurrencyBox.currentIndex].code,
-                initialBalanceMinor())
-            if (saved) {
-                accountNameField.text = ""
-                initialBalanceField.text = ""
-                accountError.text = ""
-            } else {
-                accountError.text = "Счёт с таким названием уже существует или не может быть сохранён"
-            }
-        }
-
-        Overlay.modal: Rectangle { color: "#740B1220" }
-
-        background: Rectangle {
-            radius: 24
-            color: root.surfaceColor
-            border.width: 1
-            border.color: root.borderColor
-        }
-
-        contentItem: ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 22
-            spacing: 13
-
-            RowLayout {
-                Layout.fillWidth: true
-                ColumnLayout {
-                    spacing: 2
-                    Text {
-                        text: "Счета · " + root.assetTitle(financeController.selectedAsset)
-                        color: root.textPrimary
-                        font.pixelSize: 20
-                        font.weight: Font.Bold
-                    }
-                    Text {
-                        text: "Новый счёт будет добавлен в выбранный актив"
-                        color: root.textSecondary
-                        font.pixelSize: 11
-                    }
-                }
-                Item { Layout.fillWidth: true }
-                Button {
-                    implicitWidth: 34
-                    implicitHeight: 34
-                    flat: true
-                    contentItem: Text {
-                        text: "×"
-                        color: root.textSecondary
-                        font.pixelSize: 21
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle { color: "transparent" }
-                    onClicked: accountDialog.close()
-                }
-            }
-
-            Text {
-                text: "Новый счёт"
-                color: root.textPrimary
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-            }
-
-            TextField {
-                id: accountNameField
-                Layout.fillWidth: true
-                implicitHeight: 44
-                maximumLength: 60
-                placeholderText: financeController.selectedAsset === "fiat"
-                                 ? "Например, Карта Альфа"
-                                 : (financeController.selectedAsset === "crypto"
-                                    ? "Например, MetaMask" : "Например, БКС")
-                color: root.textPrimary
-                leftPadding: 13
-                rightPadding: 13
-                background: Rectangle {
-                    radius: 12
-                    color: root.surfaceSoft
-                    border.width: accountNameField.activeFocus ? 1.5 : 1
-                    border.color: accountNameField.activeFocus
-                                  ? root.accentColor : root.borderColor
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                ComboBox {
-                    id: accountTypeBox
-                    Layout.fillWidth: true
-                    implicitHeight: 44
-                    model: accountDialog.accountTypes
-                    textRole: "label"
-                }
-
-                ComboBox {
-                    id: accountCurrencyBox
-                    Layout.preferredWidth: 130
-                    implicitHeight: 44
-                    model: root.currencyData
-                    textRole: "code"
-                }
-            }
-
-            TextField {
-                id: initialBalanceField
-                Layout.fillWidth: true
-                implicitHeight: 44
-                placeholderText: "Начальный баланс, например 15000"
-                color: root.textPrimary
-                leftPadding: 13
-                rightPadding: 13
-                inputMethodHints: Qt.ImhFormattedNumbersOnly
-                validator: RegularExpressionValidator {
-                    regularExpression: /^-?[0-9]+([\.,][0-9]{0,2})?$/
-                }
-                background: Rectangle {
-                    radius: 12
-                    color: root.surfaceSoft
-                    border.width: initialBalanceField.activeFocus ? 1.5 : 1
-                    border.color: initialBalanceField.activeFocus
-                                  ? root.accentColor : root.borderColor
-                }
-                onAccepted: accountDialog.saveAccount()
-            }
-
-            Button {
-                id: saveAccountButton
-                Layout.fillWidth: true
-                implicitHeight: 44
-                enabled: accountNameField.text.trim().length > 0
-                contentItem: Text {
-                    text: "Добавить счёт в «" +
-                          root.assetTitle(financeController.selectedAsset) + "»"
-                    color: "white"
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    radius: 12
-                    color: saveAccountButton.enabled
-                           ? root.accentColor : "#AEBBEB"
-                }
-                onClicked: accountDialog.saveAccount()
-            }
-
-            Text {
-                id: accountError
-                Layout.fillWidth: true
-                color: root.expenseColor
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-            }
-
-            Text {
-                text: "Счета в активе"
-                color: root.textPrimary
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                radius: 14
-                color: root.surfaceSoft
-                border.width: 1
-                border.color: root.borderColor
-
-                ListView {
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    clip: true
-                    model: financeController.accounts
-                    delegate: Item {
-                        id: accountRow
-                        required property var modelData
-                        width: ListView.view.width
-                        height: 48
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
-                            Text {
-                                Layout.fillWidth: true
-                                text: accountRow.modelData.name
-                                color: root.textPrimary
-                                font.pixelSize: 12
-                                font.weight: Font.Medium
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                text: root.formatAmount(
-                                    accountRow.modelData.initialBalanceMinor,
-                                    accountRow.modelData.currency,
-                                    false, "")
-                                color: root.textSecondary
-                                font.pixelSize: 11
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Dialog {
-        id: categoryDialog
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape
-        width: Math.min(520, root.width - 52)
-        height: Math.min(580, root.height - 40)
-        anchors.centerIn: parent
-        padding: 0
-
-        property int typeIndex: 1
-        property string editingId: ""
-        readonly property string categoryType: typeIndex === 0 ? "income" : "expense"
-        readonly property var visibleCategories: typeIndex === 0
-            ? root.incomeCategories : root.expenseCategories
-
-        function openForManagement() {
-            typeIndex = 1
-            categoryNameField.text = ""
-            categoryError.text = ""
-            editingId = ""
-            open()
-        }
-
-        function beginEdit(category) {
-            editingId = category.value
-            categoryNameField.text = category.label
-            categoryError.text = ""
-            categoryNameField.forceActiveFocus()
-            categoryNameField.selectAll()
-        }
-
-        function cancelEdit() {
-            editingId = ""
-            categoryNameField.text = ""
-            categoryError.text = ""
-        }
-
-        function saveCurrentCategory() {
-            if (categoryNameField.text.trim().length === 0)
-                return
-
-            const saved = editingId.length > 0
-                ? financeController.renameCategory(editingId, categoryNameField.text)
-                : financeController.addCategory(categoryNameField.text, categoryType)
-
-            if (saved) {
-                cancelEdit()
-            } else {
-                categoryError.text = "Категория уже существует или не может быть сохранена"
-            }
-        }
-
-        onTypeIndexChanged: cancelEdit()
-
-        Overlay.modal: Rectangle { color: "#740B1220" }
-
-        background: Rectangle {
-            radius: 24
-            color: root.surfaceColor
-            border.width: 1
-            border.color: root.borderColor
-        }
-
-        contentItem: ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 22
-            spacing: 14
-
-            RowLayout {
-                Layout.fillWidth: true
-
-                ColumnLayout {
-                    spacing: 2
-                    Text {
-                        text: "Категории"
-                        color: root.textPrimary
-                        font.pixelSize: 20
-                        font.weight: Font.Bold
-                    }
-                    Text {
-                        text: "Создание категорий доходов и расходов"
-                        color: root.textSecondary
-                        font.pixelSize: 11
-                    }
-                }
-
-                Item { Layout.fillWidth: true }
-
-                Button {
-                    implicitWidth: 34
-                    implicitHeight: 34
-                    flat: true
-                    contentItem: Text {
-                        text: "×"
-                        color: root.textSecondary
-                        font.pixelSize: 21
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle { color: "transparent" }
-                    onClicked: categoryDialog.close()
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 44
-                radius: 14
-                color: "#F2F4F7"
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 4
-                    spacing: 4
-
-                    Repeater {
-                        model: ["Доходы", "Расходы"]
-                        delegate: Button {
-                            required property string modelData
-                            required property int index
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            flat: true
-                            contentItem: Text {
-                                text: modelData
-                                color: root.textPrimary
-                                font.pixelSize: 12
-                                font.weight: categoryDialog.typeIndex === index
-                                             ? Font.DemiBold : Font.Medium
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            background: Rectangle {
-                                radius: 11
-                                color: categoryDialog.typeIndex === index
-                                       ? root.surfaceColor : "transparent"
-                                border.width: categoryDialog.typeIndex === index ? 1 : 0
-                                border.color: root.borderColor
-                            }
-                            onClicked: categoryDialog.typeIndex = index
-                        }
-                    }
-                }
-            }
-
-            Text {
-                text: categoryDialog.editingId.length > 0
-                      ? "Изменить категорию" : "Добавить категорию"
-                color: root.textPrimary
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                TextField {
-                    id: categoryNameField
-                    Layout.fillWidth: true
-                    implicitHeight: 44
-                    maximumLength: 60
-                    placeholderText: "Название категории"
-                    color: root.textPrimary
-                    leftPadding: 13
-                    rightPadding: 13
-                    background: Rectangle {
-                        radius: 12
-                        color: root.surfaceSoft
-                        border.width: categoryNameField.activeFocus ? 1.5 : 1
-                        border.color: categoryNameField.activeFocus
-                                      ? root.accentColor : root.borderColor
-                    }
-                    onAccepted: categoryDialog.saveCurrentCategory()
-                }
-
-                Button {
-                    id: addCategoryButton
-                    implicitWidth: 104
-                    implicitHeight: 44
-                    enabled: categoryNameField.text.trim().length > 0
-                    contentItem: Text {
-                        text: categoryDialog.editingId.length > 0
-                              ? "Сохранить" : "Добавить"
-                        color: "white"
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 12
-                        color: addCategoryButton.enabled
-                               ? root.accentColor : "#AEBBEB"
-                    }
-                    onClicked: categoryDialog.saveCurrentCategory()
-                }
-
-                Button {
-                    visible: categoryDialog.editingId.length > 0
-                    implicitWidth: 80
-                    implicitHeight: 44
-                    contentItem: Text {
-                        text: "Отмена"
-                        color: root.textPrimary
-                        font.pixelSize: 12
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    background: Rectangle {
-                        radius: 12
-                        color: root.surfaceColor
-                        border.width: 1
-                        border.color: root.borderColor
-                    }
-                    onClicked: categoryDialog.cancelEdit()
-                }
-            }
-
-            Text {
-                id: categoryError
-                Layout.fillWidth: true
-                color: root.expenseColor
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                radius: 14
-                color: root.surfaceSoft
-                border.width: 1
-                border.color: root.borderColor
-
-                ListView {
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    clip: true
-                    model: categoryDialog.visibleCategories
-                    delegate: Item {
-                        id: categoryRow
-                        required property var modelData
-                        width: ListView.view.width
-                        height: 48
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 6
-                            spacing: 6
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: categoryRow.modelData.label
-                                color: root.textPrimary
-                                font.pixelSize: 12
-                                elide: Text.ElideRight
-                            }
-
-                            Button {
-                                id: editCategoryButton
-                                implicitWidth: 76
-                                implicitHeight: 32
-                                flat: true
-                                contentItem: Text {
-                                    text: "Изменить"
-                                    color: root.accentColor
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    radius: 9
-                                    color: editCategoryButton.hovered
-                                           ? "#EEF2FF" : "transparent"
-                                }
-                                onClicked: categoryDialog.beginEdit(categoryRow.modelData)
-                            }
-
-                            Button {
-                                id: removeCategoryButton
-                                implicitWidth: 64
-                                implicitHeight: 32
-                                flat: true
-                                contentItem: Text {
-                                    text: "Удалить"
-                                    color: root.expenseColor
-                                    font.pixelSize: 11
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    radius: 9
-                                    color: removeCategoryButton.hovered
-                                           ? root.expenseSoft : "transparent"
-                                }
-                                onClicked: deleteCategoryDialog.openForCategory(
-                                               categoryRow.modelData)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Dialog {
-        id: deleteCategoryDialog
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape
-        width: Math.min(420, root.width - 52)
-        height: 220
-        anchors.centerIn: parent
-        padding: 0
-
-        property string categoryId: ""
-        property string categoryName: ""
-
-        function openForCategory(category) {
-            categoryId = category.value
-            categoryName = category.label
-            open()
-        }
-
-        background: Rectangle {
-            radius: 20
-            color: root.surfaceColor
-            border.width: 1
-            border.color: root.borderColor
-        }
-
-        contentItem: ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 22
-            spacing: 16
-            Text {
-                Layout.fillWidth: true
-                text: "Удалить категорию «" + deleteCategoryDialog.categoryName + "»?"
-                color: root.textPrimary
-                font.pixelSize: 16
-                font.weight: Font.Bold
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                Layout.fillWidth: true
-                text: "Старые транзакции сохранят название категории. Для новых операций она больше не будет доступна."
-                color: root.textSecondary
-                font.pixelSize: 11
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
-                    text: "Отмена"
-                    onClicked: deleteCategoryDialog.close()
-                }
-                Button {
-                    text: "Удалить"
-                    onClicked: {
-                        if (financeController.deleteCategory(
-                                deleteCategoryDialog.categoryId)) {
-                            if (categoryDialog.editingId ===
-                                    deleteCategoryDialog.categoryId)
-                                categoryDialog.cancelEdit()
-                            deleteCategoryDialog.close()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Dialog {
-        id: transactionDialog
-        parent: Overlay.overlay
-        modal: true
-        focus: true
-        closePolicy: Popup.CloseOnEscape
-        width: Math.min(610, root.width - 52)
-        height: Math.min(650, root.height - 24)
-        anchors.centerIn: parent
-        padding: 0
-
-        property int typeIndex: 1
-        readonly property bool isIncome: typeIndex === 0
-
-        function openForNewTransaction() {
-            typeIndex = 1
-            amountField.text = ""
-            descriptionField.text = ""
-            transactionCurrency.currentIndex = 0
-            categoryPicker.currentIndex = 0
-            open()
-            amountField.forceActiveFocus()
-        }
-
-        function normalizedAmount() {
-            const normalized = amountField.text.trim().replace(",", ".")
-            const value = Number(normalized)
-            if (!isFinite(value) || value <= 0)
-                return 0
-            return Math.round(value * 100)
-        }
-
-        onTypeIndexChanged: categoryPicker.currentIndex = 0
-
-        Overlay.modal: Rectangle {
-            color: "#740B1220"
-        }
-
-        background: Item {
-            Rectangle {
-                anchors.fill: parent
-                anchors.topMargin: 5
-                anchors.leftMargin: 5
-                radius: 25
-                color: "#1A0B1220"
-            }
-
-            Rectangle {
-                anchors.fill: parent
-                anchors.bottomMargin: 5
-                anchors.rightMargin: 5
-                radius: 25
-                color: root.surfaceColor
-                border.width: 1
-                border.color: root.borderColor
-            }
-        }
-
-        contentItem: Item {
-            anchors.fill: parent
+    Component {
+        id: overviewPage
+        ScrollView {
+            id: overviewScroll
+            clip: true
+            contentWidth: availableWidth
+            contentHeight: dashboard.implicitHeight
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
             ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 22
-                spacing: 13
+                id: dashboard
+                width: overviewScroll.availableWidth
+                spacing: 14
 
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    ColumnLayout {
-                        spacing: 1
-
-                        Text {
-                            text: "Новая операция"
-                            color: root.textPrimary
-                            font.pixelSize: 20
-                            font.weight: Font.Bold
-                        }
-
-                        Text {
-                            text: transactionDialog.isIncome ? "Добавление дохода" : "Добавление расхода"
-                            color: root.textSecondary
-                            font.pixelSize: 11
-                        }
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Button {
-                        id: closeDialogButton
-                        implicitWidth: 34
-                        implicitHeight: 34
-                        hoverEnabled: true
-                        flat: true
-
-                        contentItem: Text {
-                            text: "×"
-                            color: root.textSecondary
-                            font.pixelSize: 21
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        background: Rectangle {
-                            radius: 11
-                            color: closeDialogButton.hovered ? "#F2F4F7" : "transparent"
-                        }
-
-                        onClicked: transactionDialog.close()
+                Panel {
+                    Layout.fillWidth: true; Layout.preferredHeight: 108
+                    RowLayout { anchors.fill: parent; anchors.margins: 20; spacing: 28
+                        Rectangle { width: 58; height: 58; radius: 17; color: root.green; Text { anchors.centerIn: parent; text: "▣"; color: "white"; font.pixelSize: 27 } }
+                        ColumnLayout { spacing: 0; Text { text: "Все активы"; color: root.ink; font.pixelSize: 15 } Text { text: root.money(financeController.balanceMinorUnits, financeController.appCurrency, false); color: root.ink; font.pixelSize: 30; font.weight: Font.Bold } }
+                        Item { Layout.fillWidth: true }
+                        Repeater { model: root.assets; delegate: ColumnLayout { required property var modelData; Layout.preferredWidth: 120; Text { text: modelData.title; color: root.muted; font.pixelSize: 13 } Text { text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false); color: root.green2; font.pixelSize: 17; font.weight: Font.DemiBold } } }
                     }
                 }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    radius: 14
-                    color: "#F2F4F7"
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        spacing: 4
-
-                        Repeater {
-                            model: ["Доход", "Расход"]
-
-                            delegate: Button {
-                                id: typeSegment
-                                required property string modelData
-                                required property int index
-
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                hoverEnabled: true
+                RowLayout {
+                    Layout.fillWidth: true; spacing: 14
+                    Repeater { model: root.assets; delegate: Panel {
+                        required property var modelData
+                        Layout.preferredWidth: (dashboard.width - 28) / 3
+                        Layout.minimumWidth: 240
+                        Layout.preferredHeight: 118
+                        color: financeController.selectedAsset === modelData.code ? root.green : root.panel
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: financeController.selectedAsset = modelData.code }
+                        ColumnLayout { anchors.fill: parent; anchors.margins: 18; spacing: 10
+                            RowLayout { Rectangle { width: 38; height: 38; radius: 19; color: financeController.selectedAsset === modelData.code ? "#59705E" : root.pale; Text { anchors.centerIn: parent; text: modelData.icon; color: financeController.selectedAsset === modelData.code ? "white" : root.green; font.pixelSize: 19 } } Text { text: modelData.title; color: financeController.selectedAsset === modelData.code ? "white" : root.ink; font.pixelSize: 17; font.weight: Font.DemiBold } }
+                            Text { text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false); color: financeController.selectedAsset === modelData.code ? "white" : root.ink; font.pixelSize: 25; font.weight: Font.Bold }
+                        }
+                    } }
+                }
+                Panel {
+                    Layout.fillWidth: true; Layout.preferredHeight: 145
+                    ColumnLayout { anchors.fill: parent; anchors.margins: 14; spacing: 8
+                        RowLayout { Layout.fillWidth: true
+                            Text { text: "Счета · " + root.assetTitle(financeController.selectedAsset); color: root.ink; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                id: addAccountButton
                                 flat: true
+                                text: "+  Добавить счёт"
 
                                 contentItem: Text {
-                                    text: typeSegment.modelData
-                                    color: transactionDialog.typeIndex === typeSegment.index
-                                           ? root.textPrimary
-                                           : root.textSecondary
-                                    font.pixelSize: 12
-                                    font.weight: transactionDialog.typeIndex === typeSegment.index
-                                                 ? Font.DemiBold
-                                                 : Font.Medium
+                                    text: addAccountButton.text
+                                    color: root.green2
+                                    font.pixelSize: 14
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
                                 }
 
-                                background: Rectangle {
-                                    radius: 11
-                                    color: transactionDialog.typeIndex === typeSegment.index ? root.surfaceColor : "transparent"
-                                    border.width: transactionDialog.typeIndex === typeSegment.index ? 1 : 0
-                                    border.color: root.borderColor
-                                }
-
-                                onClicked: transactionDialog.typeIndex = typeSegment.index
+                                onClicked: accountDialog.openForSelectedAsset()
                             }
                         }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 92
-                    radius: 18
-                    color: root.heroColor
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 1
-
-                            Text {
-                                text: "Сумма"
-                                color: "#9CA8BC"
-                                font.pixelSize: 10
-                            }
-
-                            TextField {
-                                id: amountField
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 46
-                                leftPadding: 0
-                                rightPadding: 0
-                                topPadding: 0
-                                bottomPadding: 0
-                                placeholderText: "0,00"
-                                placeholderTextColor: "#65728A"
-                                color: "white"
-                                font.pixelSize: 27
-                                font.weight: Font.Bold
-                                selectByMouse: true
-                                inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                validator: RegularExpressionValidator {
-                                    regularExpression: /^[0-9]+([\.,][0-9]{0,2})?$/
-                                }
-
-                                background: Rectangle {
-                                    color: "transparent"
+                        ListView { Layout.fillWidth: true; Layout.fillHeight: true; orientation: ListView.Horizontal; spacing: 12; clip: true; model: [{id:"",name:"Все счета",balanceMinor:root.assetAmount(financeController.selectedAsset),currency:financeController.appCurrency}].concat(financeController.accounts)
+                            delegate: Rectangle { required property var modelData; width: 245; height: 64; radius: 13; color: financeController.selectedAccountId === modelData.id ? root.green : root.panel; border.width: 1; border.color: financeController.selectedAccountId === modelData.id ? root.green : root.line
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: financeController.selectedAccountId = modelData.id }
+                                RowLayout { anchors.fill: parent; anchors.margins: 13
+                                    Text { text: "▣"; color: financeController.selectedAccountId === modelData.id ? "white" : root.green; font.pixelSize: 20 }
+                                    ColumnLayout { spacing: 1; Text { text: modelData.name; color: financeController.selectedAccountId === modelData.id ? "white" : root.ink; font.pixelSize: 14; font.weight: Font.DemiBold } Text { text: root.money(modelData.balanceMinor, modelData.currency, false); color: financeController.selectedAccountId === modelData.id ? "#DDE7DF" : root.muted; font.pixelSize: 12 } }
+                                    Item { Layout.fillWidth: true } Text { text: financeController.selectedAccountId === modelData.id ? "✓" : "›"; color: financeController.selectedAccountId === modelData.id ? "white" : root.ink; font.pixelSize: 18 }
                                 }
                             }
                         }
-
-                        BankComboBox {
-                            id: transactionCurrency
-                            Layout.preferredWidth: 132
-                            compact: true
-                            model: root.currencyData
-                            textRole: "code"
-                            secondaryRole: "symbol"
-                            currentIndex: 0
-                            surfaceColor: root.heroSoftColor
-                            surfaceHoverColor: "#223150"
-                            borderColor: "#31405B"
-                            focusColor: "#7895FF"
-                            textPrimary: "#FFFFFF"
-                            textSecondary: "#B5C0D1"
-                        }
                     }
                 }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    Text {
-                        text: "Категория"
-                        color: root.textPrimary
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-
-                    CategoryPicker {
-                        id: categoryPicker
-                        Layout.fillWidth: true
-                        model: transactionDialog.isIncome ? root.incomeCategories : root.expenseCategories
-                        incomeMode: transactionDialog.isIncome
-                        accentColor: root.accentColor
-                        textPrimary: root.textPrimary
-                        textSecondary: root.textSecondary
-                        borderColor: root.borderColor
-                        surfaceColor: root.surfaceColor
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 7
-
-                    Text {
-                        text: "Комментарий"
-                        color: root.textPrimary
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-
-                    TextField {
-                        id: descriptionField
-                        Layout.fillWidth: true
-                        implicitHeight: 46
-                        leftPadding: 14
-                        rightPadding: 14
-                        placeholderText: transactionDialog.isIncome
-                                         ? "Например, зарплата за август"
-                                         : "Например, супермаркет"
-                        placeholderTextColor: "#A0A8B5"
-                        color: root.textPrimary
-                        font.pixelSize: 12
-                        selectByMouse: true
-
-                        background: Rectangle {
-                            radius: 13
-                            color: root.surfaceSoft
-                            border.width: descriptionField.activeFocus ? 1.5 : 1
-                            border.color: descriptionField.activeFocus ? root.accentColor : root.borderColor
-                        }
-                    }
-                }
-
-                Item { Layout.fillHeight: true }
-
                 RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    Button {
-                        id: cancelButton
-                        Layout.preferredWidth: 120
-                        implicitHeight: 46
-                        hoverEnabled: true
-
-                        contentItem: Text {
-                            text: "Отмена"
-                            color: root.textPrimary
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        background: Rectangle {
-                            radius: 13
-                            color: cancelButton.hovered ? "#F5F7F9" : root.surfaceColor
-                            border.width: 1
-                            border.color: root.borderColor
-                        }
-
-                        onClicked: transactionDialog.close()
-                    }
-
-                    Button {
-                        id: saveButton
-                        Layout.fillWidth: true
-                        implicitHeight: 46
-                        enabled: transactionDialog.normalizedAmount() > 0
-                        hoverEnabled: true
-
-                        contentItem: Text {
-                            text: transactionDialog.isIncome ? "Добавить доход" : "Добавить расход"
-                            color: "white"
-                            opacity: saveButton.enabled ? 1 : 0.72
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                        }
-
-                        background: Rectangle {
-                            radius: 13
-                            color: !saveButton.enabled
-                                   ? "#AEBBEB"
-                                   : (saveButton.down
-                                      ? root.accentPressed
-                                      : (saveButton.hovered ? "#2B56E3" : root.accentColor))
-                        }
-
-                        onClicked: {
-                            const minorUnits = transactionDialog.normalizedAmount()
-                            const currencyCode = root.currencyData[transactionCurrency.currentIndex].code
-                            const categoryId = categoryPicker.currentValue
-
-                            let saved = false
-                            if (transactionDialog.isIncome) {
-                                saved = financeController.addIncome(
-                                    minorUnits,
-                                    descriptionField.text.trim(),
-                                    categoryId,
-                                    currencyCode)
-                            } else {
-                                saved = financeController.addExpense(
-                                    minorUnits,
-                                    descriptionField.text.trim(),
-                                    categoryId,
-                                    currencyCode)
+                    Layout.fillWidth: true; spacing: 14
+                    Panel {
+                        Layout.preferredWidth: (dashboard.width - 14) / 2
+                        Layout.minimumWidth: 360
+                        Layout.preferredHeight: 210
+                        ColumnLayout { anchors.fill: parent; anchors.margins: 16
+                            Text { text: "Расходы по категориям"; color: root.ink; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            RowLayout { Layout.fillWidth: true; Layout.fillHeight: true; spacing: 18
+                                Repeater { model: root.categoryTotals(); delegate: ColumnLayout { required property var modelData; Layout.fillWidth: true; Layout.fillHeight: true; Item { Layout.fillHeight: true } Rectangle { Layout.alignment: Qt.AlignHCenter; width: 44; height: Math.max(5, Math.min(120, modelData.amount / Math.max(1, root.categoryTotals()[0].amount) * 120)); radius: 5; color: index === 0 ? root.green : "#9EAD96" } Text { Layout.alignment: Qt.AlignHCenter; text: modelData.label; color: root.muted; font.pixelSize: 11; elide: Text.ElideRight; Layout.maximumWidth: 80 } } }
+                                Text { visible: root.categoryTotals().length === 0; text: "Добавьте расходы — здесь появится график"; color: root.muted; Layout.alignment: Qt.AlignCenter }
                             }
-
-                            if (saved)
-                                transactionDialog.close()
                         }
                     }
+                    Panel {
+                        Layout.preferredWidth: (dashboard.width - 14) / 2
+                        Layout.minimumWidth: 360
+                        Layout.preferredHeight: 210
+                        ColumnLayout { anchors.fill: parent; anchors.margins: 16
+                            Text { text: "Структура расходов"; color: root.ink; font.pixelSize: 15; font.weight: Font.DemiBold }
+                            RowLayout { Layout.fillWidth: true; Layout.fillHeight: true; spacing: 24
+                                Canvas { id: donut; width: 145; height: 145
+                                    onPaint: { const ctx=getContext("2d");ctx.clearRect(0,0,width,height);const data=root.categoryTotals();let total=0;for(let i=0;i<data.length;++i)total+=data[i].amount;const colors=[root.green,"#71866F","#A2B19A","#CCD2BC","#E5DDC8"];let angle=-Math.PI/2;if(total===0){ctx.strokeStyle=root.line;ctx.lineWidth=25;ctx.beginPath();ctx.arc(72,72,48,0,Math.PI*2);ctx.stroke();return}for(let j=0;j<data.length;++j){const next=angle+data[j].amount/total*Math.PI*2;ctx.strokeStyle=colors[j];ctx.lineWidth=25;ctx.beginPath();ctx.arc(72,72,48,angle,next);ctx.stroke();angle=next} }
+                                    Connections { target: financeController; function onTransactionsChanged() { donut.requestPaint() } function onSelectedAccountIdChanged() { donut.requestPaint() } function onSelectedAssetChanged() { donut.requestPaint() } }
+                                }
+                                ColumnLayout { Layout.fillWidth: true
+                                    Repeater { model: root.categoryTotals(); delegate: RowLayout { required property var modelData; Layout.fillWidth: true; Rectangle { width: 9; height: 9; radius: 5; color: [root.green,"#71866F","#A2B19A","#CCD2BC","#E5DDC8"][index] } Text { text: modelData.label; color: root.muted; Layout.fillWidth: true } Text { text: root.money(modelData.amount, financeController.appCurrency, false); color: root.ink; font.pixelSize: 11 } } }
+                                    Item { Layout.fillHeight: true }
+                                }
+                            }
+                        }
+                    }
+                }
+                Panel { Layout.fillWidth: true; Layout.preferredHeight: 245
+                    ColumnLayout { anchors.fill: parent; spacing: 0
+                        RowLayout { Layout.fillWidth: true; Layout.margins: 14; Text { text: "История операций"; color: root.ink; font.pixelSize: 15; font.weight: Font.DemiBold } Item { Layout.fillWidth: true } SoftButton { text: "+  Операция"; highlighted: true; implicitWidth: 132; onClicked: operationDialog.openForNew() } }
+                        TransactionTable { Layout.fillWidth: true; Layout.fillHeight: true; rows: root.visibleTransactions() }
+                    }
+                }
+                Item { Layout.preferredHeight: 8 }
+            }
+        }
+    }
+
+    component TransactionTable: Item {
+        property var rows: []
+        ColumnLayout { anchors.fill: parent; spacing: 0
+            Rectangle { Layout.fillWidth: true; height: 34; color: "#F6F5F1"; border.width: 1; border.color: root.line
+                RowLayout { anchors.fill: parent; anchors.leftMargin: 22; anchors.rightMargin: 22
+                    Text { text: "Операция"; color: root.muted; font.pixelSize: 11; Layout.preferredWidth: 250 } Text { text: "Счёт"; color: root.muted; font.pixelSize: 11; Layout.preferredWidth: 170 } Text { text: "Категория"; color: root.muted; font.pixelSize: 11; Layout.fillWidth: true } Text { text: "Дата"; color: root.muted; font.pixelSize: 11; Layout.preferredWidth: 120 } Text { text: "Сумма"; color: root.muted; font.pixelSize: 11; Layout.preferredWidth: 130; horizontalAlignment: Text.AlignRight }
                 }
             }
+            ListView { Layout.fillWidth: true; Layout.fillHeight: true; clip: true; model: parent.parent.rows
+                delegate: Rectangle { required property var modelData; width: ListView.view.width; height: 38; color: index % 2 ? "#FAF9F6" : root.panel
+                    RowLayout { anchors.fill: parent; anchors.leftMargin: 22; anchors.rightMargin: 22
+                        Text { text: modelData.description || (modelData.type === "income" ? "Доход" : "Расход"); color: root.ink; font.pixelSize: 12; Layout.preferredWidth: 250; elide: Text.ElideRight }
+                        Text { text: root.accountName(modelData.accountId); color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 170; elide: Text.ElideRight }
+                        Text { text: modelData.categoryName; color: root.green; font.pixelSize: 11; Layout.fillWidth: true }
+                        Text { text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy"); color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 120 }
+                        Text { text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true); color: modelData.type === "income" ? root.green2 : root.red; font.pixelSize: 12; font.weight: Font.DemiBold; Layout.preferredWidth: 130; horizontalAlignment: Text.AlignRight }
+                    }
+                }
+                Label { anchors.centerIn: parent; visible: parent.count === 0; text: "Операций пока нет"; color: root.muted }
+            }
+        }
+    }
+
+    Component { id: accountsPage; ColumnLayout { spacing: 14
+        RowLayout { Layout.fillWidth: true; Repeater { model: root.assets; delegate: SoftButton { required property var modelData; text: modelData.title; highlighted: financeController.selectedAsset === modelData.code; implicitWidth: 130; onClicked: financeController.selectedAsset = modelData.code } } Item { Layout.fillWidth: true } SoftButton { text: "+ Добавить счёт"; highlighted: true; implicitWidth: 150; onClicked: accountDialog.openForSelectedAsset() } }
+        GridView { Layout.fillWidth: true; Layout.fillHeight: true; cellWidth: 320; cellHeight: 150; clip: true; model: financeController.accounts
+            delegate: Panel { required property var modelData; width: 300; height: 132; ColumnLayout { anchors.fill: parent; anchors.margins: 18; RowLayout { Text { text: "▣"; color: root.green; font.pixelSize: 24 } Text { text: modelData.name; color: root.ink; font.pixelSize: 17; font.weight: Font.DemiBold } } Text { text: root.money(modelData.balanceMinor, modelData.currency, false); color: root.ink; font.pixelSize: 25; font.weight: Font.Bold } Text { text: modelData.currency + " · " + modelData.type; color: root.muted; font.pixelSize: 12 } } }
+            Label { anchors.centerIn: parent; visible: parent.count === 0; text: "У этого актива пока нет счетов"; color: root.muted }
+        }
+    } }
+
+    Component { id: categoriesPage; ColumnLayout {
+        RowLayout { Layout.fillWidth: true; Item { Layout.fillWidth: true } SoftButton { text: "+ Управление категориями"; highlighted: true; implicitWidth: 210; onClicked: categoryDialog.openForManagement() } }
+        Panel { Layout.fillWidth: true; Layout.fillHeight: true; ListView { anchors.fill: parent; anchors.margins: 12; clip: true; spacing: 6; model: financeController.categories
+            delegate: Rectangle { required property var modelData; width: ListView.view.width; height: 52; radius: 10; color: "#F7F6F2"; RowLayout { anchors.fill: parent; anchors.margins: 12; Text { text: "◇"; color: root.green; font.pixelSize: 20 } Text { text: modelData.label; color: root.ink; Layout.fillWidth: true } Text { text: modelData.type === "income" ? "Доход" : "Расход"; color: root.muted } } }
+        } }
+    } }
+
+    Component { id: operationsPage; ColumnLayout {
+        RowLayout { Layout.fillWidth: true; Item { Layout.fillWidth: true } SoftButton { text: "+ Операция"; highlighted: true; implicitWidth: 140; onClicked: operationDialog.openForNew() } }
+        Panel { Layout.fillWidth: true; Layout.fillHeight: true; TransactionTable { anchors.fill: parent; anchors.margins: 1; rows: root.visibleTransactions() } }
+    } }
+
+    Component { id: analyticsPage; RowLayout { spacing: 14
+        Panel { Layout.fillWidth: true; Layout.fillHeight: true; ColumnLayout { anchors.fill: parent; anchors.margins: 24; Text { text: "Доходы"; color: root.muted } Text { text: root.money(financeController.incomeMinorUnits, financeController.appCurrency, false); color: root.green2; font.pixelSize: 30; font.weight: Font.Bold } Rectangle { Layout.fillWidth: true; height: 1; color: root.line } Text { text: "Расходы"; color: root.muted } Text { text: root.money(financeController.expenseMinorUnits, financeController.appCurrency, false); color: root.red; font.pixelSize: 30; font.weight: Font.Bold } Item { Layout.fillHeight: true } } }
+        Panel { Layout.fillWidth: true; Layout.fillHeight: true; ColumnLayout { anchors.fill: parent; anchors.margins: 24; Text { text: "Категории расходов"; color: root.ink; font.pixelSize: 17; font.weight: Font.DemiBold } Repeater { model: root.categoryTotals(); delegate: RowLayout { required property var modelData; Layout.fillWidth: true; Text { text: modelData.label; color: root.muted; Layout.fillWidth: true } Text { text: root.money(modelData.amount, financeController.appCurrency, false); color: root.ink } } } Item { Layout.fillHeight: true } } }
+    } }
+
+    Component { id: settingsPage; Panel { ColumnLayout { anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 28; Text { text: "Основная валюта"; color: root.ink; font.pixelSize: 17; font.weight: Font.DemiBold } Text { text: "Все итоговые суммы пересчитываются в эту валюту."; color: root.muted } ComboBox { model: ["RUB","USD","EUR"]; currentIndex: Math.max(0, model.indexOf(financeController.appCurrency)); onActivated: financeController.appCurrency = currentText; implicitWidth: 180 } } } }
+
+    Dialog { id: accountDialog; width: 500; modal: true; anchors.centerIn: parent; padding: 24; property var accountTypes: []
+        function openForSelectedAsset() { accountTypes = financeController.selectedAsset === "fiat" ? [{label:"Наличные",value:"cash"},{label:"Дебетовая карта",value:"debit_card"},{label:"Кредитная карта",value:"credit_card"},{label:"Накопительный",value:"savings"}] : financeController.selectedAsset === "crypto" ? [{label:"Криптокошелёк",value:"crypto_wallet"},{label:"Другой",value:"other"}] : [{label:"Брокер",value:"brokerage"},{label:"Вклад",value:"deposit"},{label:"Другой",value:"other"}]; accountNameField.clear(); accountBalanceField.clear(); accountTypeBox.currentIndex=0; accountError.text=""; open() }
+        background: Rectangle { color: root.panel; radius: 18; border.width: 1; border.color: root.line }
+        contentItem: ColumnLayout { spacing: 14
+            Text { text: "Новый счёт · " + root.assetTitle(financeController.selectedAsset); color: root.ink; font.pixelSize: 21; font.weight: Font.Bold }
+            TextField { id: accountNameField; Layout.fillWidth: true; placeholderText: "Название счёта" }
+            ComboBox { id: accountTypeBox; Layout.fillWidth: true; model: accountDialog.accountTypes; textRole: "label" }
+            ComboBox { id: accountCurrencyBox; Layout.fillWidth: true; model: ["RUB","USD","EUR"] }
+            TextField { id: accountBalanceField; Layout.fillWidth: true; placeholderText: "Начальный баланс"; validator: DoubleValidator { bottom: -999999999; top: 999999999; decimals: 2 } }
+            Text { id: accountError; color: root.red; font.pixelSize: 12 }
+            RowLayout { Item { Layout.fillWidth: true } SoftButton { text: "Отмена"; onClicked: accountDialog.close() } SoftButton { text: "Добавить"; highlighted: true; onClicked: { const minor=Math.round((Number(accountBalanceField.text.replace(",","."))||0)*100);const type=accountDialog.accountTypes[accountTypeBox.currentIndex].value;if(financeController.addAccount(accountNameField.text,type,accountCurrencyBox.currentText,minor))accountDialog.close();else accountError.text="Проверьте название: оно должно быть уникальным" } } }
+        }
+    }
+
+    Dialog { id: operationDialog; width: 520; modal: true; anchors.centerIn: parent; padding: 24
+        function openForNew() { operationError.text="";operationAmount.clear();operationDescription.clear();operationType.currentIndex=1;open() }
+        background: Rectangle { color: root.panel; radius: 18; border.width: 1; border.color: root.line }
+        contentItem: ColumnLayout { spacing: 14
+            Text { text: "Новая операция"; color: root.ink; font.pixelSize: 21; font.weight: Font.Bold }
+            ComboBox { id: operationType; Layout.fillWidth: true; model: ["Доход","Расход"] }
+            ComboBox { id: operationAccount; Layout.fillWidth: true; model: financeController.accounts; textRole: "name" }
+            ComboBox { id: operationCategory; Layout.fillWidth: true; model: financeController.categories.filter(function(c){return c.type===(operationType.currentIndex===0?"income":"expense")}); textRole: "label" }
+            TextField { id: operationAmount; Layout.fillWidth: true; placeholderText: "Сумма"; validator: DoubleValidator { bottom: 0.01; top: 999999999; decimals: 2 } }
+            TextField { id: operationDescription; Layout.fillWidth: true; placeholderText: "Описание" }
+            Text { id: operationError; color: root.red; font.pixelSize: 12 }
+            RowLayout { Item { Layout.fillWidth: true } SoftButton { text: "Отмена"; onClicked: operationDialog.close() } SoftButton { text: "Сохранить"; highlighted: true; onClicked: { if(!financeController.accounts.length){operationError.text="Сначала добавьте счёт";return}if(!operationCategory.model.length){operationError.text="Сначала добавьте категорию";return}const account=financeController.accounts[operationAccount.currentIndex],category=operationCategory.model[operationCategory.currentIndex],minor=Math.round((Number(operationAmount.text.replace(",","."))||0)*100);const ok=operationType.currentIndex===0?financeController.addIncome(minor,operationDescription.text,category.value,account.currency,account.id):financeController.addExpense(minor,operationDescription.text,category.value,account.currency,account.id);if(ok)operationDialog.close();else operationError.text="Укажите корректную сумму и счёт" } } }
+        }
+    }
+
+    Dialog { id: categoryDialog; width: 560; height: 620; modal: true; anchors.centerIn: parent; padding: 22; property string editingId: ""
+        function openForManagement(){editingId="";categoryNameField.clear();categoryError.text="";open()}
+        function startEdit(row){editingId=row.value;categoryNameField.text=row.label;categoryType.currentIndex=row.type==="income"?0:1}
+        background: Rectangle { color: root.panel; radius: 18; border.width: 1; border.color: root.line }
+        contentItem: ColumnLayout { spacing: 12
+            Text { text: "Категории"; color: root.ink; font.pixelSize: 21; font.weight: Font.Bold }
+            RowLayout { Layout.fillWidth: true; TextField { id: categoryNameField; Layout.fillWidth: true; placeholderText: "Название категории" } ComboBox { id: categoryType; model: ["Доход","Расход"]; enabled: !categoryDialog.editingId } SoftButton { text: categoryDialog.editingId ? "Сохранить" : "Добавить"; highlighted: true; onClicked: { const ok=categoryDialog.editingId?financeController.renameCategory(categoryDialog.editingId,categoryNameField.text):financeController.addCategory(categoryNameField.text,categoryType.currentIndex===0?"income":"expense");if(ok){categoryDialog.editingId="";categoryNameField.clear();categoryError.text=""}else categoryError.text="Не удалось сохранить категорию" } } }
+            Text { id: categoryError; color: root.red; font.pixelSize: 12 }
+            ListView { Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 5; model: financeController.categories
+                delegate: Rectangle { required property var modelData; width: ListView.view.width; height: 48; radius: 9; color: "#F4F3EE"; RowLayout { anchors.fill: parent; anchors.margins: 10; Text { text: modelData.label; color: root.ink; Layout.fillWidth: true } Text { text: modelData.type === "income" ? "Доход" : "Расход"; color: root.muted; font.pixelSize: 11 } Button { flat: true; text: "✎"; onClicked: categoryDialog.startEdit(modelData) } Button { flat: true; text: "×"; onClicked: { financeController.deleteCategory(modelData.value); if(categoryDialog.editingId===modelData.value){categoryDialog.editingId="";categoryNameField.clear()} } } } }
+            }
+            RowLayout { Item { Layout.fillWidth: true } SoftButton { text: "Закрыть"; onClicked: categoryDialog.close() } }
         }
     }
 }

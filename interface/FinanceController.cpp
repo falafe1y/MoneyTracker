@@ -66,6 +66,7 @@ void FinanceController::setAppCurrency(const QString& currency)
 
     emit appCurrencyChanged();
     emit balanceChanged();
+    emit transactionsChanged();
 }
 
 QVariantList FinanceController::transactions() const
@@ -81,6 +82,8 @@ QVariantList FinanceController::transactions() const
         item["categoryName"] = categoryName(transaction.categoryId());
 
         item["amount"] = transaction.money().minorUnits();
+        item["displayAmount"] = currencyConverter_.convert(
+            transaction.money(), appCurrency_).minorUnits();
 
         item["currency"] = currencyCode(
             transaction.money().currency()
@@ -138,6 +141,21 @@ QVariantList FinanceController::accounts() const
         item["type"] = accountTypeToString(account.type());
         item["currency"] = currencyCode(account.currency());
         item["initialBalanceMinor"] = account.initialBalanceMinor();
+        item["balanceMinor"] = accountBalanceMinor(account);
+        result.append(item);
+    }
+    return result;
+}
+
+QVariantList FinanceController::assetSummaries() const
+{
+    QVariantList result;
+    for (const AssetType asset : {AssetType::Fiat,
+                                  AssetType::Crypto,
+                                  AssetType::Investment}) {
+        QVariantMap item;
+        item["code"] = assetTypeToString(asset);
+        item["balanceMinor"] = assetBalanceMinor(asset);
         result.append(item);
     }
     return result;
@@ -156,13 +174,43 @@ void FinanceController::setSelectedAsset(const QString& asset)
     }
 
     selectedAsset_ = newAsset;
+    selectedAccountId_.clear();
     if (!repository_.saveSelectedAsset(assetTypeToString(newAsset))) {
         qWarning() << "Failed to save selected asset:"
                    << repository_.lastError();
     }
 
     emit selectedAssetChanged();
+    emit selectedAccountIdChanged();
     emit accountsChanged();
+}
+
+QString FinanceController::selectedAccountId() const
+{
+    return selectedAccountId_;
+}
+
+void FinanceController::setSelectedAccountId(const QString& accountId)
+{
+    if (accountId == selectedAccountId_) {
+        return;
+    }
+
+    if (!accountId.isEmpty()) {
+        bool belongsToSelectedAsset = false;
+        for (const Account& account : accounts_) {
+            if (account.id() == accountId && account.assetType() == selectedAsset_) {
+                belongsToSelectedAsset = true;
+                break;
+            }
+        }
+        if (!belongsToSelectedAsset) {
+            return;
+        }
+    }
+
+    selectedAccountId_ = accountId;
+    emit selectedAccountIdChanged();
 }
 
 bool FinanceController::addAccount(
@@ -362,7 +410,8 @@ bool FinanceController::addIncome(
     qint64 minorUnits,
     const QString& description,
     const QString& categoryId,
-    const QString& currency
+    const QString& currency,
+    const QString& accountId
     )
 {
     return addTransaction(
@@ -370,7 +419,8 @@ bool FinanceController::addIncome(
         TransactionType::Income,
         description,
         categoryId,
-        currencyFromString(currency)
+        currencyFromString(currency),
+        accountId
         );
 }
 
@@ -378,7 +428,8 @@ bool FinanceController::addExpense(
     qint64 minorUnits,
     const QString& description,
     const QString& categoryId,
-    const QString& currency
+    const QString& currency,
+    const QString& accountId
     )
 {
     return addTransaction(
@@ -386,7 +437,8 @@ bool FinanceController::addExpense(
         TransactionType::Expense,
         description,
         categoryId,
-        currencyFromString(currency)
+        currencyFromString(currency),
+        accountId
         );
 }
 
@@ -395,19 +447,34 @@ bool FinanceController::addTransaction(
     TransactionType type,
     const QString& description,
     const QString& categoryId,
-    Currency currency
+    Currency currency,
+    const QString& accountId
     )
 {
     if (minorUnits <= 0) {
         return false;
     }
 
+    QString resolvedAccountId = accountId;
+    const Account* selectedAccount = nullptr;
+    for (const Account& account : accounts_) {
+        if (account.id() == resolvedAccountId) {
+            selectedAccount = &account;
+            break;
+        }
+    }
+
+    if (!selectedAccount || selectedAccount->assetType() != selectedAsset_) {
+        return false;
+    }
+
+    currency = selectedAccount->currency();
+
     const Transaction transaction(
             QUuid::createUuid().toString(
                 QUuid::WithoutBraces
                 ),
-            QStringLiteral("household-") +
-                currencyCode(currency).toLower(),
+            resolvedAccountId,
             categoryId,
             Money(
                 minorUnits,
@@ -436,7 +503,36 @@ bool FinanceController::addTransaction(
 
     emit transactionsChanged();
     emit balanceChanged();
+    emit accountsChanged();
     return true;
+}
+
+qint64 FinanceController::accountBalanceMinor(const Account& account) const
+{
+    qint64 balance = account.initialBalanceMinor();
+    for (const Transaction& transaction : transactions_) {
+        if (transaction.accountId() != account.id()) {
+            continue;
+        }
+        balance += transaction.type() == TransactionType::Income
+            ? transaction.money().minorUnits()
+            : -transaction.money().minorUnits();
+    }
+    return balance;
+}
+
+qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
+{
+    qint64 total = 0;
+    for (const Account& account : accounts_) {
+        if (account.assetType() != asset) {
+            continue;
+        }
+        total += currencyConverter_.convert(
+            Money(accountBalanceMinor(account), account.currency()),
+            appCurrency_).minorUnits();
+    }
+    return total;
 }
 
 int FinanceController::currencyIndex(const Currency currency)
