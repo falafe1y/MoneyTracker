@@ -10,41 +10,45 @@ ApplicationWindow {
     minimumHeight: 720
     visible: true
     title: "Test Tracker"
-    color: root.panel
+    color: root.canvas
 
     // Color palette
-    readonly property color panel: "#FFFFFF"
-    readonly property color soft: "#FFFFFF"
-    readonly property color line: "#000000"
-    readonly property color ink: "#000000"
-    readonly property color muted: "#D3D3D3"
+    // Ivory + indigo foundation. Indigo is the only primary accent;
+    // green and terracotta below are reserved for financial semantics.
+    readonly property color canvas: "#F5F3E4"
+    readonly property color panel: "#FFFFF8"
+    readonly property color soft: "#FFFFF0"
+    readonly property color line: "#D8D7C7"
+    readonly property color ink: "#031528"
+    readonly property color muted: "#687483"
 
-    readonly property color green: "#696969"
-    readonly property color greenDark: "#696969"
-    readonly property color green2: "#696969"
-    readonly property color greenSoft: "#696969"
-    readonly property color pale: "#D3D3D3"
-    readonly property color paleText: "#D3D3D3"
-    readonly property color red: "#D74D36"
+    readonly property color green: "#031528"
+    readonly property color greenDark: "#020D1A"
+    readonly property color green2: "#294477"
+    readonly property color greenSoft: "#536A98"
+    readonly property color pale: "#E4E8F1"
+    readonly property color paleText: "#E9EDF6"
+    readonly property color red: "#B94F48"
 
-    readonly property color navSelected: "#D3D3D3"
-    readonly property color navHovered: "#D3D3D3"
+    readonly property color navSelected: "#294477"
+    readonly property color navHovered: "#142B48"
 
-    readonly property color chartGreen1: "#696969"
-    readonly property color chartGreen2: "#D3D3D3"
-    readonly property color chartGreen3: "#D3D3D3"
-    readonly property color chartGreen4: "#D3D3D3"
-    readonly property color chartGreen5: "#D3D3D3"
+    readonly property color chartGreen1: "#294477"
+    readonly property color chartGreen2: "#536A98"
+    readonly property color chartGreen3: "#8795B3"
+    readonly property color chartGreen4: "#B68C62"
+    readonly property color chartGreen5: "#708C88"
 
-    readonly property color tableHeader: "#FFFFFF"
-    readonly property color tableRowAlt: "#FFFFFF"
-    readonly property color categoryRow: "#FFFFFF"
-    readonly property color categoryEditRow: "#FFFFFF"
+    readonly property color tableHeader: "#F1F0DF"
+    readonly property color tableRowAlt: "#FAF9EC"
+    readonly property color categoryRow: "#FFFFF0"
+    readonly property color categoryEditRow: "#F4F3E3"
 
-    readonly property color incomePanel: "#defceb"
-    readonly property color expensePanel: "#fcdede"
+    readonly property color incomePanel: "#E8F0E9"
+    readonly property color expensePanel: "#F5E6E2"
+    readonly property color income: "#3F735F"
 
-    readonly property color white: "#FFFFFF"
+    readonly property color white: "#FFFFF0"
     readonly property color transparentColor: "transparent"
 
     property string page: "overview"
@@ -164,6 +168,101 @@ ApplicationWindow {
             border.color: root.line
         }
     }
+    component AppTextField: TextField {
+        id: field
+        implicitHeight: 44
+        leftPadding: 14
+        rightPadding: 14
+        color: root.ink
+        placeholderTextColor: root.muted
+        selectionColor: root.greenSoft
+        selectedTextColor: root.white
+        font.pixelSize: 14
+
+        background: Rectangle {
+            radius: 11
+            color: field.activeFocus ? root.panel : root.soft
+            border.width: field.activeFocus ? 2 : 1
+            border.color: field.activeFocus ? root.green2 : root.line
+        }
+    }
+    component AppComboBox: ComboBox {
+        id: combo
+        implicitHeight: 44
+        leftPadding: 14
+        rightPadding: 42
+        font.pixelSize: 14
+
+        contentItem: Text {
+            leftPadding: 0
+            rightPadding: 0
+            text: combo.displayText
+            color: root.ink
+            font: combo.font
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+
+        indicator: Text {
+            x: combo.width - width - 15
+            y: (combo.height - height) / 2 - 1
+            text: combo.popup.visible ? "⌃" : "⌄"
+            color: root.green2
+            font.pixelSize: 18
+            font.weight: Font.DemiBold
+        }
+
+        background: Rectangle {
+            radius: 11
+            color: combo.pressed || combo.popup.visible ? root.panel : root.soft
+            border.width: combo.popup.visible ? 2 : 1
+            border.color: combo.popup.visible ? root.green2 : root.line
+        }
+
+        delegate: ItemDelegate {
+            id: optionDelegate
+            required property var modelData
+            width: combo.width - 12
+            height: 40
+            leftPadding: 12
+            highlighted: combo.highlightedIndex === index
+            contentItem: Text {
+                text: combo.textRole ? modelData[combo.textRole] : modelData
+                color: optionDelegate.highlighted ? root.white : root.ink
+                font.pixelSize: 14
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+            background: Rectangle {
+                radius: 8
+                color: optionDelegate.highlighted ? root.green2 : root.transparentColor
+            }
+        }
+
+        popup: Popup {
+            y: combo.height + 6
+            width: combo.width
+            implicitHeight: Math.min(contentItem.implicitHeight + 12, 260)
+            padding: 6
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: combo.popup.visible ? combo.delegateModel : null
+                currentIndex: combo.highlightedIndex
+                spacing: 2
+                ScrollIndicator.vertical: ScrollIndicator { }
+            }
+
+            background: Rectangle {
+                radius: 12
+                color: root.panel
+                border.width: 1
+                border.color: root.line
+            }
+        }
+    }
     component NavButton: Button {
         id: nav
         property string glyph: ""
@@ -175,14 +274,14 @@ ApplicationWindow {
             spacing: 14
             Text {
                 text: nav.glyph
-                color: root.ink
+                color: root.page === nav.target ? root.white : root.paleText
                 font.pixelSize: 20
                 Layout.preferredWidth: 26
                 horizontalAlignment: Text.AlignHCenter
             }
             Text {
                 text: nav.text
-                color: root.ink
+                color: root.page === nav.target ? root.white : root.paleText
                 font.pixelSize: 15
                 Layout.fillWidth: true
             }
@@ -201,6 +300,8 @@ ApplicationWindow {
         Panel {
             Layout.preferredWidth: 252
             Layout.fillHeight: true
+            color: root.ink
+            border.color: root.ink
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 20
@@ -212,17 +313,17 @@ ApplicationWindow {
                         width: 36
                         height: 36
                         radius: 12
-                        color: root.green
+                        color: root.soft
                         Text {
                             anchors.centerIn: parent
                             text: "◆"
-                            color: root.white
+                            color: root.ink
                             font.pixelSize: 17
                         }
                     }
                     Text {
                         text: "Ledgera"
-                        color: root.ink
+                        color: root.soft
                         font.pixelSize: 25
                         font.weight: Font.Bold
                     }
@@ -263,7 +364,7 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 1
-                    color: root.line
+                    color: root.greenSoft
                 }
                 NavButton {
                     Layout.fillWidth: true
@@ -291,33 +392,20 @@ ApplicationWindow {
                 Item {
                     Layout.fillWidth: true
                 }
-                TextField {
+                AppTextField {
                     visible: page === "overview" || page === "operations"
                     Layout.preferredWidth: 265
                     implicitHeight: 42
                     placeholderText: "Поиск по операциям..."
                     onTextChanged: root.searchText = text
-                    leftPadding: 16
-                    background: Rectangle {
-                        color: root.panel
-                        radius: 12
-                        border.width: 1
-                        border.color: root.line
-                    }
                 }
-                ComboBox {
+                AppComboBox {
                     id: currencyBox
                     Layout.preferredWidth: 126
                     implicitHeight: 42
                     model: ["RUB", "USD", "EUR"]
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
                     onActivated: financeController.appCurrency = currentText
-                    background: Rectangle {
-                        color: root.panel
-                        radius: 12
-                        border.width: 1
-                        border.color: root.line
-                    }
                 }
             }
             Loader {
@@ -899,6 +987,11 @@ ApplicationWindow {
                             width: parent.width
                             height: transactionTable.rowHeight
 
+                            Rectangle {
+                                anchors.fill: parent
+                                color: index % 2 ? root.tableRowAlt : root.panel
+                            }
+
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: 22
@@ -932,7 +1025,7 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true)
-                                    color: modelData.type === "income" ? root.green2 : root.red
+                                    color: modelData.type === "income" ? root.income : root.red
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: 130
@@ -958,6 +1051,11 @@ ApplicationWindow {
                         required property var modelData
                         width: ListView.view.width
                         height: transactionTable.rowHeight
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: index % 2 ? root.tableRowAlt : root.panel
+                        }
 
                         RowLayout {
                             anchors.fill: parent
@@ -992,7 +1090,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true)
-                                color: modelData.type === "income" ? root.green2 : root.red
+                                color: modelData.type === "income" ? root.income : root.red
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                                 Layout.preferredWidth: 130
@@ -1162,7 +1260,9 @@ ApplicationWindow {
                                 width: ListView.view.width
                                 height: 52
                                 radius: 10
-                                color: root.incomePanel
+                                color: root.panel
+                                border.width: 1
+                                border.color: "#C9D9CE"
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -1170,7 +1270,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: "◇"
-                                        color: root.green
+                                        color: root.income
                                         font.pixelSize: 20
                                     }
 
@@ -1243,7 +1343,9 @@ ApplicationWindow {
                                 width: ListView.view.width
                                 height: 52
                                 radius: 10
-                                color: root.expensePanel
+                                color: root.panel
+                                border.width: 1
+                                border.color: "#E1C9C2"
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -1251,7 +1353,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: "◇"
-                                        color: root.green
+                                        color: root.red
                                         font.pixelSize: 20
                                     }
 
@@ -1307,7 +1409,7 @@ ApplicationWindow {
                     }
                     Text {
                         text: root.money(financeController.incomeMinorUnits, financeController.appCurrency, false)
-                        color: root.green2
+                        color: root.income
                         font.pixelSize: 30
                         font.weight: Font.Bold
                     }
@@ -1384,7 +1486,7 @@ ApplicationWindow {
                     text: "Все итоговые суммы пересчитываются в эту валюту."
                     color: root.muted
                 }
-                ComboBox {
+                AppComboBox {
                     model: ["RUB", "USD", "EUR"]
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
                     onActivated: financeController.appCurrency = currentText
@@ -1462,23 +1564,23 @@ ApplicationWindow {
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
-            TextField {
+            AppTextField {
                 id: accountNameField
                 Layout.fillWidth: true
                 placeholderText: "Название счёта"
             }
-            ComboBox {
+            AppComboBox {
                 id: accountTypeBox
                 Layout.fillWidth: true
                 model: accountDialog.accountTypes
                 textRole: "label"
             }
-            ComboBox {
+            AppComboBox {
                 id: accountCurrencyBox
                 Layout.fillWidth: true
                 model: ["RUB", "USD", "EUR"]
             }
-            TextField {
+            AppTextField {
                 id: accountBalanceField
                 Layout.fillWidth: true
                 placeholderText: "Начальный баланс"
@@ -1544,18 +1646,18 @@ ApplicationWindow {
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
-            ComboBox {
+            AppComboBox {
                 id: operationType
                 Layout.fillWidth: true
                 model: ["Доход", "Расход"]
             }
-            ComboBox {
+            AppComboBox {
                 id: operationAccount
                 Layout.fillWidth: true
                 model: financeController.accounts
                 textRole: "name"
             }
-            ComboBox {
+            AppComboBox {
                 id: operationCategory
                 Layout.fillWidth: true
                 model: financeController.categories.filter(function (c) {
@@ -1563,7 +1665,7 @@ ApplicationWindow {
                 })
                 textRole: "label"
             }
-            TextField {
+            AppTextField {
                 id: operationAmount
                 Layout.fillWidth: true
                 placeholderText: "Сумма"
@@ -1573,7 +1675,7 @@ ApplicationWindow {
                     decimals: 2
                 }
             }
-            TextField {
+            AppTextField {
                 id: operationDescription
                 Layout.fillWidth: true
                 placeholderText: "Описание"
@@ -1650,12 +1752,12 @@ ApplicationWindow {
             }
             RowLayout {
                 Layout.fillWidth: true
-                TextField {
+                AppTextField {
                     id: categoryNameField
                     Layout.fillWidth: true
                     placeholderText: "Название категории"
                 }
-                ComboBox {
+                AppComboBox {
                     id: categoryType
                     model: ["Доход", "Расход"]
                     enabled: !categoryDialog.editingId
