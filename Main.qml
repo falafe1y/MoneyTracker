@@ -41,6 +41,9 @@ ApplicationWindow {
     readonly property color categoryRow: "#FFFFFF"
     readonly property color categoryEditRow: "#FFFFFF"
 
+    readonly property color incomePanel: "#defceb"
+    readonly property color expensePanel: "#fcdede"
+
     readonly property color white: "#FFFFFF"
     readonly property color transparentColor: "transparent"
 
@@ -1014,12 +1017,17 @@ ApplicationWindow {
 
     Component {
         id: categoriesPage
+
         ColumnLayout {
+            spacing: 14
+
             RowLayout {
                 Layout.fillWidth: true
+
                 Item {
                     Layout.fillWidth: true
                 }
+
                 SoftButton {
                     text: "+ Управление категориями"
                     highlighted: true
@@ -1027,39 +1035,168 @@ ApplicationWindow {
                     onClicked: categoryDialog.openForManagement()
                 }
             }
-            Panel {
+
+            RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                ListView {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    clip: true
-                    spacing: 6
-                    // Scrollbars intentionally hidden application-wide.
-                    ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-                    model: financeController.categories
-                    delegate: Rectangle {
-                        required property var modelData
-                        width: ListView.view.width
-                        height: 52
-                        radius: 10
-                        color: root.categoryRow
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            Text {
-                                text: "◇"
-                                color: root.green
-                                font.pixelSize: 20
+                spacing: 14
+
+                // =========================
+                // Доходы
+                // =========================
+                Panel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: root.incomePanel
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 10
+
+                        // Text {
+                        //     text: "Доходы"
+                        //     color: root.ink
+                        //     font.pixelSize: 17
+                        //     font.weight: Font.DemiBold
+                        // }
+
+                        ListView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+
+                            clip: true
+                            spacing: 6
+
+                            ScrollBar.horizontal: ScrollBar {
+                                policy: ScrollBar.AlwaysOff
                             }
-                            Text {
-                                text: modelData.label
-                                color: root.ink
-                                Layout.fillWidth: true
+
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AlwaysOff
                             }
-                            Text {
-                                text: modelData.type === "income" ? "Доход" : "Расход"
+
+                            model: financeController.categories.filter(function(category) {
+                                return category.type === "income";
+                            })
+
+                            delegate: Rectangle {
+                                required property var modelData
+
+                                width: ListView.view.width
+                                height: 52
+                                radius: 10
+                                color: root.incomePanel
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+
+                                    Text {
+                                        text: "◇"
+                                        color: root.green
+                                        font.pixelSize: 20
+                                    }
+
+                                    Text {
+                                        text: modelData.label
+                                        color: root.ink
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Text {
+                                        text: "Доход"
+                                        color: root.muted
+                                    }
+                                }
+                            }
+
+                            Label {
+                                anchors.centerIn: parent
+                                visible: parent.count === 0
+
+                                text: "Категорий доходов пока нет"
+                                color: root.muted
+                            }
+                        }
+                    }
+                }
+
+                // =========================
+                // Расходы
+                // =========================
+                Panel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    color: root.expensePanel
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 10
+
+                        // Text {
+                        //     text: "Расходы"
+                        //     color: root.ink
+                        //     font.pixelSize: 17
+                        //     font.weight: Font.DemiBold
+                        // }
+
+                        ListView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+
+                            clip: true
+                            spacing: 6
+
+                            ScrollBar.horizontal: ScrollBar {
+                                policy: ScrollBar.AlwaysOff
+                            }
+
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AlwaysOff
+                            }
+
+                            model: financeController.categories.filter(function(category) {
+                                return category.type === "expense";
+                            })
+
+                            delegate: Rectangle {
+                                required property var modelData
+
+                                width: ListView.view.width
+                                height: 52
+                                radius: 10
+                                color: root.expensePanel
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+
+                                    Text {
+                                        text: "◇"
+                                        color: root.green
+                                        font.pixelSize: 20
+                                    }
+
+                                    Text {
+                                        text: modelData.label
+                                        color: root.ink
+                                        Layout.fillWidth: true
+                                    }
+
+                                    Text {
+                                        text: "Расход"
+                                        color: root.muted
+                                    }
+                                }
+                            }
+
+                            Label {
+                                anchors.centerIn: parent
+                                visible: parent.count === 0
+
+                                text: "Категорий расходов пока нет"
                                 color: root.muted
                             }
                         }
