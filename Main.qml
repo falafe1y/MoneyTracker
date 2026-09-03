@@ -713,7 +713,7 @@ ApplicationWindow {
                 }
                 TransactionBlock {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 245
+                    expandToContent: true
                     title: "История операций"
                     rows: root.visibleTransactions()
                 }
@@ -727,10 +727,20 @@ ApplicationWindow {
     // One shared transaction container for both Overview and Operations.
     // The Panel owns the ONLY outer outline; its contents stay 1 px inside it
     // so opaque table rows never paint over the border.
+    // Shared transaction container for Overview and Operations.
+    // On Overview expandToContent=true: the transaction history grows with its rows,
+    // so the OUTER overview ScrollView owns vertical scrolling.
+    // On Operations expandToContent=false: the block fills the page and keeps its own ListView.
     component TransactionBlock: Panel {
         id: transactionBlock
+
         property string title: "История операций"
         property var rows: []
+        property bool expandToContent: false
+
+        // 68 px block header + 34 px table header + 38 px per transaction + 2 px frame inset.
+        // Keep these values in sync with TransactionTable row/header heights below.
+        implicitHeight: expandToContent ? 104 + rows.length * 38 : 245
 
         ColumnLayout {
             anchors.fill: parent
@@ -767,13 +777,12 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 rows: transactionBlock.rows
+                expandToContent: transactionBlock.expandToContent
                 bottomCornerRadius: transactionBlock.radius - 1
             }
         }
 
-        // IMPORTANT: the frame is deliberately rendered ABOVE all table content.
-        // Rectangle.radius does not clip child items to the rounded geometry,
-        // so this overlay guarantees that opaque rows never visually cover the outline.
+        // IMPORTANT: frame is deliberately rendered ABOVE all table content.
         Rectangle {
             anchors.fill: parent
             color: root.transparentColor
@@ -785,19 +794,25 @@ ApplicationWindow {
     }
 
     component TransactionTable: Item {
+        id: transactionTable
+
         property var rows: []
         property real bottomCornerRadius: 0
+        property bool expandToContent: false
+
+        readonly property int tableHeaderHeight: 34
+        readonly property int rowHeight: 38
+
         ColumnLayout {
             anchors.fill: parent
             spacing: 0
+
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
+                height: transactionTable.tableHeaderHeight
                 color: root.tableHeader
 
-                // The outer Panel owns the frame. Only the header/content divider
-                // is drawn here. Do NOT add a top separator: it duplicates the
-                // parent's outline and produces a visible double border.
+                // Only the header/content divider is drawn here.
                 Rectangle {
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
@@ -810,6 +825,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     anchors.leftMargin: 22
                     anchors.rightMargin: 22
+
                     Text {
                         text: "Операция"
                         color: root.muted
@@ -843,26 +859,22 @@ ApplicationWindow {
                     }
                 }
             }
+
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                // White table body. When the rows reach the bottom edge of the
-                // TransactionBlock, this background gets matching rounded bottom
-                // corners instead of leaving a sharp white corner under the outline.
                 Rectangle {
-                    id: transactionRowsBackground
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    height: Math.min(transactionList.contentHeight, parent.height)
+                    anchors.fill: parent
                     color: root.white
-                    radius: transactionList.contentHeight >= parent.height - 0.5
-                            ? parent.parent.parent.bottomCornerRadius
-                            : 0
+                    radius: transactionTable.expandToContent
+                            ? transactionTable.bottomCornerRadius
+                            : (transactionList.contentHeight >= parent.height - 0.5
+                               ? transactionTable.bottomCornerRadius
+                               : 0)
 
-                    // Rectangle.radius rounds all four corners. Cover the upper pair
-                    // so the body stays square where it meets the table header.
+                    // Rectangle.radius rounds all four corners; cover upper pair so the
+                    // body remains square where it touches the table header.
                     Rectangle {
                         visible: parent.radius > 0
                         anchors.left: parent.left
@@ -873,64 +885,128 @@ ApplicationWindow {
                     }
                 }
 
+                // OVERVIEW MODE: ordinary non-flickable content.
+                // The whole overview page scrolls as one document.
+                Column {
+                    anchors.fill: parent
+                    visible: transactionTable.expandToContent
+
+                    Repeater {
+                        model: transactionTable.rows
+
+                        delegate: Item {
+                            required property var modelData
+                            width: parent.width
+                            height: transactionTable.rowHeight
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 22
+                                anchors.rightMargin: 22
+
+                                Text {
+                                    text: modelData.description || (modelData.type === "income" ? "Доход" : "Расход")
+                                    color: root.ink
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 250
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: root.accountName(modelData.accountId)
+                                    color: root.muted
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 170
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: modelData.categoryName
+                                    color: root.green
+                                    font.pixelSize: 11
+                                    Layout.fillWidth: true
+                                }
+                                Text {
+                                    text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
+                                    color: root.muted
+                                    font.pixelSize: 12
+                                    Layout.preferredWidth: 120
+                                }
+                                Text {
+                                    text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true)
+                                    color: modelData.type === "income" ? root.green2 : root.red
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    Layout.preferredWidth: 130
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // OPERATIONS PAGE MODE: virtualized scrollable list remains useful for
+                // potentially large transaction histories. Scrollbar itself stays hidden.
                 ListView {
                     id: transactionList
                     anchors.fill: parent
+                    visible: !transactionTable.expandToContent
                     clip: true
-                    // Scrollbars intentionally hidden application-wide.
                     ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-                    model: parent.parent.parent.rows
+                    model: transactionTable.rows
+
                     delegate: Item {
                         required property var modelData
                         width: ListView.view.width
-                        height: 38
+                        height: transactionTable.rowHeight
+
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 22
                             anchors.rightMargin: 22
-                        Text {
-                            text: modelData.description || (modelData.type === "income" ? "Доход" : "Расход")
-                            color: root.ink
-                            font.pixelSize: 12
-                            Layout.preferredWidth: 250
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            text: root.accountName(modelData.accountId)
-                            color: root.muted
-                            font.pixelSize: 12
-                            Layout.preferredWidth: 170
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            text: modelData.categoryName
-                            color: root.green
-                            font.pixelSize: 11
-                            Layout.fillWidth: true
-                        }
-                        Text {
-                            text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
-                            color: root.muted
-                            font.pixelSize: 12
-                            Layout.preferredWidth: 120
-                        }
-                        Text {
-                            text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true)
-                            color: modelData.type === "income" ? root.green2 : root.red
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            Layout.preferredWidth: 130
-                            horizontalAlignment: Text.AlignRight
+
+                            Text {
+                                text: modelData.description || (modelData.type === "income" ? "Доход" : "Расход")
+                                color: root.ink
+                                font.pixelSize: 12
+                                Layout.preferredWidth: 250
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: root.accountName(modelData.accountId)
+                                color: root.muted
+                                font.pixelSize: 12
+                                Layout.preferredWidth: 170
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: modelData.categoryName
+                                color: root.green
+                                font.pixelSize: 11
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
+                                color: root.muted
+                                font.pixelSize: 12
+                                Layout.preferredWidth: 120
+                            }
+                            Text {
+                                text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true)
+                                color: modelData.type === "income" ? root.green2 : root.red
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                Layout.preferredWidth: 130
+                                horizontalAlignment: Text.AlignRight
+                            }
                         }
                     }
                 }
-                    Label {
-                        anchors.centerIn: parent
-                        visible: parent.count === 0
-                        text: "Операций пока нет"
-                        color: root.muted
-                    }
+
+                Label {
+                    anchors.centerIn: parent
+                    visible: transactionTable.rows.length === 0
+                    text: "Операций пока нет"
+                    color: root.muted
                 }
             }
         }
