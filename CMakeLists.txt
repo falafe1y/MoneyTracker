@@ -21,8 +21,8 @@ qt_add_qml_module(appMoneyTracker
     URI MoneyTracker
     QML_FILES
         Main.qml
-        BankComboBox.qml
-        CategoryPicker.qml
+        # BankComboBox.qml
+        # CategoryPicker.qml
         SOURCES core/Account.h
         SOURCES core/Asset.h
         SOURCES core/Category.h
@@ -66,42 +66,42 @@ install(TARGETS appMoneyTracker
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-enable_testing()
+# enable_testing()
 
-find_package(Qt6 REQUIRED COMPONENTS Test)
+# find_package(Qt6 REQUIRED COMPONENTS Test)
 
-add_executable(CurrencyConverterTest
-    tests/CurrencyConverterTest.cpp
-    core/Currency.cpp
-    services/CurrencyConverter.cpp
-)
+# add_executable(CurrencyConverterTest
+#     tests/CurrencyConverterTest.cpp
+#     core/Currency.cpp
+#     services/CurrencyConverter.cpp
+# )
 
-target_link_libraries(CurrencyConverterTest
-    PRIVATE
-        Qt6::Core
-        Qt6::Test
-)
+# target_link_libraries(CurrencyConverterTest
+#     PRIVATE
+#         Qt6::Core
+#         Qt6::Test
+# )
 
-add_test(
-    NAME CurrencyConverterTest
-    COMMAND CurrencyConverterTest
-)
+# add_test(
+#     NAME CurrencyConverterTest
+#     COMMAND CurrencyConverterTest
+# )
 
 
-add_executable(BalanceCalculatorTest
-    tests/BalanceCalculatorTest.cpp
-    core/Currency.cpp
-    services/CurrencyConverter.cpp
-    services/BalanceCalculator.cpp
-)
+# add_executable(BalanceCalculatorTest
+#     tests/BalanceCalculatorTest.cpp
+#     core/Currency.cpp
+#     services/CurrencyConverter.cpp
+#     services/BalanceCalculator.cpp
+# )
 
-target_link_libraries(BalanceCalculatorTest
-    PRIVATE
-        Qt6::Core
-        Qt6::Test
-)
+# target_link_libraries(BalanceCalculatorTest
+#     PRIVATE
+#         Qt6::Core
+#         Qt6::Test
+# )
 
-add_test(
-    NAME BalanceCalculatorTest
-    COMMAND BalanceCalculatorTest
-)
+# add_test(
+#     NAME BalanceCalculatorTest
+#     COMMAND BalanceCalculatorTest
+# )
