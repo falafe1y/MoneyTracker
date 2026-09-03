@@ -43,6 +43,7 @@ ApplicationWindow {
     readonly property color tableRowAlt: "#FAF9EC"
     readonly property color categoryRow: "#FFFFF0"
     readonly property color categoryEditRow: "#F4F3E3"
+    readonly property color controlHovered: "#F3F1E3"
 
     readonly property color incomePanel: "#E8F0E9"
     readonly property color expensePanel: "#F5E6E2"
@@ -188,6 +189,7 @@ ApplicationWindow {
     }
     component AppComboBox: ComboBox {
         id: combo
+        hoverEnabled: true
         implicitHeight: 44
         leftPadding: 14
         rightPadding: 42
@@ -214,7 +216,7 @@ ApplicationWindow {
 
         background: Rectangle {
             radius: 11
-            color: combo.pressed || combo.popup.visible ? root.panel : root.soft
+            color: combo.pressed || combo.popup.visible ? root.panel : combo.hovered ? root.controlHovered : root.soft
             border.width: combo.popup.visible ? 2 : 1
             border.color: combo.popup.visible ? root.green2 : root.line
         }
@@ -225,17 +227,18 @@ ApplicationWindow {
             width: combo.width - 12
             height: 40
             leftPadding: 12
+            hoverEnabled: true
             highlighted: combo.highlightedIndex === index
             contentItem: Text {
                 text: combo.textRole ? modelData[combo.textRole] : modelData
-                color: optionDelegate.highlighted ? root.white : root.ink
+                color: root.ink
                 font.pixelSize: 14
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
             }
             background: Rectangle {
                 radius: 8
-                color: optionDelegate.highlighted ? root.green2 : root.transparentColor
+                color: optionDelegate.hovered ? root.controlHovered : root.transparentColor
             }
         }
 
