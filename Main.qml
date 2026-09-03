@@ -1050,9 +1050,7 @@ ApplicationWindow {
 
                             Rectangle {
                                 anchors.fill: parent
-                                color: overviewRowMenuArea.containsMouse
-                                       ? root.controlHovered
-                                       : (index % 2 ? root.tableRowAlt : root.panel)
+                                color: index % 2 ? root.tableRowAlt : root.panel
                             }
 
                             RowLayout {
@@ -1100,7 +1098,6 @@ ApplicationWindow {
                                 id: overviewRowMenuArea
                                 anchors.fill: parent
                                 acceptedButtons: Qt.RightButton
-                                hoverEnabled: true
                                 onPressed: function (mouse) {
                                     if (mouse.button === Qt.RightButton)
                                         root.openTransactionContextMenu(
@@ -1133,9 +1130,7 @@ ApplicationWindow {
 
                         Rectangle {
                             anchors.fill: parent
-                            color: operationsRowMenuArea.containsMouse
-                                   ? root.controlHovered
-                                   : (index % 2 ? root.tableRowAlt : root.panel)
+                            color: index % 2 ? root.tableRowAlt : root.panel
                         }
 
                         RowLayout {
@@ -1183,7 +1178,6 @@ ApplicationWindow {
                             id: operationsRowMenuArea
                             anchors.fill: parent
                             acceptedButtons: Qt.RightButton
-                            hoverEnabled: true
                             onPressed: function (mouse) {
                                 if (mouse.button === Qt.RightButton)
                                     root.openTransactionContextMenu(
