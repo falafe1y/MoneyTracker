@@ -533,6 +533,98 @@ bool FinanceRepository::insertAccount(const Account& account)
     return true;
 }
 
+bool FinanceRepository::updateAccount(const Account& account)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE accounts "
+        "SET name = ?, asset_type = ?, account_type = ?, currency = ?, "
+        "    initial_balance_minor = ? "
+        "WHERE id = ? AND is_archived = 0 "
+        "  AND (currency = ? OR NOT EXISTS ("
+        "      SELECT 1 FROM transactions WHERE account_id = ?"
+        "  ))"));
+    query.addBindValue(account.name());
+    query.addBindValue(static_cast<int>(account.assetType()));
+    query.addBindValue(static_cast<int>(account.type()));
+    query.addBindValue(currencyCode(account.currency()));
+    query.addBindValue(account.initialBalanceMinor());
+    query.addBindValue(account.id());
+    query.addBindValue(currencyCode(account.currency()));
+    query.addBindValue(account.id());
+
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral(
+                               "Account was not found or its currency cannot be changed"));
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::deleteAccount(const QString& id)
+{
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery lookup(database_);
+    lookup.prepare(QStringLiteral(
+        "SELECT id FROM transactions WHERE account_id = ?"));
+    lookup.addBindValue(id);
+    if (!lookup.exec()) {
+        setLastError(lookup.lastError().text());
+        database_.rollback();
+        return false;
+    }
+
+    QStringList transactionIds;
+    while (lookup.next()) {
+        transactionIds.append(lookup.value(0).toString());
+    }
+    lookup.finish();
+
+    QString error;
+    QSqlQuery existence(database_);
+    existence.prepare(QStringLiteral(
+        "SELECT 1 FROM transactions WHERE id = ?"));
+    for (const QString& transactionId : transactionIds) {
+        existence.bindValue(0, transactionId);
+        if (!existence.exec()) {
+            setLastError(existence.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        const bool stillExists = existence.next();
+        existence.finish();
+        if (!stillExists) {
+            continue;
+        }
+        if (!deleteOperationRows(database_, transactionId, error)) {
+            setLastError(error);
+            database_.rollback();
+            return false;
+        }
+    }
+
+    QSqlQuery account(database_);
+    account.prepare(QStringLiteral(
+        "UPDATE accounts SET is_archived = 1 "
+        "WHERE id = ? AND is_archived = 0"));
+    account.addBindValue(id);
+    if (!account.exec() || account.numRowsAffected() != 1 ||
+        !database_.commit()) {
+        setLastError(account.lastError().isValid()
+                         ? account.lastError().text()
+                         : database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::updateCategoryName(
     const QString& id,
     const QString& name

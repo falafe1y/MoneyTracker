@@ -168,9 +168,11 @@ QVariantList FinanceController::accounts() const
         item["id"] = account.id();
         item["name"] = account.name();
         item["type"] = accountTypeToString(account.type());
+        item["asset"] = assetTypeToString(account.assetType());
         item["currency"] = currencyCode(account.currency());
         item["initialBalanceMinor"] = account.initialBalanceMinor();
         item["balanceMinor"] = accountBalanceMinor(account);
+        item["transactionCount"] = accountTransactionCount(account.id());
         result.append(item);
     }
     return result;
@@ -194,6 +196,8 @@ QVariantList FinanceController::allAccounts() const
             + QStringLiteral(" · ") + account.name()
             + QStringLiteral(" · ") + currencyCode(account.currency());
         item["balanceMinor"] = accountBalanceMinor(account);
+        item["initialBalanceMinor"] = account.initialBalanceMinor();
+        item["transactionCount"] = accountTransactionCount(account.id());
         result.append(item);
     }
     return result;
@@ -316,6 +320,111 @@ bool FinanceController::addAccount(
     accounts_.append(account);
     summary_.balance[currencyIndex(accountCurrency)] += initialBalanceMinor;
     emit accountsChanged();
+    emit balanceChanged();
+    return true;
+}
+
+bool FinanceController::updateAccount(
+    const QString& id,
+    const QString& name,
+    const QString& type,
+    const QString& currency,
+    const qint64 initialBalanceMinor
+    )
+{
+    const QString normalizedName = name.trimmed();
+    if (id.isEmpty() || normalizedName.isEmpty() || normalizedName.size() > 60) {
+        return false;
+    }
+
+    int accountIndex = -1;
+    for (int index = 0; index < accounts_.size(); ++index) {
+        if (accounts_[index].id() == id) {
+            accountIndex = index;
+            break;
+        }
+    }
+    if (accountIndex < 0) {
+        return false;
+    }
+
+    const Account& original = accounts_[accountIndex];
+    for (const Account& existing : accounts_) {
+        if (existing.id() != id &&
+            existing.assetType() == original.assetType() &&
+            existing.name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
+            return false;
+        }
+    }
+
+    const AccountType accountType = accountTypeFromString(type);
+    const bool validType =
+        (original.assetType() == AssetType::Fiat &&
+         static_cast<int>(accountType) <= static_cast<int>(AccountType::Other)) ||
+        (original.assetType() == AssetType::Crypto &&
+         (accountType == AccountType::CryptoWallet ||
+          accountType == AccountType::Other)) ||
+        (original.assetType() == AssetType::Investment &&
+         (accountType == AccountType::Brokerage ||
+          accountType == AccountType::Deposit ||
+          accountType == AccountType::Other));
+    if (!validType) {
+        return false;
+    }
+
+    const Currency accountCurrency = currencyFromString(currency);
+    if (accountCurrency != original.currency() &&
+        accountTransactionCount(id) > 0) {
+        return false;
+    }
+
+    const Account updated(
+        original.id(),
+        normalizedName,
+        original.assetType(),
+        accountType,
+        accountCurrency,
+        initialBalanceMinor);
+    if (!repository_.isOpen() || !repository_.updateAccount(updated)) {
+        qWarning() << "Failed to update account:" << repository_.lastError();
+        return false;
+    }
+
+    accounts_[accountIndex] = updated;
+    summary_ = repository_.loadSummary();
+    emit accountsChanged();
+    emit balanceChanged();
+    emit transactionsChanged();
+    return true;
+}
+
+bool FinanceController::deleteAccount(const QString& id)
+{
+    int accountIndex = -1;
+    for (int index = 0; index < accounts_.size(); ++index) {
+        if (accounts_[index].id() == id) {
+            accountIndex = index;
+            break;
+        }
+    }
+    if (accountIndex < 0) {
+        return false;
+    }
+    if (!repository_.isOpen() || !repository_.deleteAccount(id)) {
+        qWarning() << "Failed to delete account:" << repository_.lastError();
+        return false;
+    }
+
+    accounts_.removeAt(accountIndex);
+    transactions_ = repository_.loadTransactions();
+    summary_ = repository_.loadSummary();
+
+    if (selectedAccountId_ == id) {
+        selectedAccountId_.clear();
+        emit selectedAccountIdChanged();
+    }
+    emit accountsChanged();
+    emit transactionsChanged();
     emit balanceChanged();
     return true;
 }
@@ -877,6 +986,17 @@ qint64 FinanceController::accountBalanceMinor(const Account& account) const
             : -transaction.money().minorUnits();
     }
     return balance;
+}
+
+int FinanceController::accountTransactionCount(const QString& accountId) const
+{
+    int count = 0;
+    for (const Transaction& transaction : transactions_) {
+        if (transaction.accountId() == accountId) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 qint64 FinanceController::assetBalanceMinor(const AssetType asset) const

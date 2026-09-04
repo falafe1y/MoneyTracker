@@ -51,6 +51,8 @@ public:
     bool deleteTransaction(const QString& id);
     bool insertCategory(const Category& category);
     bool insertAccount(const Account& account);
+    bool updateAccount(const Account& account);
+    bool deleteAccount(const QString& id);
     bool updateCategoryName(const QString& id, const QString& name);
     bool archiveCategory(const QString& id);
     QString loadAppCurrency() const;

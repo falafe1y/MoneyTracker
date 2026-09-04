@@ -123,6 +123,16 @@ public:
         qint64 initialBalanceMinor
         );
 
+    Q_INVOKABLE bool updateAccount(
+        const QString& id,
+        const QString& name,
+        const QString& type,
+        const QString& currency,
+        qint64 initialBalanceMinor
+        );
+
+    Q_INVOKABLE bool deleteAccount(const QString& id);
+
     Q_INVOKABLE bool addCategory(
         const QString& name,
         const QString& type
@@ -217,6 +227,7 @@ private:
         );
 
     qint64 accountBalanceMinor(const Account& account) const;
+    int accountTransactionCount(const QString& accountId) const;
     qint64 assetBalanceMinor(AssetType asset) const;
 
     static Currency currencyFromString(

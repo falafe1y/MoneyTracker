@@ -15,6 +15,8 @@ private slots:
     void replacesIncomeWithTransferAtomically();
     void deletesWholeTransferFromEitherComponent();
     void replacesTransferWithTransactionAtomically();
+    void updatesAccountAndProtectsTransactionCurrency();
+    void deletesAccountWithRelatedOperations();
 };
 
 void FinanceRepositoryTest::preservesSelectedAccountAfterReopen()
@@ -414,6 +416,127 @@ void FinanceRepositoryTest::replacesTransferWithTransactionAtomically()
     const FinanceRepository::Summary summary = repository.loadSummary();
     QCOMPARE(summary.balance[static_cast<int>(Currency::RUB)], qint64(47'500));
     QCOMPARE(summary.expense[static_cast<int>(Currency::RUB)], qint64(2'500));
+}
+
+void FinanceRepositoryTest::updatesAccountAndProtectsTransactionCurrency()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    FinanceRepository repository(temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-update-account-test.sqlite3")));
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+    const Account original(
+        QStringLiteral("editable-account"), QStringLiteral("Before"),
+        AssetType::Fiat, AccountType::Cash, Currency::RUB, 10'000);
+    QVERIFY(repository.insertAccount(original));
+
+    const Account updated(
+        original.id(), QStringLiteral("After"), AssetType::Fiat,
+        AccountType::DebitCard, Currency::USD, 25'000);
+    QVERIFY2(repository.updateAccount(updated), qPrintable(repository.lastError()));
+
+    QVector<Account> accounts = repository.loadAccounts();
+    bool foundUpdated = false;
+    for (const Account& account : accounts) {
+        if (account.id() != updated.id()) {
+            continue;
+        }
+        foundUpdated = true;
+        QCOMPARE(account.name(), updated.name());
+        QCOMPARE(account.type(), updated.type());
+        QCOMPARE(account.currency(), updated.currency());
+        QCOMPARE(account.initialBalanceMinor(), qint64(25'000));
+    }
+    QVERIFY(foundUpdated);
+
+    const Category category(
+        QStringLiteral("account-update-expense"), QStringLiteral("Expense"),
+        CategoryType::Expense);
+    QVERIFY(repository.insertCategory(category));
+    QVERIFY(repository.insertTransaction(Transaction(
+        QStringLiteral("account-update-transaction"), updated.id(), category.id(),
+        Money(1'000, Currency::USD), TransactionType::Expense,
+        QDateTime::currentDateTimeUtc(), QStringLiteral("Expense"))));
+
+    const Account invalidCurrencyChange(
+        updated.id(), updated.name(), updated.assetType(), updated.type(),
+        Currency::EUR, updated.initialBalanceMinor());
+    QVERIFY(!repository.updateAccount(invalidCurrencyChange));
+
+    accounts = repository.loadAccounts();
+    for (const Account& account : accounts) {
+        if (account.id() == updated.id()) {
+            QCOMPARE(account.currency(), Currency::USD);
+        }
+    }
+}
+
+void FinanceRepositoryTest::deletesAccountWithRelatedOperations()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-delete-account-test.sqlite3"));
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+        const Account source(
+            QStringLiteral("account-to-delete"), QStringLiteral("Source"),
+            AssetType::Fiat, AccountType::DebitCard, Currency::RUB, 50'000);
+        const Account target(
+            QStringLiteral("account-to-keep"), QStringLiteral("Target"),
+            AssetType::Fiat, AccountType::DebitCard, Currency::RUB, 0);
+        const Category category(
+            QStringLiteral("delete-account-expense"), QStringLiteral("Expense"),
+            CategoryType::Expense);
+        QVERIFY(repository.insertAccount(source));
+        QVERIFY(repository.insertAccount(target));
+        QVERIFY(repository.insertCategory(category));
+
+        const QDateTime occurredAt = QDateTime::currentDateTimeUtc();
+        QVERIFY(repository.insertTransaction(Transaction(
+            QStringLiteral("delete-account-expense-row"), source.id(), category.id(),
+            Money(1'000, Currency::RUB), TransactionType::Expense,
+            occurredAt, QStringLiteral("Expense"))));
+        QVERIFY(repository.insertTransfer(
+            Transaction(
+                QStringLiteral("delete-account-transfer-out"), source.id(),
+                QStringLiteral("transfer-out"), Money(10'000, Currency::RUB),
+                TransactionType::Expense, occurredAt, QStringLiteral("Transfer")),
+            Transaction(
+                QStringLiteral("delete-account-transfer-in"), target.id(),
+                QStringLiteral("transfer-in"), Money(10'000, Currency::RUB),
+                TransactionType::Income, occurredAt, QStringLiteral("Transfer"))));
+
+        QVERIFY2(repository.deleteAccount(source.id()),
+                 qPrintable(repository.lastError()));
+        QVERIFY(repository.loadTransactions().isEmpty());
+
+        const QVector<Account> accounts = repository.loadAccounts();
+        bool foundDeleted = false;
+        bool foundTarget = false;
+        for (const Account& account : accounts) {
+            foundDeleted = foundDeleted || account.id() == source.id();
+            foundTarget = foundTarget || account.id() == target.id();
+        }
+        QVERIFY(!foundDeleted);
+        QVERIFY(foundTarget);
+
+        QVERIFY(repository.deleteAccount(QStringLiteral("household-eur")));
+    }
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        const QVector<Account> accounts = repository.loadAccounts();
+        for (const Account& account : accounts) {
+            QVERIFY(account.id() != QStringLiteral("account-to-delete"));
+            QVERIFY(account.id() != QStringLiteral("household-eur"));
+        }
+    }
 }
 
 QTEST_GUILESS_MAIN(FinanceRepositoryTest)

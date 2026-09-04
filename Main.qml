@@ -113,6 +113,10 @@ ApplicationWindow {
                            : String(whole) + "." + (cents < 10 ? "0" : "") + String(cents);
     }
 
+    function signedAmountForInput(minor) {
+        return Number(minor) < 0 ? "-" + amountForInput(minor) : amountForInput(minor);
+    }
+
     function transactionSignedAmount(row) {
         return row.type === "income" || (row.type === "transfer" && row.direction === "in")
              ? row.amount : -row.amount;
@@ -137,6 +141,22 @@ ApplicationWindow {
             Math.min(point.y, root.contentItem.height - transactionContextMenu.implicitHeight - 8)
         );
         transactionContextMenu.open();
+    }
+
+    function openAccountContextMenu(row, sourceItem, localX, localY) {
+        if (!row || !row.id)
+            return;
+        const point = sourceItem.mapToItem(root.contentItem, localX, localY);
+        accountContextMenu.accountData = row;
+        accountContextMenu.x = Math.max(
+            8,
+            Math.min(point.x, root.contentItem.width - accountContextMenu.width - 8)
+        );
+        accountContextMenu.y = Math.max(
+            8,
+            Math.min(point.y, root.contentItem.height - accountContextMenu.implicitHeight - 8)
+        );
+        accountContextMenu.open();
     }
 
     function visibleTransactions() {
@@ -565,6 +585,7 @@ ApplicationWindow {
                         }
                     }
                 }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 14
@@ -675,9 +696,23 @@ ApplicationWindow {
                                 border.width: 1
                                 border.color: financeController.selectedAccountId === modelData.id ? root.green : root.line
                                 MouseArea {
+                                    id: overviewAccountMouseArea
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: financeController.selectedAccountId = modelData.id
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onClicked: function (mouse) {
+                                        if (mouse.button === Qt.LeftButton)
+                                            financeController.selectedAccountId = modelData.id;
+                                    }
+                                    onPressed: function (mouse) {
+                                        if (mouse.button === Qt.RightButton && modelData.id)
+                                            root.openAccountContextMenu(
+                                                modelData,
+                                                overviewAccountMouseArea,
+                                                mouse.x,
+                                                mouse.y
+                                            );
+                                    }
                                 }
                                 RowLayout {
                                     anchors.fill: parent
@@ -1278,6 +1313,20 @@ ApplicationWindow {
                             font.pixelSize: 12
                         }
                     }
+                    MouseArea {
+                        id: accountsPageMouseArea
+                        anchors.fill: parent
+                        acceptedButtons: Qt.RightButton
+                        onPressed: function (mouse) {
+                            if (mouse.button === Qt.RightButton)
+                                root.openAccountContextMenu(
+                                    modelData,
+                                    accountsPageMouseArea,
+                                    mouse.x,
+                                    mouse.y
+                                );
+                        }
+                    }
                 }
                 Label {
                     anchors.centerIn: parent
@@ -1603,8 +1652,12 @@ ApplicationWindow {
         anchors.centerIn: parent
         padding: 24
         property var accountTypes: []
-        function openForSelectedAsset() {
-            accountTypes = financeController.selectedAsset === "fiat" ? [
+        property string editingId: ""
+        property var editingAccount: null
+        property string editingAsset: financeController.selectedAsset
+
+        function typesForAsset(asset) {
+            return asset === "fiat" ? [
                 {
                     label: "Наличные",
                     value: "cash"
@@ -1620,8 +1673,12 @@ ApplicationWindow {
                 {
                     label: "Накопительный",
                     value: "savings"
+                },
+                {
+                    label: "Другой",
+                    value: "other"
                 }
-            ] : financeController.selectedAsset === "crypto" ? [
+            ] : asset === "crypto" ? [
                 {
                     label: "Криптокошелёк",
                     value: "crypto_wallet"
@@ -1644,12 +1701,48 @@ ApplicationWindow {
                     value: "other"
                 }
             ];
+        }
+
+        function openForSelectedAsset() {
+            editingId = "";
+            editingAccount = null;
+            editingAsset = financeController.selectedAsset;
+            accountTypes = typesForAsset(editingAsset);
             accountNameField.clear();
             accountBalanceField.clear();
             accountTypeBox.currentIndex = 0;
+            accountCurrencyBox.currentIndex = 0;
             accountError.text = "";
             open();
         }
+
+        function openForEdit(row) {
+            editingId = row.id;
+            editingAccount = row;
+            editingAsset = row.asset;
+            accountTypes = typesForAsset(editingAsset);
+            accountNameField.text = row.name;
+            accountTypeBox.currentIndex = root.indexByRole(
+                accountTypes,
+                "value",
+                row.type
+            );
+            accountCurrencyBox.currentIndex = Math.max(
+                0,
+                accountCurrencyBox.model.indexOf(row.currency)
+            );
+            accountBalanceField.text = root.signedAmountForInput(
+                row.initialBalanceMinor
+            );
+            accountError.text = "";
+            open();
+        }
+
+        onClosed: {
+            editingId = "";
+            editingAccount = null;
+        }
+
         background: Rectangle {
             color: root.panel
             radius: 18
@@ -1659,7 +1752,8 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 14
             Text {
-                text: "Новый счёт · " + root.assetTitle(financeController.selectedAsset)
+                text: (accountDialog.editingId ? "Редактирование счёта · " : "Новый счёт · ")
+                      + root.assetTitle(accountDialog.editingAsset)
                 color: root.ink
                 font.pixelSize: 21
                 font.weight: Font.Bold
@@ -1679,6 +1773,18 @@ ApplicationWindow {
                 id: accountCurrencyBox
                 Layout.fillWidth: true
                 model: ["RUB", "USD", "EUR"]
+                enabled: !accountDialog.editingId
+                      || !accountDialog.editingAccount
+                      || accountDialog.editingAccount.transactionCount === 0
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.editingId
+                      && accountDialog.editingAccount
+                      && accountDialog.editingAccount.transactionCount > 0
+                text: "Валюту счёта с операциями изменить нельзя"
+                color: root.muted
+                font.pixelSize: 11
             }
             AppTextField {
                 id: accountBalanceField
@@ -1704,15 +1810,190 @@ ApplicationWindow {
                     onClicked: accountDialog.close()
                 }
                 SoftButton {
-                    text: "Добавить"
+                    text: accountDialog.editingId ? "Сохранить" : "Добавить"
                     highlighted: true
                     onClicked: {
                         const minor = Math.round((Number(accountBalanceField.text.replace(",", ".")) || 0) * 100);
                         const type = accountDialog.accountTypes[accountTypeBox.currentIndex].value;
-                        if (financeController.addAccount(accountNameField.text, type, accountCurrencyBox.currentText, minor))
+                        const ok = accountDialog.editingId
+                                 ? financeController.updateAccount(
+                                     accountDialog.editingId,
+                                     accountNameField.text,
+                                     type,
+                                     accountCurrencyBox.currentText,
+                                     minor
+                                 )
+                                 : financeController.addAccount(
+                                     accountNameField.text,
+                                     type,
+                                     accountCurrencyBox.currentText,
+                                     minor
+                                 );
+                        if (ok)
                             accountDialog.close();
                         else
-                            accountError.text = "Проверьте название: оно должно быть уникальным";
+                            accountError.text = "Проверьте название и параметры счёта";
+                    }
+                }
+            }
+        }
+    }
+
+    Menu {
+        id: accountContextMenu
+        width: 224
+        padding: 6
+        property var accountData: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        AppMenuItem {
+            width: accountContextMenu.availableWidth
+            text: "Редактировать"
+            enabled: accountContextMenu.accountData !== null
+            onTriggered: {
+                if (accountContextMenu.accountData)
+                    accountDialog.openForEdit(accountContextMenu.accountData);
+            }
+        }
+
+        MenuSeparator {
+            width: accountContextMenu.availableWidth
+            topPadding: 4
+            bottomPadding: 4
+            contentItem: Rectangle {
+                implicitHeight: 1
+                color: root.line
+            }
+        }
+
+        AppMenuItem {
+            width: accountContextMenu.availableWidth
+            text: "Удалить"
+            destructive: true
+            enabled: accountContextMenu.accountData !== null
+            onTriggered: {
+                if (accountContextMenu.accountData)
+                    deleteAccountDialog.openFor(accountContextMenu.accountData);
+            }
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 12
+            border.width: 1
+            border.color: root.line
+        }
+    }
+
+    Dialog {
+        id: deleteAccountDialog
+        width: 460
+        modal: true
+        anchors.centerIn: parent
+        padding: 24
+        closePolicy: Popup.CloseOnEscape
+        property var accountData: null
+
+        function openFor(row) {
+            accountData = row;
+            deleteAccountError.text = "";
+            open();
+        }
+
+        onClosed: accountData = null
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: "Удалить счёт?"
+                color: root.ink
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: deleteAccountDialog.accountData
+                      && deleteAccountDialog.accountData.transactionCount > 0
+                      ? "Счёт и все связанные операции будут удалены. Связанные переводы удалятся целиком. Это действие нельзя отменить."
+                      : "Счёт будет удалён. Это действие нельзя отменить."
+                color: root.muted
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+            }
+
+            Panel {
+                Layout.fillWidth: true
+                implicitHeight: 78
+                color: root.soft
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 4
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: deleteAccountDialog.accountData
+                              ? deleteAccountDialog.accountData.name
+                              : ""
+                        color: root.ink
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: deleteAccountDialog.accountData
+                              ? root.money(
+                                    deleteAccountDialog.accountData.balanceMinor,
+                                    deleteAccountDialog.accountData.currency,
+                                    false
+                                )
+                                + " · операций: "
+                                + deleteAccountDialog.accountData.transactionCount
+                              : ""
+                        color: root.muted
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+
+            Text {
+                id: deleteAccountError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Item {
+                    Layout.fillWidth: true
+                }
+                SoftButton {
+                    text: "Отмена"
+                    onClicked: deleteAccountDialog.close()
+                }
+                SoftButton {
+                    text: "Удалить"
+                    destructive: true
+                    onClicked: {
+                        const row = deleteAccountDialog.accountData;
+                        if (row && financeController.deleteAccount(row.id))
+                            deleteAccountDialog.close();
+                        else
+                            deleteAccountError.text = "Не удалось удалить счёт";
                     }
                 }
             }
