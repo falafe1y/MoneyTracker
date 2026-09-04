@@ -8,6 +8,7 @@
 
 #include <QObject>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QVector>
 #include <QSet>
 
@@ -166,6 +167,18 @@ public:
         const QString& accountId,
         const QString& type
         );
+
+    Q_INVOKABLE bool updateOperation(
+        const QString& id,
+        qint64 minorUnits,
+        const QString& description,
+        const QString& categoryId,
+        const QString& accountId,
+        const QString& type,
+        const QString& targetAccountId
+        );
+
+    Q_INVOKABLE QVariantMap transferDetails(const QString& id) const;
 
     Q_INVOKABLE bool deleteTransaction(const QString& id);
 

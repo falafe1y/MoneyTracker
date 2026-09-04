@@ -39,6 +39,15 @@ public:
         const Transaction& incoming
         );
     bool updateTransaction(const Transaction& transaction);
+    bool replaceTransaction(
+        const QString& currentId,
+        const Transaction& replacement
+        );
+    bool replaceTransactionWithTransfer(
+        const QString& currentId,
+        const Transaction& outgoing,
+        const Transaction& incoming
+        );
     bool deleteTransaction(const QString& id);
     bool insertCategory(const Category& category);
     bool insertAccount(const Account& account);

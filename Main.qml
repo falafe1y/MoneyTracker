@@ -1729,8 +1729,7 @@ ApplicationWindow {
         AppMenuItem {
             width: transactionContextMenu.availableWidth
             text: "Редактировать"
-            enabled: transactionContextMenu.transactionData
-                  && transactionContextMenu.transactionData.type !== "transfer"
+            enabled: transactionContextMenu.transactionData !== null
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     operationDialog.openForEdit(transactionContextMenu.transactionData);
@@ -1751,8 +1750,7 @@ ApplicationWindow {
             width: transactionContextMenu.availableWidth
             text: "Удалить"
             destructive: true
-            enabled: transactionContextMenu.transactionData
-                  && transactionContextMenu.transactionData.type !== "transfer"
+            enabled: transactionContextMenu.transactionData !== null
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     deleteTransactionDialog.openFor(transactionContextMenu.transactionData);
@@ -1803,7 +1801,10 @@ ApplicationWindow {
 
             Text {
                 Layout.fillWidth: true
-                text: "Это действие нельзя отменить. Баланс и статистика будут пересчитаны."
+                text: deleteTransactionDialog.transactionData
+                      && deleteTransactionDialog.transactionData.type === "transfer"
+                      ? "Будут удалены обе части перевода. Баланс и статистика будут пересчитаны."
+                      : "Это действие нельзя отменить. Баланс и статистика будут пересчитаны."
                 color: root.muted
                 font.pixelSize: 13
                 wrapMode: Text.WordWrap
@@ -1892,10 +1893,42 @@ ApplicationWindow {
         padding: 24
         property string editingId: ""
         property var editingTransaction: null
+        property string editingSourceAccountId: ""
+        property string editingTargetAccountId: ""
+
+        function exactIndexByRole(model, role, value) {
+            for (let i = 0; i < model.length; ++i)
+                if (model[i][role] === value)
+                    return i;
+            return -1;
+        }
+
+        function selectTransferAccounts(sourceId, targetId) {
+            const rows = financeController.allAccounts;
+            let sourceIndex = exactIndexByRole(rows, "id", sourceId);
+            if (sourceIndex < 0)
+                sourceIndex = rows.length > 0 ? 0 : -1;
+            operationAccount.currentIndex = sourceIndex;
+
+            const resolvedSourceId = sourceIndex >= 0 ? rows[sourceIndex].id : "";
+            let targetIndex = exactIndexByRole(rows, "id", targetId);
+            if (targetIndex < 0 || rows[targetIndex].id === resolvedSourceId) {
+                targetIndex = -1;
+                for (let i = 0; i < rows.length; ++i) {
+                    if (rows[i].id !== resolvedSourceId) {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+            }
+            transferTargetAccount.currentIndex = targetIndex;
+        }
 
         function openForNew() {
             editingId = "";
             editingTransaction = null;
+            editingSourceAccountId = "";
+            editingTargetAccountId = "";
             operationError.text = "";
             operationAmount.clear();
             operationDescription.clear();
@@ -1906,7 +1939,17 @@ ApplicationWindow {
                 financeController.selectedAccountId
             );
             operationCategory.currentIndex = 0;
-            transferTargetAccount.currentIndex = financeController.allAccounts.length > 1 ? 1 : 0;
+            const source = operationAccount.currentIndex >= 0
+                         ? financeController.accounts[operationAccount.currentIndex]
+                         : null;
+            const allAccounts = financeController.allAccounts;
+            transferTargetAccount.currentIndex = -1;
+            for (let i = 0; i < allAccounts.length; ++i) {
+                if (!source || allAccounts[i].id !== source.id) {
+                    transferTargetAccount.currentIndex = i;
+                    break;
+                }
+            }
             open();
         }
 
@@ -1914,18 +1957,32 @@ ApplicationWindow {
             editingId = row.id;
             editingTransaction = row;
             operationError.text = "";
-            operationType.currentIndex = row.type === "income" ? 0 : 1;
-            operationAccount.currentIndex = root.indexByRole(
-                financeController.accounts,
-                "id",
-                row.accountId
-            );
-            operationCategory.currentIndex = root.indexByRole(
-                operationCategory.model,
-                "value",
-                row.categoryId
-            );
-            operationAmount.text = root.amountForInput(row.amount);
+            if (row.type === "transfer") {
+                const details = financeController.transferDetails(row.id);
+                editingSourceAccountId = details.sourceAccountId || "";
+                editingTargetAccountId = details.targetAccountId || "";
+                operationType.currentIndex = 2;
+                selectTransferAccounts(
+                    editingSourceAccountId,
+                    editingTargetAccountId
+                );
+                operationAmount.text = root.amountForInput(details.sourceAmount || row.amount);
+            } else {
+                editingSourceAccountId = row.accountId;
+                editingTargetAccountId = "";
+                operationType.currentIndex = row.type === "income" ? 0 : 1;
+                operationAccount.currentIndex = root.indexByRole(
+                    financeController.accounts,
+                    "id",
+                    row.accountId
+                );
+                operationCategory.currentIndex = root.indexByRole(
+                    operationCategory.model,
+                    "value",
+                    row.categoryId
+                );
+                operationAmount.text = root.amountForInput(row.amount);
+            }
             operationDescription.text = row.description || "";
             open();
         }
@@ -1933,6 +1990,8 @@ ApplicationWindow {
         onClosed: {
             editingId = "";
             editingTransaction = null;
+            editingSourceAccountId = "";
+            editingTargetAccountId = "";
         }
 
         background: Rectangle {
@@ -1955,8 +2014,24 @@ ApplicationWindow {
                 id: operationType
                 Layout.fillWidth: true
                 model: ["Доход", "Расход", "Перевод"]
-                enabled: !operationDialog.editingId
-                onActivated: operationCategory.currentIndex = 0
+                onActivated: {
+                    operationCategory.currentIndex = 0;
+                    if (!operationDialog.editingTransaction)
+                        return;
+
+                    if (currentIndex === 2) {
+                        operationDialog.selectTransferAccounts(
+                            operationDialog.editingSourceAccountId,
+                            operationDialog.editingTargetAccountId
+                        );
+                    } else {
+                        operationAccount.currentIndex = root.indexByRole(
+                            financeController.accounts,
+                            "id",
+                            operationDialog.editingTransaction.accountId
+                        );
+                    }
+                }
             }
             Text {
                 visible: operationType.currentIndex === 2
@@ -2049,8 +2124,17 @@ ApplicationWindow {
                             return;
                         }
                         const isTransfer = operationType.currentIndex === 2;
+                        if (!operationAccount.model.length ||
+                            operationAccount.currentIndex < 0) {
+                            operationError.text = "Для выбранной операции нет доступного счёта";
+                            return;
+                        }
                         if (isTransfer && financeController.allAccounts.length < 2) {
                             operationError.text = "Для перевода нужны два счёта";
+                            return;
+                        }
+                        if (isTransfer && transferTargetAccount.currentIndex < 0) {
+                            operationError.text = "Выберите счёт назначения";
                             return;
                         }
                         if (!isTransfer && !operationCategory.model.length) {
@@ -2070,21 +2154,22 @@ ApplicationWindow {
                         const targetAccount = isTransfer
                                             ? transferTargetAccount.model[transferTargetAccount.currentIndex]
                                             : null;
-                        const ok = isTransfer
-                                 ? financeController.addTransfer(
+                        const ok = operationDialog.editingId
+                                 ? financeController.updateOperation(
+                                     operationDialog.editingId,
+                                     minor,
+                                     operationDescription.text,
+                                     isTransfer ? "" : category.value,
+                                     account.id,
+                                     type,
+                                     isTransfer ? targetAccount.id : ""
+                                 )
+                                 : isTransfer
+                                   ? financeController.addTransfer(
                                      minor,
                                      operationDescription.text,
                                      account.id,
                                      targetAccount.id
-                                 )
-                                 : operationDialog.editingId
-                                 ? financeController.updateTransaction(
-                                     operationDialog.editingId,
-                                     minor,
-                                     operationDescription.text,
-                                     category.value,
-                                     account.id,
-                                     type
                                  )
                                  : type === "income"
                                    ? financeController.addIncome(

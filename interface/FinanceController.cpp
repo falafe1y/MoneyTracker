@@ -3,6 +3,28 @@
 #include <QDebug>
 #include <QUuid>
 
+namespace
+{
+bool isTransfer(const Transaction& transaction)
+{
+    return transaction.categoryId() == QStringLiteral("transfer-in") ||
+           transaction.categoryId() == QStringLiteral("transfer-out");
+}
+
+QString transferId(const Transaction& transaction)
+{
+    if (transaction.categoryId() == QStringLiteral("transfer-out") &&
+        transaction.id().endsWith(QStringLiteral("-out"))) {
+        return transaction.id().left(transaction.id().size() - 4);
+    }
+    if (transaction.categoryId() == QStringLiteral("transfer-in") &&
+        transaction.id().endsWith(QStringLiteral("-in"))) {
+        return transaction.id().left(transaction.id().size() - 3);
+    }
+    return {};
+}
+}
+
 FinanceController::FinanceController(QObject* parent)
     : QObject(parent)
     , currencyConverter_(rateProvider_)
@@ -89,10 +111,8 @@ QVariantList FinanceController::transactions() const
             transaction.money().currency()
             );
 
-        const bool isTransfer =
-            transaction.categoryId() == QStringLiteral("transfer-in") ||
-            transaction.categoryId() == QStringLiteral("transfer-out");
-        item["type"] = isTransfer
+        const bool transfer = isTransfer(transaction);
+        item["type"] = transfer
             ? QStringLiteral("transfer")
             : transaction.type() == TransactionType::Income
                 ? QStringLiteral("income")
@@ -539,6 +559,27 @@ bool FinanceController::updateTransaction(
     const QString& type
     )
 {
+    return updateOperation(
+        id,
+        minorUnits,
+        description,
+        categoryId,
+        accountId,
+        type,
+        QString()
+        );
+}
+
+bool FinanceController::updateOperation(
+    const QString& id,
+    const qint64 minorUnits,
+    const QString& description,
+    const QString& categoryId,
+    const QString& accountId,
+    const QString& type,
+    const QString& targetAccountId
+    )
+{
     if (id.isEmpty() || minorUnits <= 0) {
         return false;
     }
@@ -554,6 +595,78 @@ bool FinanceController::updateTransaction(
         return false;
     }
     const Transaction& original = transactions_[transactionIndex];
+    const bool originalIsTransfer = isTransfer(original);
+    const QString normalizedType = type.trimmed().toLower();
+    if (normalizedType != QStringLiteral("income") &&
+        normalizedType != QStringLiteral("expense") &&
+        normalizedType != QStringLiteral("transfer")) {
+        return false;
+    }
+
+    if (normalizedType == QStringLiteral("transfer")) {
+        if (accountId.isEmpty() || targetAccountId.isEmpty() ||
+            accountId == targetAccountId) {
+            return false;
+        }
+
+        const Account* source = nullptr;
+        const Account* target = nullptr;
+        for (const Account& account : accounts_) {
+            if (account.id() == accountId) source = &account;
+            if (account.id() == targetAccountId) target = &account;
+        }
+        if (!source || !target) {
+            return false;
+        }
+
+        const qint64 targetMinorUnits = currencyConverter_.convert(
+            Money(minorUnits, source->currency()),
+            target->currency()).minorUnits();
+        if (targetMinorUnits <= 0) {
+            return false;
+        }
+
+        const QString currentTransferId = transferId(original);
+        if (originalIsTransfer && currentTransferId.isEmpty()) {
+            return false;
+        }
+        const QString resolvedTransferId = originalIsTransfer
+            ? currentTransferId
+            : QUuid::createUuid().toString(QUuid::WithoutBraces);
+        const QString normalizedDescription = description.trimmed().isEmpty()
+            ? QStringLiteral("Перевод: %1 → %2").arg(source->name(), target->name())
+            : description.trimmed();
+        const Transaction outgoing(
+            resolvedTransferId + QStringLiteral("-out"),
+            source->id(),
+            QStringLiteral("transfer-out"),
+            Money(minorUnits, source->currency()),
+            TransactionType::Expense,
+            original.date(),
+            normalizedDescription);
+        const Transaction incoming(
+            resolvedTransferId + QStringLiteral("-in"),
+            target->id(),
+            QStringLiteral("transfer-in"),
+            Money(targetMinorUnits, target->currency()),
+            TransactionType::Income,
+            original.date(),
+            normalizedDescription);
+
+        if (!repository_.isOpen() ||
+            !repository_.replaceTransactionWithTransfer(id, outgoing, incoming)) {
+            qWarning() << "Failed to replace operation with transfer:"
+                       << repository_.lastError();
+            return false;
+        }
+
+        transactions_ = repository_.loadTransactions();
+        summary_ = repository_.loadSummary();
+        emit transactionsChanged();
+        emit balanceChanged();
+        emit accountsChanged();
+        return true;
+    }
 
     const Account* selectedAccount = nullptr;
     for (const Account& account : accounts_) {
@@ -567,7 +680,7 @@ bool FinanceController::updateTransaction(
     }
 
     const TransactionType transactionType =
-        type.trimmed().toLower() == QStringLiteral("income")
+        normalizedType == QStringLiteral("income")
             ? TransactionType::Income
             : TransactionType::Expense;
     const CategoryType requiredCategoryType =
@@ -599,19 +712,65 @@ bool FinanceController::updateTransaction(
         description
         );
 
-    if (!repository_.isOpen() || !repository_.updateTransaction(updated)) {
+    const bool saved = repository_.isOpen() &&
+        (originalIsTransfer
+            ? repository_.replaceTransaction(id, updated)
+            : repository_.updateTransaction(updated));
+    if (!saved) {
         qWarning() << "Failed to update transaction:"
                    << repository_.lastError();
         return false;
     }
 
-    transactions_[transactionIndex] = updated;
+    transactions_ = repository_.loadTransactions();
     summary_ = repository_.loadSummary();
 
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
     return true;
+}
+
+QVariantMap FinanceController::transferDetails(const QString& id) const
+{
+    const Transaction* selected = nullptr;
+    for (const Transaction& transaction : transactions_) {
+        if (transaction.id() == id) {
+            selected = &transaction;
+            break;
+        }
+    }
+    if (!selected || !isTransfer(*selected)) {
+        return {};
+    }
+
+    const QString idPrefix = transferId(*selected);
+    if (idPrefix.isEmpty()) {
+        return {};
+    }
+
+    const Transaction* outgoing = nullptr;
+    const Transaction* incoming = nullptr;
+    const QString outgoingId = idPrefix + QStringLiteral("-out");
+    const QString incomingId = idPrefix + QStringLiteral("-in");
+    for (const Transaction& transaction : transactions_) {
+        if (transaction.id() == outgoingId &&
+            transaction.categoryId() == QStringLiteral("transfer-out")) {
+            outgoing = &transaction;
+        } else if (transaction.id() == incomingId &&
+                   transaction.categoryId() == QStringLiteral("transfer-in")) {
+            incoming = &transaction;
+        }
+    }
+    if (!outgoing || !incoming) {
+        return {};
+    }
+
+    QVariantMap result;
+    result["sourceAccountId"] = outgoing->accountId();
+    result["targetAccountId"] = incoming->accountId();
+    result["sourceAmount"] = outgoing->money().minorUnits();
+    return result;
 }
 
 bool FinanceController::deleteTransaction(const QString& id)
@@ -632,7 +791,7 @@ bool FinanceController::deleteTransaction(const QString& id)
         return false;
     }
 
-    transactions_.removeAt(transactionIndex);
+    transactions_ = repository_.loadTransactions();
     summary_ = repository_.loadSummary();
 
     emit transactionsChanged();

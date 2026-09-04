@@ -38,6 +38,115 @@ AssetType assetTypeFromInt(const int value)
     }
     return AssetType::Fiat;
 }
+
+bool isTransferCategory(const QString& categoryId)
+{
+    return categoryId == QStringLiteral("transfer-in") ||
+           categoryId == QStringLiteral("transfer-out");
+}
+
+struct TransferComponentIds
+{
+    QString outgoing;
+    QString incoming;
+    bool valid = false;
+};
+
+TransferComponentIds transferComponentIds(
+    const QString& id,
+    const QString& categoryId
+    )
+{
+    QString transferId;
+    if (categoryId == QStringLiteral("transfer-out") &&
+        id.endsWith(QStringLiteral("-out"))) {
+        transferId = id.left(id.size() - 4);
+    } else if (categoryId == QStringLiteral("transfer-in") &&
+               id.endsWith(QStringLiteral("-in"))) {
+        transferId = id.left(id.size() - 3);
+    }
+
+    if (transferId.isEmpty()) {
+        return {};
+    }
+
+    return {
+        transferId + QStringLiteral("-out"),
+        transferId + QStringLiteral("-in"),
+        true
+    };
+}
+
+void prepareTransactionInsert(QSqlQuery& query)
+{
+    query.prepare(QStringLiteral(
+        "INSERT INTO transactions(id, account_id, category_id, type, "
+        "amount_minor, occurred_at, description, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
+}
+
+bool insertTransactionRow(
+    QSqlQuery& query,
+    const Transaction& transaction,
+    const qint64 createdAt
+    )
+{
+    query.bindValue(0, transaction.id());
+    query.bindValue(1, transaction.accountId());
+    query.bindValue(2, transaction.categoryId());
+    query.bindValue(3, transaction.type() == TransactionType::Income ? 0 : 1);
+    query.bindValue(4, transaction.money().minorUnits());
+    query.bindValue(5, transaction.date().toMSecsSinceEpoch());
+    query.bindValue(6, transaction.description());
+    query.bindValue(7, createdAt);
+    return query.exec();
+}
+
+bool deleteOperationRows(
+    QSqlDatabase& database,
+    const QString& id,
+    QString& error
+    )
+{
+    QSqlQuery lookup(database);
+    lookup.prepare(QStringLiteral(
+        "SELECT category_id FROM transactions WHERE id = ?"));
+    lookup.addBindValue(id);
+    if (!lookup.exec()) {
+        error = lookup.lastError().text();
+        return false;
+    }
+    if (!lookup.next()) {
+        error = QStringLiteral("Transaction was not found");
+        return false;
+    }
+
+    const QString categoryId = lookup.value(0).toString();
+    lookup.finish();
+    const TransferComponentIds componentIds = transferComponentIds(id, categoryId);
+
+    QSqlQuery deletion(database);
+    if (isTransferCategory(categoryId) && componentIds.valid) {
+        deletion.prepare(QStringLiteral(
+            "DELETE FROM transactions "
+            "WHERE (id = ? AND category_id = 'transfer-out') "
+            "   OR (id = ? AND category_id = 'transfer-in')"));
+        deletion.addBindValue(componentIds.outgoing);
+        deletion.addBindValue(componentIds.incoming);
+    } else {
+        deletion.prepare(QStringLiteral(
+            "DELETE FROM transactions WHERE id = ?"));
+        deletion.addBindValue(id);
+    }
+
+    if (!deletion.exec() || deletion.numRowsAffected() < 1) {
+        error = deletion.lastError().isValid()
+            ? deletion.lastError().text()
+            : QStringLiteral("Transaction was not found");
+        return false;
+    }
+    return true;
+}
 }
 
 FinanceRepository::FinanceRepository(const QString& databasePath)
@@ -235,20 +344,13 @@ bool FinanceRepository::insertTransaction(const Transaction& transaction)
     }
 
     QSqlQuery query(database_);
-    query.prepare(QStringLiteral(
-        "INSERT INTO transactions(id, account_id, category_id, type, "
-        "amount_minor, occurred_at, description, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
-    query.addBindValue(transaction.id());
-    query.addBindValue(transaction.accountId());
-    query.addBindValue(transaction.categoryId());
-    query.addBindValue(transaction.type() == TransactionType::Income ? 0 : 1);
-    query.addBindValue(transaction.money().minorUnits());
-    query.addBindValue(transaction.date().toMSecsSinceEpoch());
-    query.addBindValue(transaction.description());
-    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+    prepareTransactionInsert(query);
 
-    if (!query.exec() || !database_.commit()) {
+    if (!insertTransactionRow(
+            query,
+            transaction,
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) ||
+        !database_.commit()) {
         setLastError(query.lastError().isValid()
                          ? query.lastError().text()
                          : database_.lastError().text());
@@ -269,25 +371,12 @@ bool FinanceRepository::insertTransfer(
     }
 
     QSqlQuery query(database_);
-    query.prepare(QStringLiteral(
-        "INSERT INTO transactions(id, account_id, category_id, type, "
-        "amount_minor, occurred_at, description, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
+    prepareTransactionInsert(query);
     const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
 
-    const auto insert = [&](const Transaction& transaction) {
-        query.bindValue(0, transaction.id());
-        query.bindValue(1, transaction.accountId());
-        query.bindValue(2, transaction.categoryId());
-        query.bindValue(3, transaction.type() == TransactionType::Income ? 0 : 1);
-        query.bindValue(4, transaction.money().minorUnits());
-        query.bindValue(5, transaction.date().toMSecsSinceEpoch());
-        query.bindValue(6, transaction.description());
-        query.bindValue(7, createdAt);
-        return query.exec();
-    };
-
-    if (!insert(outgoing) || !insert(incoming) || !database_.commit()) {
+    if (!insertTransactionRow(query, outgoing, createdAt) ||
+        !insertTransactionRow(query, incoming, createdAt) ||
+        !database_.commit()) {
         setLastError(query.lastError().isValid()
                          ? query.lastError().text()
                          : database_.lastError().text());
@@ -322,17 +411,83 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
     return true;
 }
 
+bool FinanceRepository::replaceTransaction(
+    const QString& currentId,
+    const Transaction& replacement
+    )
+{
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QString error;
+    QSqlQuery insertion(database_);
+    prepareTransactionInsert(insertion);
+    const bool succeeded =
+        deleteOperationRows(database_, currentId, error) &&
+        insertTransactionRow(
+            insertion,
+            replacement,
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+
+    if (!succeeded || !database_.commit()) {
+        if (error.isEmpty()) {
+            error = insertion.lastError().isValid()
+                ? insertion.lastError().text()
+                : database_.lastError().text();
+        }
+        setLastError(error);
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::replaceTransactionWithTransfer(
+    const QString& currentId,
+    const Transaction& outgoing,
+    const Transaction& incoming
+    )
+{
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QString error;
+    QSqlQuery insertion(database_);
+    prepareTransactionInsert(insertion);
+    const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    const bool succeeded =
+        deleteOperationRows(database_, currentId, error) &&
+        insertTransactionRow(insertion, outgoing, createdAt) &&
+        insertTransactionRow(insertion, incoming, createdAt);
+
+    if (!succeeded || !database_.commit()) {
+        if (error.isEmpty()) {
+            error = insertion.lastError().isValid()
+                ? insertion.lastError().text()
+                : database_.lastError().text();
+        }
+        setLastError(error);
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::deleteTransaction(const QString& id)
 {
-    QSqlQuery query(database_);
-    query.prepare(QStringLiteral(
-        "DELETE FROM transactions WHERE id = ?"));
-    query.addBindValue(id);
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
 
-    if (!query.exec() || query.numRowsAffected() != 1) {
-        setLastError(query.lastError().isValid()
-                         ? query.lastError().text()
-                         : QStringLiteral("Transaction was not found"));
+    QString error;
+    if (!deleteOperationRows(database_, id, error) || !database_.commit()) {
+        setLastError(error.isEmpty() ? database_.lastError().text() : error);
+        database_.rollback();
         return false;
     }
     return true;
