@@ -204,20 +204,25 @@ FinanceRepository::Summary FinanceRepository::loadSummary()
 
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
-            "SELECT t.type, a.currency, SUM(t.amount_minor) "
+            "SELECT t.type, a.currency, SUM(t.amount_minor), t.category_id "
             "FROM transactions t JOIN accounts a ON a.id = t.account_id "
             "WHERE a.is_archived = 0 "
-            "GROUP BY t.type, a.currency"))) {
+            "GROUP BY t.type, a.currency, t.category_id"))) {
         setLastError(query.lastError().text());
         return summary;
     }
 
     while (query.next()) {
+        const QString categoryId = query.value(3).toString();
+        if (categoryId == QStringLiteral("transfer-in") ||
+            categoryId == QStringLiteral("transfer-out")) {
+            continue;
+        }
         const int type = query.value(0).toInt();
         const Currency currency = currencyFromCode(query.value(1).toString());
         auto& values = type == 0 ? summary.income : summary.expense;
         const qint64 amount = query.value(2).toLongLong();
-        values[currencyIndex(currency)] = amount;
+        values[currencyIndex(currency)] += amount;
     }
     return summary;
 }
@@ -244,6 +249,45 @@ bool FinanceRepository::insertTransaction(const Transaction& transaction)
     query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
 
     if (!query.exec() || !database_.commit()) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::insertTransfer(
+    const Transaction& outgoing,
+    const Transaction& incoming
+    )
+{
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO transactions(id, account_id, category_id, type, "
+        "amount_minor, occurred_at, description, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
+    const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+
+    const auto insert = [&](const Transaction& transaction) {
+        query.bindValue(0, transaction.id());
+        query.bindValue(1, transaction.accountId());
+        query.bindValue(2, transaction.categoryId());
+        query.bindValue(3, transaction.type() == TransactionType::Income ? 0 : 1);
+        query.bindValue(4, transaction.money().minorUnits());
+        query.bindValue(5, transaction.date().toMSecsSinceEpoch());
+        query.bindValue(6, transaction.description());
+        query.bindValue(7, createdAt);
+        return query.exec();
+    };
+
+    if (!insert(outgoing) || !insert(incoming) || !database_.commit()) {
         setLastError(query.lastError().isValid()
                          ? query.lastError().text()
                          : database_.lastError().text());
@@ -537,7 +581,9 @@ bool FinanceRepository::seedDefaults()
         {QStringLiteral("health"), QStringLiteral("Здоровье"), 1},
         {QStringLiteral("entertainment"), QStringLiteral("Развлечения"), 1},
         {QStringLiteral("shopping"), QStringLiteral("Покупки"), 1},
-        {QStringLiteral("other_expense"), QStringLiteral("Другое"), 1}};
+        {QStringLiteral("other_expense"), QStringLiteral("Другое"), 1},
+        {QStringLiteral("transfer-in"), QStringLiteral("Перевод"), 0},
+        {QStringLiteral("transfer-out"), QStringLiteral("Перевод"), 1}};
     QSqlQuery category(database_);
     category.prepare(QStringLiteral(
         "INSERT OR IGNORE INTO categories(id,name,type,is_system,created_at) "

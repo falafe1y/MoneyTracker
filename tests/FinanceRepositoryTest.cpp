@@ -10,6 +10,7 @@ class FinanceRepositoryTest : public QObject
 private slots:
     void preservesSelectedAccountAfterReopen();
     void updatesAndDeletesTransaction();
+    void storesTransferAtomicallyWithoutAffectingIncomeAndExpense();
 };
 
 void FinanceRepositoryTest::preservesSelectedAccountAfterReopen()
@@ -171,6 +172,51 @@ void FinanceRepositoryTest::updatesAndDeletesTransaction()
     const FinanceRepository::Summary deletedSummary = repository.loadSummary();
     QCOMPARE(deletedSummary.income[static_cast<int>(Currency::USD)], qint64(0));
     QCOMPARE(deletedSummary.balance[static_cast<int>(Currency::USD)], qint64(0));
+}
+
+void FinanceRepositoryTest::storesTransferAtomicallyWithoutAffectingIncomeAndExpense()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    FinanceRepository repository(
+        temporaryDirectory.filePath(QStringLiteral("moneytracker-transfer-test.sqlite3")));
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+    const Account source(
+        QStringLiteral("source-account"), QStringLiteral("Source"),
+        AssetType::Fiat, AccountType::DebitCard, Currency::RUB, 50'000);
+    const Account target(
+        QStringLiteral("target-account"), QStringLiteral("Target"),
+        AssetType::Crypto, AccountType::CryptoWallet, Currency::USD, 0);
+    QVERIFY(repository.insertAccount(source));
+    QVERIFY(repository.insertAccount(target));
+
+    const QDateTime occurredAt = QDateTime::currentDateTimeUtc();
+    const Transaction outgoing(
+        QStringLiteral("transfer-id-out"), source.id(), QStringLiteral("transfer-out"),
+        Money(10'000, Currency::RUB), TransactionType::Expense,
+        occurredAt, QStringLiteral("Transfer test"));
+    const Transaction incoming(
+        QStringLiteral("transfer-id-in"), target.id(), QStringLiteral("transfer-in"),
+        Money(125, Currency::USD), TransactionType::Income,
+        occurredAt, QStringLiteral("Transfer test"));
+
+    const Transaction invalidIncoming(
+        QStringLiteral("invalid-transfer-in"), QStringLiteral("missing-account"),
+        QStringLiteral("transfer-in"), Money(125, Currency::USD),
+        TransactionType::Income, occurredAt, QStringLiteral("Invalid transfer"));
+    QVERIFY(!repository.insertTransfer(outgoing, invalidIncoming));
+    QVERIFY(repository.loadTransactions().isEmpty());
+
+    QVERIFY2(repository.insertTransfer(outgoing, incoming),
+             qPrintable(repository.lastError()));
+    QCOMPARE(repository.loadTransactions().size(), 2);
+
+    const FinanceRepository::Summary summary = repository.loadSummary();
+    QCOMPARE(summary.balance[static_cast<int>(Currency::RUB)], qint64(40'000));
+    QCOMPARE(summary.balance[static_cast<int>(Currency::USD)], qint64(125));
+    QCOMPARE(summary.income[static_cast<int>(Currency::USD)], qint64(0));
+    QCOMPARE(summary.expense[static_cast<int>(Currency::RUB)], qint64(0));
 }
 
 QTEST_GUILESS_MAIN(FinanceRepositoryTest)

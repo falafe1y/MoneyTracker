@@ -89,10 +89,19 @@ QVariantList FinanceController::transactions() const
             transaction.money().currency()
             );
 
-        item["type"] =
-            transaction.type() == TransactionType::Income
-                ? "income"
-                : "expense";
+        const bool isTransfer =
+            transaction.categoryId() == QStringLiteral("transfer-in") ||
+            transaction.categoryId() == QStringLiteral("transfer-out");
+        item["type"] = isTransfer
+            ? QStringLiteral("transfer")
+            : transaction.type() == TransactionType::Income
+                ? QStringLiteral("income")
+                : QStringLiteral("expense");
+        item["direction"] = transaction.categoryId() == QStringLiteral("transfer-in")
+            ? QStringLiteral("in")
+            : transaction.categoryId() == QStringLiteral("transfer-out")
+                ? QStringLiteral("out")
+                : QString();
 
         item["date"] = transaction.date().toString(
             Qt::ISODate
@@ -141,6 +150,29 @@ QVariantList FinanceController::accounts() const
         item["type"] = accountTypeToString(account.type());
         item["currency"] = currencyCode(account.currency());
         item["initialBalanceMinor"] = account.initialBalanceMinor();
+        item["balanceMinor"] = accountBalanceMinor(account);
+        result.append(item);
+    }
+    return result;
+}
+
+QVariantList FinanceController::allAccounts() const
+{
+    QVariantList result;
+    for (const Account& account : accounts_) {
+        QVariantMap item;
+        item["id"] = account.id();
+        item["name"] = account.name();
+        item["asset"] = assetTypeToString(account.assetType());
+        item["assetTitle"] = account.assetType() == AssetType::Fiat
+            ? QStringLiteral("Фиат")
+            : account.assetType() == AssetType::Crypto
+                ? QStringLiteral("Крипта")
+                : QStringLiteral("Инвестиции");
+        item["currency"] = currencyCode(account.currency());
+        item["displayName"] = item["assetTitle"].toString()
+            + QStringLiteral(" · ") + account.name()
+            + QStringLiteral(" · ") + currencyCode(account.currency());
         item["balanceMinor"] = accountBalanceMinor(account);
         result.append(item);
     }
@@ -440,6 +472,62 @@ bool FinanceController::addExpense(
         currencyFromString(currency),
         accountId
         );
+}
+
+bool FinanceController::addTransfer(
+    const qint64 sourceMinorUnits,
+    const QString& description,
+    const QString& sourceAccountId,
+    const QString& targetAccountId
+    )
+{
+    if (sourceMinorUnits <= 0 || sourceAccountId.isEmpty() ||
+        targetAccountId.isEmpty() || sourceAccountId == targetAccountId) {
+        return false;
+    }
+
+    const Account* source = nullptr;
+    const Account* target = nullptr;
+    for (const Account& account : accounts_) {
+        if (account.id() == sourceAccountId) source = &account;
+        if (account.id() == targetAccountId) target = &account;
+    }
+    if (!source || !target) {
+        return false;
+    }
+
+    const QString transferId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QDateTime occurredAt = QDateTime::currentDateTime();
+    const qint64 targetMinorUnits = currencyConverter_.convert(
+        Money(sourceMinorUnits, source->currency()), target->currency()).minorUnits();
+    if (targetMinorUnits <= 0) {
+        return false;
+    }
+
+    const QString normalizedDescription = description.trimmed().isEmpty()
+        ? QStringLiteral("Перевод: %1 → %2").arg(source->name(), target->name())
+        : description.trimmed();
+    const Transaction outgoing(
+        transferId + QStringLiteral("-out"), source->id(),
+        QStringLiteral("transfer-out"), Money(sourceMinorUnits, source->currency()),
+        TransactionType::Expense, occurredAt, normalizedDescription);
+    const Transaction incoming(
+        transferId + QStringLiteral("-in"), target->id(),
+        QStringLiteral("transfer-in"), Money(targetMinorUnits, target->currency()),
+        TransactionType::Income, occurredAt, normalizedDescription);
+
+    if (!repository_.isOpen() || !repository_.insertTransfer(outgoing, incoming)) {
+        qWarning() << "Failed to save transfer:" << repository_.lastError();
+        return false;
+    }
+
+    transactions_.prepend(incoming);
+    transactions_.prepend(outgoing);
+    summary_ = repository_.loadSummary();
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
+    return true;
 }
 
 bool FinanceController::updateTransaction(

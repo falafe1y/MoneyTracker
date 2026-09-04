@@ -98,7 +98,7 @@ ApplicationWindow {
     }
 
     function accountName(id) {
-        const rows = financeController.accounts;
+        const rows = financeController.allAccounts;
         for (let i = 0; i < rows.length; ++i)
             if (rows[i].id === id)
                 return rows[i].name;
@@ -111,6 +111,11 @@ ApplicationWindow {
         const cents = value % 100;
         return cents === 0 ? String(whole)
                            : String(whole) + "." + (cents < 10 ? "0" : "") + String(cents);
+    }
+
+    function transactionSignedAmount(row) {
+        return row.type === "income" || (row.type === "transfer" && row.direction === "in")
+             ? row.amount : -row.amount;
     }
 
     function indexByRole(model, role, value) {
@@ -732,6 +737,7 @@ ApplicationWindow {
                                 Repeater {
                                     model: root.categoryTotals()
                                     delegate: ColumnLayout {
+                                        required property int index
                                         required property var modelData
                                         Layout.fillWidth: true
                                         Layout.fillHeight: true
@@ -832,6 +838,7 @@ ApplicationWindow {
                                     Repeater {
                                         model: root.categoryTotals()
                                         delegate: RowLayout {
+                                            required property int index
                                             required property var modelData
                                             Layout.fillWidth: true
                                             Rectangle {
@@ -1044,6 +1051,7 @@ ApplicationWindow {
                         model: transactionTable.rows
 
                         delegate: Item {
+                            required property int index
                             required property var modelData
                             width: parent.width
                             height: transactionTable.rowHeight
@@ -1059,7 +1067,7 @@ ApplicationWindow {
                                 anchors.rightMargin: 22
 
                                 Text {
-                                    text: modelData.description || (modelData.type === "income" ? "Доход" : "Расход")
+                                    text: modelData.description || (modelData.type === "transfer" ? "Перевод" : modelData.type === "income" ? "Доход" : "Расход")
                                     color: root.ink
                                     font.pixelSize: 12
                                     Layout.preferredWidth: 250
@@ -1085,8 +1093,8 @@ ApplicationWindow {
                                     Layout.preferredWidth: 120
                                 }
                                 Text {
-                                    text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true)
-                                    color: modelData.type === "income" ? root.income : root.red
+                                    text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
+                                    color: modelData.type === "transfer" ? root.green2 : modelData.type === "income" ? root.income : root.red
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: 130
@@ -1124,6 +1132,7 @@ ApplicationWindow {
                     model: transactionTable.rows
 
                     delegate: Item {
+                        required property int index
                         required property var modelData
                         width: ListView.view.width
                         height: transactionTable.rowHeight
@@ -1139,7 +1148,7 @@ ApplicationWindow {
                             anchors.rightMargin: 22
 
                             Text {
-                                text: modelData.description || (modelData.type === "income" ? "Доход" : "Расход")
+                                text: modelData.description || (modelData.type === "transfer" ? "Перевод" : modelData.type === "income" ? "Доход" : "Расход")
                                 color: root.ink
                                 font.pixelSize: 12
                                 Layout.preferredWidth: 250
@@ -1165,8 +1174,8 @@ ApplicationWindow {
                                 Layout.preferredWidth: 120
                             }
                             Text {
-                                text: root.money(modelData.type === "income" ? modelData.amount : -modelData.amount, modelData.currency, true)
-                                color: modelData.type === "income" ? root.income : root.red
+                                text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
+                                color: modelData.type === "transfer" ? root.green2 : modelData.type === "income" ? root.income : root.red
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                                 Layout.preferredWidth: 130
@@ -1720,6 +1729,8 @@ ApplicationWindow {
         AppMenuItem {
             width: transactionContextMenu.availableWidth
             text: "Редактировать"
+            enabled: transactionContextMenu.transactionData
+                  && transactionContextMenu.transactionData.type !== "transfer"
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     operationDialog.openForEdit(transactionContextMenu.transactionData);
@@ -1740,6 +1751,8 @@ ApplicationWindow {
             width: transactionContextMenu.availableWidth
             text: "Удалить"
             destructive: true
+            enabled: transactionContextMenu.transactionData
+                  && transactionContextMenu.transactionData.type !== "transfer"
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     deleteTransactionDialog.openFor(transactionContextMenu.transactionData);
@@ -1810,9 +1823,11 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: deleteTransactionDialog.transactionData
                               ? (deleteTransactionDialog.transactionData.description
-                                 || (deleteTransactionDialog.transactionData.type === "income"
-                                     ? "Доход"
-                                     : "Расход"))
+                                 || (deleteTransactionDialog.transactionData.type === "transfer"
+                                     ? "Перевод"
+                                     : deleteTransactionDialog.transactionData.type === "income"
+                                         ? "Доход"
+                                         : "Расход"))
                               : ""
                         color: root.ink
                         font.pixelSize: 14
@@ -1826,9 +1841,7 @@ ApplicationWindow {
                               ? root.accountName(deleteTransactionDialog.transactionData.accountId)
                                 + " · "
                                 + root.money(
-                                    deleteTransactionDialog.transactionData.type === "income"
-                                        ? deleteTransactionDialog.transactionData.amount
-                                        : -deleteTransactionDialog.transactionData.amount,
+                                    root.transactionSignedAmount(deleteTransactionDialog.transactionData),
                                     deleteTransactionDialog.transactionData.currency,
                                     true
                                 )
@@ -1893,6 +1906,7 @@ ApplicationWindow {
                 financeController.selectedAccountId
             );
             operationCategory.currentIndex = 0;
+            transferTargetAccount.currentIndex = financeController.allAccounts.length > 1 ? 1 : 0;
             open();
         }
 
@@ -1940,18 +1954,41 @@ ApplicationWindow {
             AppComboBox {
                 id: operationType
                 Layout.fillWidth: true
-                model: ["Доход", "Расход"]
+                model: ["Доход", "Расход", "Перевод"]
+                enabled: !operationDialog.editingId
                 onActivated: operationCategory.currentIndex = 0
+            }
+            Text {
+                visible: operationType.currentIndex === 2
+                text: "Откуда"
+                color: root.muted
+                font.pixelSize: 12
             }
             AppComboBox {
                 id: operationAccount
                 Layout.fillWidth: true
-                model: financeController.accounts
-                textRole: "name"
+                model: operationType.currentIndex === 2
+                     ? financeController.allAccounts
+                     : financeController.accounts
+                textRole: operationType.currentIndex === 2 ? "displayName" : "name"
+            }
+            Text {
+                visible: operationType.currentIndex === 2
+                text: "Куда"
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppComboBox {
+                id: transferTargetAccount
+                Layout.fillWidth: true
+                visible: operationType.currentIndex === 2
+                model: financeController.allAccounts
+                textRole: "displayName"
             }
             AppComboBox {
                 id: operationCategory
                 Layout.fillWidth: true
+                visible: operationType.currentIndex !== 2
                 model: {
                     const selectedType = operationType.currentIndex === 0
                                        ? "income"
@@ -2007,23 +2044,40 @@ ApplicationWindow {
                     text: "Сохранить"
                     highlighted: true
                     onClicked: {
-                        if (!financeController.accounts.length) {
+                        if (!financeController.allAccounts.length) {
                             operationError.text = "Сначала добавьте счёт";
                             return;
                         }
-                        if (!operationCategory.model.length) {
+                        const isTransfer = operationType.currentIndex === 2;
+                        if (isTransfer && financeController.allAccounts.length < 2) {
+                            operationError.text = "Для перевода нужны два счёта";
+                            return;
+                        }
+                        if (!isTransfer && !operationCategory.model.length) {
                             operationError.text = "Сначала добавьте категорию";
                             return;
                         }
-                        const account = financeController.accounts[operationAccount.currentIndex];
-                        const category = operationCategory.model[operationCategory.currentIndex];
+                        const account = operationAccount.model[operationAccount.currentIndex];
+                        const category = isTransfer
+                                     ? null
+                                     : operationCategory.model[operationCategory.currentIndex];
                         const minor = Math.round(
                             (Number(operationAmount.text.replace(",", ".")) || 0) * 100
                         );
-                        const type = operationType.currentIndex === 0
-                                   ? "income"
-                                   : "expense";
-                        const ok = operationDialog.editingId
+                        const type = operationType.currentIndex === 0 ? "income"
+                                   : operationType.currentIndex === 1 ? "expense"
+                                   : "transfer";
+                        const targetAccount = isTransfer
+                                            ? transferTargetAccount.model[transferTargetAccount.currentIndex]
+                                            : null;
+                        const ok = isTransfer
+                                 ? financeController.addTransfer(
+                                     minor,
+                                     operationDescription.text,
+                                     account.id,
+                                     targetAccount.id
+                                 )
+                                 : operationDialog.editingId
                                  ? financeController.updateTransaction(
                                      operationDialog.editingId,
                                      minor,
@@ -2050,7 +2104,9 @@ ApplicationWindow {
                         if (ok)
                             operationDialog.close();
                         else
-                            operationError.text = "Проверьте сумму, счёт и категорию";
+                            operationError.text = isTransfer
+                                ? "Проверьте сумму и выбранные счета"
+                                : "Проверьте сумму, счёт и категорию";
                     }
                 }
             }

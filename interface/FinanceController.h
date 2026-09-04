@@ -74,6 +74,12 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QVariantList allAccounts
+            READ allAccounts
+                NOTIFY accountsChanged
+        )
+
+    Q_PROPERTY(
         QVariantList assetSummaries
             READ assetSummaries
                 NOTIFY balanceChanged
@@ -101,6 +107,7 @@ public:
     QVariantList transactions() const;
     QVariantList categories() const;
     QVariantList accounts() const;
+    QVariantList allAccounts() const;
     QVariantList assetSummaries() const;
 
     QString selectedAsset() const;
@@ -142,6 +149,13 @@ public:
         const QString& categoryId,
         const QString& currency,
         const QString& accountId
+        );
+
+    Q_INVOKABLE bool addTransfer(
+        qint64 sourceMinorUnits,
+        const QString& description,
+        const QString& sourceAccountId,
+        const QString& targetAccountId
         );
 
     Q_INVOKABLE bool updateTransaction(
