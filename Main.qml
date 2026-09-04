@@ -529,62 +529,62 @@ ApplicationWindow {
                 width: Math.max(0, overviewScroll.availableWidth - overviewScroll.contentEdgeMargin * 2)
                 spacing: 14
 
-                Panel {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 108
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 20
-                        spacing: 28
-                        Rectangle {
-                            width: 58
-                            height: 58
-                            radius: 17
-                            color: root.green
-                            Text {
-                                anchors.centerIn: parent
-                                text: "▣"
-                                color: root.white
-                                font.pixelSize: 27
-                            }
-                        }
-                        ColumnLayout {
-                            spacing: 0
-                            Text {
-                                text: "Все активы"
-                                color: root.ink
-                                font.pixelSize: 15
-                            }
-                            Text {
-                                text: root.money(financeController.balanceMinorUnits, financeController.appCurrency, false)
-                                color: root.ink
-                                font.pixelSize: 30
-                                font.weight: Font.Bold
-                            }
-                        }
-                        Item {
-                            Layout.fillWidth: true
-                        }
-                        Repeater {
-                            model: root.assets
-                            delegate: ColumnLayout {
-                                required property var modelData
-                                Layout.preferredWidth: 120
-                                Text {
-                                    text: modelData.title
-                                    color: root.muted
-                                    font.pixelSize: 13
-                                }
-                                Text {
-                                    text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
-                                    color: root.green2
-                                    font.pixelSize: 17
-                                    font.weight: Font.DemiBold
-                                }
-                            }
-                        }
-                    }
-                }
+                // Panel {
+                //     Layout.fillWidth: true
+                //     Layout.preferredHeight: 108
+                //     RowLayout {
+                //         anchors.fill: parent
+                //         anchors.margins: 20
+                //         spacing: 28
+                //         Rectangle {
+                //             width: 58
+                //             height: 58
+                //             radius: 17
+                //             color: root.green
+                //             Text {
+                //                 anchors.centerIn: parent
+                //                 text: "▣"
+                //                 color: root.white
+                //                 font.pixelSize: 27
+                //             }
+                //         }
+                //         ColumnLayout {
+                //             spacing: 0
+                //             Text {
+                //                 text: "Все активы"
+                //                 color: root.ink
+                //                 font.pixelSize: 15
+                //             }
+                //             Text {
+                //                 text: root.money(financeController.balanceMinorUnits, financeController.appCurrency, false)
+                //                 color: root.ink
+                //                 font.pixelSize: 30
+                //                 font.weight: Font.Bold
+                //             }
+                //         }
+                //         Item {
+                //             Layout.fillWidth: true
+                //         }
+                //         Repeater {
+                //             model: root.assets
+                //             delegate: ColumnLayout {
+                //                 required property var modelData
+                //                 Layout.preferredWidth: 120
+                //                 Text {
+                //                     text: modelData.title
+                //                     color: root.muted
+                //                     font.pixelSize: 13
+                //                 }
+                //                 Text {
+                //                     text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
+                //                     color: root.green2
+                //                     font.pixelSize: 17
+                //                     font.weight: Font.DemiBold
+                //                 }
+                //             }
+                //         }
+                //     }
+                // }
 
                 RowLayout {
                     Layout.fillWidth: true
