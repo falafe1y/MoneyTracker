@@ -2,6 +2,8 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QLocale>
+#include <QTranslator>
 
 #include "interface/FinanceController.h"
 
@@ -14,6 +16,33 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
 
     FinanceController financeController;
+    QTranslator translator;
+
+    const auto applyUiLanguage = [&]()
+    {
+        QCoreApplication::removeTranslator(&translator);
+
+        const bool english = financeController.uiLanguage() == QStringLiteral("en");
+        QLocale::setDefault(english ? QLocale(QLocale::English, QLocale::UnitedStates)
+                                    : QLocale(QLocale::Russian, QLocale::Russia));
+        if (english) {
+            const QString translationPath = QStringLiteral(":/i18n/qml_en.qm");
+            if (translator.load(translationPath)) {
+                QCoreApplication::installTranslator(&translator);
+            }
+        }
+
+        engine.retranslate();
+        financeController.retranslate();
+    };
+
+    applyUiLanguage();
+    QObject::connect(
+        &financeController,
+        &FinanceController::uiLanguageChanged,
+        &engine,
+        applyUiLanguage
+        );
 
     engine.rootContext()->setContextProperty(
         "financeController",

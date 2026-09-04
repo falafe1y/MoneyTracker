@@ -37,6 +37,9 @@ FinanceController::FinanceController(QObject* parent)
     }
 
     appCurrency_ = currencyFromString(repository_.loadAppCurrency());
+    uiLanguage_ = repository_.loadUiLanguage() == QStringLiteral("en")
+        ? QStringLiteral("en")
+        : QStringLiteral("ru");
     selectedAsset_ = assetTypeFromString(repository_.loadSelectedAsset());
     transactions_ = repository_.loadTransactions();
     categories_ = repository_.loadCategories();
@@ -91,6 +94,34 @@ void FinanceController::setAppCurrency(const QString& currency)
     emit transactionsChanged();
 }
 
+QString FinanceController::uiLanguage() const
+{
+    return uiLanguage_;
+}
+
+void FinanceController::setUiLanguage(const QString& language)
+{
+    const QString normalizedLanguage = language.trimmed().toLower() == QStringLiteral("en")
+        ? QStringLiteral("en")
+        : QStringLiteral("ru");
+    if (normalizedLanguage == uiLanguage_) {
+        return;
+    }
+
+    uiLanguage_ = normalizedLanguage;
+    if (repository_.isOpen() && !repository_.saveUiLanguage(uiLanguage_)) {
+        qWarning() << "Failed to save UI language:" << repository_.lastError();
+    }
+    emit uiLanguageChanged();
+}
+
+void FinanceController::retranslate()
+{
+    emit categoriesChanged();
+    emit accountsChanged();
+    emit transactionsChanged();
+}
+
 QVariantList FinanceController::transactions() const
 {
     QVariantList result;
@@ -127,7 +158,8 @@ QVariantList FinanceController::transactions() const
             Qt::ISODate
             );
 
-        item["description"] = transaction.description();
+        item["description"] = transactionDisplayDescription(transaction);
+        item["rawDescription"] = transaction.description();
 
         result.append(item);
     }
@@ -146,7 +178,7 @@ QVariantList FinanceController::categories() const
         }
 
         QVariantMap item;
-        item["label"] = category.name();
+        item["label"] = categoryDisplayName(category);
         item["value"] = category.id();
         item["type"] = category.type() == CategoryType::Income
             ? QStringLiteral("income")
@@ -166,7 +198,8 @@ QVariantList FinanceController::accounts() const
 
         QVariantMap item;
         item["id"] = account.id();
-        item["name"] = account.name();
+        item["name"] = accountDisplayName(account);
+        item["rawName"] = account.name();
         item["type"] = accountTypeToString(account.type());
         item["asset"] = assetTypeToString(account.assetType());
         item["currency"] = currencyCode(account.currency());
@@ -184,16 +217,17 @@ QVariantList FinanceController::allAccounts() const
     for (const Account& account : accounts_) {
         QVariantMap item;
         item["id"] = account.id();
-        item["name"] = account.name();
+        item["name"] = accountDisplayName(account);
+        item["rawName"] = account.name();
         item["asset"] = assetTypeToString(account.assetType());
         item["assetTitle"] = account.assetType() == AssetType::Fiat
-            ? QStringLiteral("Фиат")
+            ? tr("Фиат")
             : account.assetType() == AssetType::Crypto
-                ? QStringLiteral("Крипта")
-                : QStringLiteral("Инвестиции");
+                ? tr("Крипта")
+                : tr("Инвестиции");
         item["currency"] = currencyCode(account.currency());
         item["displayName"] = item["assetTitle"].toString()
-            + QStringLiteral(" · ") + account.name()
+            + QStringLiteral(" · ") + accountDisplayName(account)
             + QStringLiteral(" · ") + currencyCode(account.currency());
         item["balanceMinor"] = accountBalanceMinor(account);
         item["initialBalanceMinor"] = account.initialBalanceMinor();
@@ -283,7 +317,9 @@ bool FinanceController::addAccount(
 
     for (const Account& existing : accounts_) {
         if (existing.assetType() == selectedAsset_ &&
-            existing.name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
+            (existing.name().compare(normalizedName, Qt::CaseInsensitive) == 0 ||
+             accountDisplayName(existing).compare(
+                 normalizedName, Qt::CaseInsensitive) == 0)) {
             return false;
         }
     }
@@ -349,10 +385,15 @@ bool FinanceController::updateAccount(
     }
 
     const Account& original = accounts_[accountIndex];
+    const QString storedName = normalizedName == accountDisplayName(original)
+        ? original.name()
+        : normalizedName;
     for (const Account& existing : accounts_) {
         if (existing.id() != id &&
             existing.assetType() == original.assetType() &&
-            existing.name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
+            (existing.name().compare(storedName, Qt::CaseInsensitive) == 0 ||
+             accountDisplayName(existing).compare(
+                 normalizedName, Qt::CaseInsensitive) == 0)) {
             return false;
         }
     }
@@ -380,7 +421,7 @@ bool FinanceController::updateAccount(
 
     const Account updated(
         original.id(),
-        normalizedName,
+        storedName,
         original.assetType(),
         accountType,
         accountCurrency,
@@ -446,7 +487,9 @@ bool FinanceController::addCategory(
     for (const Category& existing : categories_) {
         if (!archivedCategoryIds_.contains(existing.id()) &&
             existing.type() == categoryType &&
-            existing.name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
+            (existing.name().compare(normalizedName, Qt::CaseInsensitive) == 0 ||
+             categoryDisplayName(existing).compare(
+                 normalizedName, Qt::CaseInsensitive) == 0)) {
             return false;
         }
     }
@@ -490,12 +533,18 @@ bool FinanceController::renameCategory(
         return false;
     }
 
+    if (normalizedName == categoryDisplayName(categories_[categoryIndex])) {
+        return true;
+    }
+
     const CategoryType type = categories_[categoryIndex].type();
     for (const Category& category : categories_) {
         if (category.id() != id &&
             !archivedCategoryIds_.contains(category.id()) &&
             category.type() == type &&
-            category.name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
+            (category.name().compare(normalizedName, Qt::CaseInsensitive) == 0 ||
+             categoryDisplayName(category).compare(
+                 normalizedName, Qt::CaseInsensitive) == 0)) {
             return false;
         }
     }
@@ -539,10 +588,10 @@ QString FinanceController::categoryName(const QString& id) const
 {
     for (const Category& category : categories_) {
         if (category.id() == id) {
-            return category.name();
+            return categoryDisplayName(category);
         }
     }
-    return QStringLiteral("Без категории");
+    return tr("Без категории");
 }
 
 qint64 FinanceController::convertTransaction(
@@ -633,9 +682,7 @@ bool FinanceController::addTransfer(
         return false;
     }
 
-    const QString normalizedDescription = description.trimmed().isEmpty()
-        ? QStringLiteral("Перевод: %1 → %2").arg(source->name(), target->name())
-        : description.trimmed();
+    const QString normalizedDescription = description.trimmed();
     const Transaction outgoing(
         transferId + QStringLiteral("-out"), source->id(),
         QStringLiteral("transfer-out"), Money(sourceMinorUnits, source->currency()),
@@ -742,9 +789,7 @@ bool FinanceController::updateOperation(
         const QString resolvedTransferId = originalIsTransfer
             ? currentTransferId
             : QUuid::createUuid().toString(QUuid::WithoutBraces);
-        const QString normalizedDescription = description.trimmed().isEmpty()
-            ? QStringLiteral("Перевод: %1 → %2").arg(source->name(), target->name())
-            : description.trimmed();
+        const QString normalizedDescription = description.trimmed();
         const Transaction outgoing(
             resolvedTransferId + QStringLiteral("-out"),
             source->id(),
@@ -1011,6 +1056,98 @@ qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
             appCurrency_).minorUnits();
     }
     return total;
+}
+
+QString FinanceController::accountDisplayName(const Account& account) const
+{
+    const QString currency = currencyCode(account.currency());
+    const QString defaultId = QStringLiteral("household-") + currency.toLower();
+    const QString defaultName = QStringLiteral("Основной ") + currency;
+    if (account.id() == defaultId && account.name() == defaultName) {
+        return tr("Основной %1").arg(currency);
+    }
+    return account.name();
+}
+
+QString FinanceController::categoryDisplayName(const Category& category) const
+{
+    const QString& id = category.id();
+    const QString& name = category.name();
+    if (id == QStringLiteral("salary") && name == QStringLiteral("Зарплата"))
+        return tr("Зарплата");
+    if (id == QStringLiteral("freelance") && name == QStringLiteral("Фриланс"))
+        return tr("Фриланс");
+    if (id == QStringLiteral("gift") && name == QStringLiteral("Подарок"))
+        return tr("Подарок");
+    if (id == QStringLiteral("investment") && name == QStringLiteral("Инвестиции"))
+        return tr("Инвестиции");
+    if (id == QStringLiteral("other_income") && name == QStringLiteral("Другой доход"))
+        return tr("Другой доход");
+    if (id == QStringLiteral("groceries") && name == QStringLiteral("Продукты"))
+        return tr("Продукты");
+    if (id == QStringLiteral("transport") && name == QStringLiteral("Транспорт"))
+        return tr("Транспорт");
+    if (id == QStringLiteral("housing") && name == QStringLiteral("Жилье"))
+        return tr("Жилье");
+    if (id == QStringLiteral("health") && name == QStringLiteral("Здоровье"))
+        return tr("Здоровье");
+    if (id == QStringLiteral("entertainment") && name == QStringLiteral("Развлечения"))
+        return tr("Развлечения");
+    if (id == QStringLiteral("shopping") && name == QStringLiteral("Покупки"))
+        return tr("Покупки");
+    if (id == QStringLiteral("other_expense") && name == QStringLiteral("Другое"))
+        return tr("Другое");
+    if ((id == QStringLiteral("transfer-in") ||
+         id == QStringLiteral("transfer-out")) &&
+        name == QStringLiteral("Перевод")) {
+        return tr("Перевод");
+    }
+    return name;
+}
+
+QString FinanceController::transactionDisplayDescription(
+    const Transaction& transaction
+    ) const
+{
+    const QString description = transaction.description();
+    if (!isTransfer(transaction)) {
+        return description;
+    }
+
+    const QString idPrefix = transferId(transaction);
+    if (idPrefix.isEmpty()) {
+        return description.isEmpty() ? tr("Перевод") : description;
+    }
+
+    const Transaction* outgoing = nullptr;
+    const Transaction* incoming = nullptr;
+    for (const Transaction& candidate : transactions_) {
+        if (candidate.id() == idPrefix + QStringLiteral("-out"))
+            outgoing = &candidate;
+        else if (candidate.id() == idPrefix + QStringLiteral("-in"))
+            incoming = &candidate;
+    }
+    if (!outgoing || !incoming) {
+        return description.isEmpty() ? tr("Перевод") : description;
+    }
+
+    const Account* source = nullptr;
+    const Account* target = nullptr;
+    for (const Account& account : accounts_) {
+        if (account.id() == outgoing->accountId()) source = &account;
+        if (account.id() == incoming->accountId()) target = &account;
+    }
+    if (!source || !target) {
+        return description.isEmpty() ? tr("Перевод") : description;
+    }
+
+    const QString legacyDefault = QStringLiteral("Перевод: %1 → %2")
+        .arg(source->name(), target->name());
+    if (!description.isEmpty() && description != legacyDefault) {
+        return description;
+    }
+    return tr("Перевод: %1 → %2")
+        .arg(accountDisplayName(*source), accountDisplayName(*target));
 }
 
 int FinanceController::currencyIndex(const Currency currency)

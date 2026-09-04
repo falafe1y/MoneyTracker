@@ -713,6 +713,31 @@ bool FinanceRepository::saveSelectedAsset(const QString& asset)
     return true;
 }
 
+QString FinanceRepository::loadUiLanguage() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings WHERE key = 'ui_language'")) &&
+        query.next()) {
+        return query.value(0).toString();
+    }
+    return QStringLiteral("ru");
+}
+
+bool FinanceRepository::saveUiLanguage(const QString& language)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO settings(key, value) VALUES('ui_language', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"));
+    query.addBindValue(language);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
@@ -852,6 +877,8 @@ bool FinanceRepository::seedDefaults()
             "INSERT OR IGNORE INTO settings(key,value) VALUES('app_currency','RUB')")) ||
         !setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) VALUES('selected_asset','fiat')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) VALUES('ui_language','ru')")) ||
         !database_.commit()) {
         setLastError(setting.lastError().isValid()
                          ? setting.lastError().text()

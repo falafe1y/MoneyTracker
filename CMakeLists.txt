@@ -4,7 +4,7 @@ project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -40,6 +40,13 @@ qt_add_qml_module(appMoneyTracker
         SOURCES interface/FinanceController.cpp
         SOURCES persistence/FinanceRepository.h
         SOURCES persistence/FinanceRepository.cpp
+)
+
+qt_add_translations(
+    TARGETS appMoneyTracker
+    SOURCE_TARGETS appMoneyTracker
+    TS_FILES translations/qml_en.ts
+    RESOURCE_PREFIX /i18n
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

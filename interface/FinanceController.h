@@ -50,6 +50,13 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QString uiLanguage
+            READ uiLanguage
+                WRITE setUiLanguage
+                    NOTIFY uiLanguageChanged
+        )
+
+    Q_PROPERTY(
         QVariantList transactions
             READ transactions
                 NOTIFY transactionsChanged
@@ -104,6 +111,10 @@ public:
 
     QString appCurrency() const;
     void setAppCurrency(const QString& currency);
+
+    QString uiLanguage() const;
+    void setUiLanguage(const QString& language);
+    void retranslate();
 
     QVariantList transactions() const;
     QVariantList categories() const;
@@ -205,6 +216,7 @@ signals:
     void selectedAccountIdChanged();
     void accountsChanged();
     void appCurrencyChanged();
+    void uiLanguageChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -229,6 +241,9 @@ private:
     qint64 accountBalanceMinor(const Account& account) const;
     int accountTransactionCount(const QString& accountId) const;
     qint64 assetBalanceMinor(AssetType asset) const;
+    QString accountDisplayName(const Account& account) const;
+    QString categoryDisplayName(const Category& category) const;
+    QString transactionDisplayDescription(const Transaction& transaction) const;
 
     static Currency currencyFromString(
         const QString& currency
@@ -246,6 +261,7 @@ private:
     FinanceRepository::Summary summary_;
 
     Currency appCurrency_ = Currency::RUB;
+    QString uiLanguage_ = QStringLiteral("ru");
     AssetType selectedAsset_ = AssetType::Fiat;
     QString selectedAccountId_;
 };

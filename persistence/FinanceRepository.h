@@ -59,6 +59,8 @@ public:
     bool saveAppCurrency(const QString& currency);
     QString loadSelectedAsset() const;
     bool saveSelectedAsset(const QString& asset);
+    QString loadUiLanguage() const;
+    bool saveUiLanguage(const QString& language);
 
 private:
     bool initializeSchema();

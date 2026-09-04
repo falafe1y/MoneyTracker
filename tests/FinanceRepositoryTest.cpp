@@ -10,6 +10,7 @@ class FinanceRepositoryTest : public QObject
 
 private slots:
     void preservesSelectedAccountAfterReopen();
+    void storesUiLanguage();
     void updatesAndDeletesTransaction();
     void storesTransferAtomicallyWithoutAffectingIncomeAndExpense();
     void replacesIncomeWithTransferAtomically();
@@ -18,6 +19,28 @@ private slots:
     void updatesAccountAndProtectsTransactionCurrency();
     void deletesAccountWithRelatedOperations();
 };
+
+void FinanceRepositoryTest::storesUiLanguage()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-language-test.sqlite3"));
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        QCOMPARE(repository.loadUiLanguage(), QStringLiteral("ru"));
+        QVERIFY2(repository.saveUiLanguage(QStringLiteral("en")),
+                 qPrintable(repository.lastError()));
+    }
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        QCOMPARE(repository.loadUiLanguage(), QStringLiteral("en"));
+    }
+}
 
 void FinanceRepositoryTest::preservesSelectedAccountAfterReopen()
 {
