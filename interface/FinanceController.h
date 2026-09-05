@@ -6,6 +6,7 @@
 #include "../services/CurrencyConverter.h"
 #include "../services/TestCurrencyRateProvider.h"
 
+#include <QDateTime>
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
@@ -162,7 +163,8 @@ public:
         const QString& description,
         const QString& categoryId,
         const QString& currency,
-        const QString& accountId
+        const QString& accountId,
+        const QDateTime& occurredAt
         );
 
     Q_INVOKABLE bool addExpense(
@@ -170,14 +172,16 @@ public:
         const QString& description,
         const QString& categoryId,
         const QString& currency,
-        const QString& accountId
+        const QString& accountId,
+        const QDateTime& occurredAt
         );
 
     Q_INVOKABLE bool addTransfer(
         qint64 sourceMinorUnits,
         const QString& description,
         const QString& sourceAccountId,
-        const QString& targetAccountId
+        const QString& targetAccountId,
+        const QDateTime& occurredAt
         );
 
     Q_INVOKABLE bool updateTransaction(
@@ -186,7 +190,8 @@ public:
         const QString& description,
         const QString& categoryId,
         const QString& accountId,
-        const QString& type
+        const QString& type,
+        const QDateTime& occurredAt
         );
 
     Q_INVOKABLE bool updateOperation(
@@ -196,7 +201,8 @@ public:
         const QString& categoryId,
         const QString& accountId,
         const QString& type,
-        const QString& targetAccountId
+        const QString& targetAccountId,
+        const QDateTime& occurredAt
         );
 
     Q_INVOKABLE QVariantMap transferDetails(const QString& id) const;
@@ -235,7 +241,8 @@ private:
         const QString& description,
         const QString& categoryId,
         Currency currency,
-        const QString& accountId
+        const QString& accountId,
+        const QDateTime& occurredAt
         );
 
     qint64 accountBalanceMinor(const Account& account) const;

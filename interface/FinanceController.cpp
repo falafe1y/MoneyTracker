@@ -621,7 +621,8 @@ bool FinanceController::addIncome(
     const QString& description,
     const QString& categoryId,
     const QString& currency,
-    const QString& accountId
+    const QString& accountId,
+    const QDateTime& occurredAt
     )
 {
     return addTransaction(
@@ -630,7 +631,8 @@ bool FinanceController::addIncome(
         description,
         categoryId,
         currencyFromString(currency),
-        accountId
+        accountId,
+        occurredAt
         );
 }
 
@@ -639,7 +641,8 @@ bool FinanceController::addExpense(
     const QString& description,
     const QString& categoryId,
     const QString& currency,
-    const QString& accountId
+    const QString& accountId,
+    const QDateTime& occurredAt
     )
 {
     return addTransaction(
@@ -648,7 +651,8 @@ bool FinanceController::addExpense(
         description,
         categoryId,
         currencyFromString(currency),
-        accountId
+        accountId,
+        occurredAt
         );
 }
 
@@ -656,11 +660,13 @@ bool FinanceController::addTransfer(
     const qint64 sourceMinorUnits,
     const QString& description,
     const QString& sourceAccountId,
-    const QString& targetAccountId
+    const QString& targetAccountId,
+    const QDateTime& occurredAt
     )
 {
     if (sourceMinorUnits <= 0 || sourceAccountId.isEmpty() ||
-        targetAccountId.isEmpty() || sourceAccountId == targetAccountId) {
+        targetAccountId.isEmpty() || sourceAccountId == targetAccountId ||
+        !occurredAt.isValid()) {
         return false;
     }
 
@@ -675,7 +681,6 @@ bool FinanceController::addTransfer(
     }
 
     const QString transferId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    const QDateTime occurredAt = QDateTime::currentDateTime();
     const qint64 targetMinorUnits = currencyConverter_.convert(
         Money(sourceMinorUnits, source->currency()), target->currency()).minorUnits();
     if (targetMinorUnits <= 0) {
@@ -712,7 +717,8 @@ bool FinanceController::updateTransaction(
     const QString& description,
     const QString& categoryId,
     const QString& accountId,
-    const QString& type
+    const QString& type,
+    const QDateTime& occurredAt
     )
 {
     return updateOperation(
@@ -722,7 +728,8 @@ bool FinanceController::updateTransaction(
         categoryId,
         accountId,
         type,
-        QString()
+        QString(),
+        occurredAt
         );
 }
 
@@ -733,10 +740,11 @@ bool FinanceController::updateOperation(
     const QString& categoryId,
     const QString& accountId,
     const QString& type,
-    const QString& targetAccountId
+    const QString& targetAccountId,
+    const QDateTime& occurredAt
     )
 {
-    if (id.isEmpty() || minorUnits <= 0) {
+    if (id.isEmpty() || minorUnits <= 0 || !occurredAt.isValid()) {
         return false;
     }
 
@@ -796,7 +804,7 @@ bool FinanceController::updateOperation(
             QStringLiteral("transfer-out"),
             Money(minorUnits, source->currency()),
             TransactionType::Expense,
-            original.date(),
+            occurredAt,
             normalizedDescription);
         const Transaction incoming(
             resolvedTransferId + QStringLiteral("-in"),
@@ -804,7 +812,7 @@ bool FinanceController::updateOperation(
             QStringLiteral("transfer-in"),
             Money(targetMinorUnits, target->currency()),
             TransactionType::Income,
-            original.date(),
+            occurredAt,
             normalizedDescription);
 
         if (!repository_.isOpen() ||
@@ -862,7 +870,7 @@ bool FinanceController::updateOperation(
         categoryId,
         Money(minorUnits, selectedAccount->currency()),
         transactionType,
-        original.date(),
+        occurredAt,
         description
         );
 
@@ -960,10 +968,11 @@ bool FinanceController::addTransaction(
     const QString& description,
     const QString& categoryId,
     Currency currency,
-    const QString& accountId
+    const QString& accountId,
+    const QDateTime& occurredAt
     )
 {
-    if (minorUnits <= 0) {
+    if (minorUnits <= 0 || !occurredAt.isValid()) {
         return false;
     }
 
@@ -991,9 +1000,9 @@ bool FinanceController::addTransaction(
             Money(
                 minorUnits,
                 currency
-                ),
+            ),
             type,
-            QDateTime::currentDateTime(),
+            occurredAt,
             description
             );
 

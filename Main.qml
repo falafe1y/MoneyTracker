@@ -76,11 +76,14 @@ ApplicationWindow {
         return code === "USD" ? "$" : code === "EUR" ? "€" : "₽";
     }
 
+    function uiLocale() {
+        return Qt.locale(financeController.uiLanguage === "en" ? "en_US" : "ru_RU");
+    }
+
     function money(minor, code, sign) {
         const value = Number(minor) / 100;
         const prefix = sign ? (value >= 0 ? "+" : "−") : (value < 0 ? "−" : "");
-        const locale = Qt.locale(financeController.uiLanguage === "en" ? "en_US" : "ru_RU");
-        return prefix + Math.abs(value).toLocaleString(locale, "f", 0) + " " + symbol(code || financeController.appCurrency);
+        return prefix + Math.abs(value).toLocaleString(root.uiLocale(), "f", 0) + " " + symbol(code || financeController.appCurrency);
     }
 
     function assetTitle(code) {
@@ -2220,6 +2223,20 @@ ApplicationWindow {
         property var editingTransaction: null
         property string editingSourceAccountId: ""
         property string editingTargetAccountId: ""
+        property date selectedDate: new Date()
+
+        function selectDate(day) {
+            const time = selectedDate;
+            selectedDate = new Date(
+                day.getFullYear(),
+                day.getMonth(),
+                day.getDate(),
+                time.getHours(),
+                time.getMinutes(),
+                time.getSeconds(),
+                time.getMilliseconds()
+            );
+        }
 
         function exactIndexByRole(model, role, value) {
             for (let i = 0; i < model.length; ++i)
@@ -2257,6 +2274,7 @@ ApplicationWindow {
             operationError.text = "";
             operationAmount.clear();
             operationDescription.clear();
+            selectedDate = new Date();
             operationType.currentIndex = 1;
             operationAccount.currentIndex = root.indexByRole(
                 financeController.accounts,
@@ -2282,6 +2300,8 @@ ApplicationWindow {
             editingId = row.id;
             editingTransaction = row;
             operationError.text = "";
+            const restoredDate = new Date(row.date);
+            selectedDate = isNaN(restoredDate.getTime()) ? new Date() : restoredDate;
             if (row.type === "transfer") {
                 const details = financeController.transferDetails(row.id);
                 editingSourceAccountId = details.sourceAccountId || "";
@@ -2427,6 +2447,57 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 placeholderText: qsTr("Описание")
             }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Text {
+                    text: qsTr("Дата операции")
+                    color: root.muted
+                    font.pixelSize: 12
+                }
+
+                Button {
+                    id: operationDateButton
+                    Layout.fillWidth: true
+                    implicitHeight: 44
+                    hoverEnabled: true
+                    text: operationDialog.selectedDate.toLocaleDateString(
+                        root.uiLocale(),
+                        Locale.LongFormat
+                    )
+                    onClicked: operationDateDialog.openFor(operationDialog.selectedDate)
+
+                    contentItem: RowLayout {
+                        spacing: 10
+                        Text {
+                            Layout.fillWidth: true
+                            text: operationDateButton.text
+                            color: root.ink
+                            font.pixelSize: 14
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        Text {
+                            text: "▦"
+                            color: root.green2
+                            font.pixelSize: 18
+                        }
+                    }
+
+                    background: Rectangle {
+                        radius: 11
+                        color: operationDateButton.down
+                               ? root.panel
+                               : operationDateButton.hovered
+                                 ? root.controlHovered
+                                 : root.soft
+                        border.width: operationDateButton.activeFocus ? 2 : 1
+                        border.color: operationDateButton.activeFocus
+                                      ? root.green2
+                                      : root.line
+                    }
+                }
+            }
             Text {
                 id: operationError
                 color: root.red
@@ -2487,14 +2558,16 @@ ApplicationWindow {
                                      isTransfer ? "" : category.value,
                                      account.id,
                                      type,
-                                     isTransfer ? targetAccount.id : ""
+                                     isTransfer ? targetAccount.id : "",
+                                     operationDialog.selectedDate
                                  )
                                  : isTransfer
                                    ? financeController.addTransfer(
                                      minor,
                                      operationDescription.text,
                                      account.id,
-                                     targetAccount.id
+                                     targetAccount.id,
+                                     operationDialog.selectedDate
                                  )
                                  : type === "income"
                                    ? financeController.addIncome(
@@ -2502,14 +2575,16 @@ ApplicationWindow {
                                        operationDescription.text,
                                        category.value,
                                        account.currency,
-                                       account.id
+                                       account.id,
+                                       operationDialog.selectedDate
                                    )
                                    : financeController.addExpense(
                                        minor,
                                        operationDescription.text,
                                        category.value,
                                        account.currency,
-                                       account.id
+                                       account.id,
+                                       operationDialog.selectedDate
                                    );
                         if (ok)
                             operationDialog.close();
@@ -2518,6 +2593,166 @@ ApplicationWindow {
                                 ? qsTr("Проверьте сумму и выбранные счета")
                                 : qsTr("Проверьте сумму, счёт и категорию");
                     }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: operationDateDialog
+        width: 400
+        modal: true
+        anchors.centerIn: parent
+        padding: 22
+        closePolicy: Popup.CloseOnEscape
+        property int displayedMonth: new Date().getMonth()
+        property int displayedYear: new Date().getFullYear()
+
+        function openFor(date) {
+            displayedMonth = date.getMonth();
+            displayedYear = date.getFullYear();
+            open();
+        }
+
+        function shiftMonth(offset) {
+            const shifted = new Date(displayedYear, displayedMonth + offset, 1);
+            displayedMonth = shifted.getMonth();
+            displayedYear = shifted.getFullYear();
+        }
+
+        function isSameDay(left, right) {
+            return left.getFullYear() === right.getFullYear()
+                && left.getMonth() === right.getMonth()
+                && left.getDate() === right.getDate();
+        }
+
+        function chooseDate(date) {
+            operationDialog.selectDate(date);
+            close();
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: qsTr("Дата операции")
+                color: root.ink
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                SoftButton {
+                    Layout.preferredWidth: 44
+                    text: "‹"
+                    onClicked: operationDateDialog.shiftMonth(-1)
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: operationCalendar.title
+                    color: root.ink
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                SoftButton {
+                    Layout.preferredWidth: 44
+                    text: "›"
+                    onClicked: operationDateDialog.shiftMonth(1)
+                }
+            }
+
+            DayOfWeekRow {
+                Layout.fillWidth: true
+                locale: root.uiLocale()
+
+                delegate: Text {
+                    required property string shortName
+                    text: shortName
+                    color: root.muted
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            MonthGrid {
+                id: operationCalendar
+                Layout.fillWidth: true
+                Layout.preferredHeight: 258
+                month: operationDateDialog.displayedMonth
+                year: operationDateDialog.displayedYear
+                locale: root.uiLocale()
+
+                delegate: Button {
+                    id: dayButton
+                    required property var model
+                    flat: true
+                    hoverEnabled: true
+                    opacity: model.month === operationCalendar.month ? 1 : 0.42
+                    onClicked: operationDateDialog.chooseDate(model.date)
+
+                    contentItem: Text {
+                        text: dayButton.model.day
+                        color: operationDateDialog.isSameDay(
+                                   dayButton.model.date,
+                                   operationDialog.selectedDate
+                               )
+                               ? root.white
+                               : root.ink
+                        font.pixelSize: 13
+                        font.weight: dayButton.model.today ? Font.DemiBold : Font.Normal
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    background: Rectangle {
+                        radius: 9
+                        color: operationDateDialog.isSameDay(
+                                   dayButton.model.date,
+                                   operationDialog.selectedDate
+                               )
+                               ? root.green
+                               : dayButton.hovered
+                                 ? root.controlHovered
+                                 : dayButton.model.today
+                                   ? root.pale
+                                   : root.transparentColor
+                        border.width: dayButton.model.today
+                                      && !operationDateDialog.isSameDay(
+                                          dayButton.model.date,
+                                          operationDialog.selectedDate
+                                      ) ? 1 : 0
+                        border.color: root.greenSoft
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Item {
+                    Layout.fillWidth: true
+                }
+                SoftButton {
+                    text: qsTr("Сегодня")
+                    onClicked: operationDateDialog.chooseDate(new Date())
+                }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: operationDateDialog.close()
                 }
             }
         }

@@ -19,6 +19,7 @@
     <message><source>Все счета</source><translation>All accounts</translation></message>
     <message><source>Выберите счёт назначения</source><translation>Select a destination account</translation></message>
     <message><source>Дата</source><translation>Date</translation></message>
+    <message><source>Дата операции</source><translation>Transaction date</translation></message>
     <message><source>Дебетовая карта</source><translation>Debit card</translation></message>
     <message><source>Для выбранной операции нет доступного счёта</source><translation>No account is available for the selected transaction</translation></message>
     <message><source>Для перевода нужны два счёта</source><translation>A transfer requires two accounts</translation></message>
@@ -76,6 +77,7 @@
     <message><source>Сначала добавьте категорию</source><translation>Add a category first</translation></message>
     <message><source>Сначала добавьте счёт</source><translation>Add an account first</translation></message>
     <message><source>Сохранить</source><translation>Save</translation></message>
+    <message><source>Сегодня</source><translation>Today</translation></message>
     <message><source>Структура расходов</source><translation>Expense breakdown</translation></message>
     <message><source>Сумма</source><translation>Amount</translation></message>
     <message><source>Счета</source><translation>Accounts</translation></message>
