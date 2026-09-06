@@ -14,18 +14,17 @@ ApplicationWindow {
 
     // Color palette
     // Ivory + indigo foundation. Indigo is the only primary accent;
-    // green and terracotta below are reserved for financial semantics.
+    // Income and terracotta colors below are reserved for financial semantics.
     readonly property color canvas: "#F5F3E4"
     readonly property color panel: "#FFFFF8"
     readonly property color soft: "#FFFFF0"
     readonly property color line: "#D8D7C7"
-    readonly property color ink: "#031528"
+    readonly property color accent: "#031528"   // indigo
     readonly property color muted: "#687483"
 
-    readonly property color green: "#031528"
-    readonly property color greenDark: "#020D1A"
-    readonly property color green2: "#294477"
-    readonly property color greenSoft: "#536A98"
+    // readonly property color accentDark: "#020D1A"
+    // readonly property color accent2: "#294477"
+    readonly property color accentSoft: "#536A98"
     readonly property color pale: "#E4E8F1"
     readonly property color paleText: "#E9EDF6"
     readonly property color red: "#B94F48"
@@ -33,11 +32,18 @@ ApplicationWindow {
     readonly property color navSelected: "#294477"
     readonly property color navHovered: "#142B48"
 
-    readonly property color chartGreen1: "#294477"
-    readonly property color chartGreen2: "#536A98"
-    readonly property color chartGreen3: "#8795B3"
-    readonly property color chartGreen4: "#B68C62"
-    readonly property color chartGreen5: "#708C88"
+    readonly property color chartAccent1: "#072a50"
+    readonly property color chartAccent2: "#0e54a0"
+    readonly property color chartAccent3: "#3a8eee"
+    readonly property color chartAccent4: "#31c7ed"
+    readonly property color chartAccent5: "#70d6f0"
+    readonly property var chartColors: [
+        chartAccent1,
+        chartAccent2,
+        chartAccent3,
+        chartAccent4,
+        chartAccent5
+    ]
 
     readonly property color tableHeader: "#F1F0DF"
     readonly property color tableRowAlt: "#FAF9EC"
@@ -260,7 +266,7 @@ ApplicationWindow {
         implicitHeight: 42
         contentItem: Text {
             text: control.text
-            color: control.destructive || control.highlighted ? root.white : root.ink
+            color: control.destructive || control.highlighted ? root.white : root.accent
             font.pixelSize: 14
             font.weight: Font.Medium
             horizontalAlignment: Text.AlignHCenter
@@ -271,7 +277,7 @@ ApplicationWindow {
             color: control.destructive
                    ? (control.down || control.hovered ? Qt.darker(root.red, 1.08) : root.red)
                    : control.highlighted
-                     ? (control.down ? root.greenDark : root.green)
+                     ? (control.down ? root.navHovered : root.accent)
                      : (control.hovered ? root.soft : root.panel)
             border.width: control.destructive || control.highlighted ? 0 : 1
             border.color: root.line
@@ -288,7 +294,7 @@ ApplicationWindow {
 
         contentItem: Text {
             text: menuItem.text
-            color: menuItem.destructive ? root.red : root.ink
+            color: menuItem.destructive ? root.red : root.accent
             font.pixelSize: 14
             font.weight: Font.Medium
             verticalAlignment: Text.AlignVCenter
@@ -306,9 +312,9 @@ ApplicationWindow {
         implicitHeight: 44
         leftPadding: 14
         rightPadding: 14
-        color: root.ink
+        color: root.accent
         placeholderTextColor: root.muted
-        selectionColor: root.greenSoft
+        selectionColor: root.accentSoft
         selectedTextColor: root.white
         font.pixelSize: 14
 
@@ -316,7 +322,7 @@ ApplicationWindow {
             radius: 11
             color: field.activeFocus ? root.panel : root.soft
             border.width: field.activeFocus ? 2 : 1
-            border.color: field.activeFocus ? root.green2 : root.line
+            border.color: field.activeFocus ? root.navSelected : root.line
         }
     }
     component AppCheckBox: CheckBox {
@@ -332,7 +338,7 @@ ApplicationWindow {
             y: (check.height - height) / 2
             radius: 6
             color: check.checked
-                   ? (check.hovered ? root.green2 : root.green)
+                   ? (check.hovered ? root.navSelected : root.accent)
                    : (check.hovered ? root.controlHovered : root.soft)
             border.width: check.checked ? 0 : 1
             border.color: root.line
@@ -350,7 +356,7 @@ ApplicationWindow {
         contentItem: Text {
             leftPadding: check.indicator.width + check.spacing
             text: check.text
-            color: check.enabled ? root.ink : root.muted
+            color: check.enabled ? root.accent : root.muted
             font.pixelSize: 14
             verticalAlignment: Text.AlignVCenter
         }
@@ -367,7 +373,7 @@ ApplicationWindow {
             leftPadding: 0
             rightPadding: 0
             text: combo.displayText
-            color: root.ink
+            color: root.accent
             font: combo.font
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
@@ -377,7 +383,7 @@ ApplicationWindow {
             x: combo.width - width - 15
             y: (combo.height - height) / 2 - 1
             text: combo.popup.visible ? "⌃" : "⌄"
-            color: root.green2
+            color: root.navSelected
             font.pixelSize: 18
             font.weight: Font.DemiBold
         }
@@ -386,7 +392,7 @@ ApplicationWindow {
             radius: 11
             color: combo.pressed || combo.popup.visible ? root.panel : combo.hovered ? root.controlHovered : root.soft
             border.width: combo.popup.visible ? 2 : 1
-            border.color: combo.popup.visible ? root.green2 : root.line
+            border.color: combo.popup.visible ? root.navSelected : root.line
         }
 
         delegate: ItemDelegate {
@@ -399,7 +405,7 @@ ApplicationWindow {
             highlighted: combo.highlightedIndex === index
             contentItem: Text {
                 text: combo.textRole ? modelData[combo.textRole] : modelData
-                color: root.ink
+                color: root.accent
                 font.pixelSize: 14
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
@@ -471,8 +477,8 @@ ApplicationWindow {
         Panel {
             Layout.preferredWidth: 252
             Layout.fillHeight: true
-            color: root.ink
-            border.color: root.ink
+            color: root.accent
+            border.color: root.accent
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 20
@@ -488,7 +494,7 @@ ApplicationWindow {
                         Text {
                             anchors.centerIn: parent
                             text: "◆"
-                            color: root.ink
+                            color: root.accent
                             font.pixelSize: 17
                         }
                     }
@@ -535,7 +541,7 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 1
-                    color: root.greenSoft
+                    color: root.accentSoft
                 }
                 NavButton {
                     Layout.fillWidth: true
@@ -561,7 +567,7 @@ ApplicationWindow {
                         : page === "operations" ? qsTr("Операции")
                         : page === "analytics" ? qsTr("Аналитика")
                         : qsTr("Настройки")
-                    color: root.ink
+                    color: root.accent
                     font.pixelSize: 28
                     font.weight: Font.Bold
                 }
@@ -628,7 +634,7 @@ ApplicationWindow {
                         Layout.minimumWidth: 180
                         Layout.preferredHeight: 118
                         color: root.soft
-                        border.color: root.greenSoft
+                        border.color: root.accentSoft
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -640,7 +646,7 @@ ApplicationWindow {
                                     width: 38
                                     height: 38
                                     radius: 19
-                                    color: root.green
+                                    color: root.accent
 
                                     Text {
                                         anchors.centerIn: parent
@@ -653,7 +659,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: qsTr("Все активы")
-                                    color: root.ink
+                                    color: root.accent
                                     font.pixelSize: 17
                                     font.weight: Font.DemiBold
                                 }
@@ -665,7 +671,7 @@ ApplicationWindow {
                                     financeController.appCurrency,
                                     false
                                 )
-                                color: root.green2
+                                color: root.navSelected
                                 font.pixelSize: 25
                                 font.weight: Font.Bold
                             }
@@ -679,7 +685,7 @@ ApplicationWindow {
                             Layout.preferredWidth: (dashboard.width - 42) / 4
                             Layout.minimumWidth: 180
                             Layout.preferredHeight: 118
-                            color: financeController.selectedAsset === modelData.code ? root.green : root.panel
+                            color: financeController.selectedAsset === modelData.code ? root.accent : root.panel
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
@@ -694,24 +700,24 @@ ApplicationWindow {
                                         width: 38
                                         height: 38
                                         radius: 19
-                                        color: financeController.selectedAsset === modelData.code ? root.greenSoft : root.pale
+                                        color: financeController.selectedAsset === modelData.code ? root.accentSoft : root.pale
                                         Text {
                                             anchors.centerIn: parent
                                             text: modelData.icon
-                                            color: financeController.selectedAsset === modelData.code ? root.white : root.green
+                                            color: financeController.selectedAsset === modelData.code ? root.white : root.accent
                                             font.pixelSize: 19
                                         }
                                     }
                                     Text {
                                         text: modelData.title
-                                        color: financeController.selectedAsset === modelData.code ? root.white : root.ink
+                                        color: financeController.selectedAsset === modelData.code ? root.white : root.accent
                                         font.pixelSize: 17
                                         font.weight: Font.DemiBold
                                     }
                                 }
                                 Text {
                                     text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
-                                    color: financeController.selectedAsset === modelData.code ? root.white : root.ink
+                                    color: financeController.selectedAsset === modelData.code ? root.white : root.accent
                                     font.pixelSize: 25
                                     font.weight: Font.Bold
                                 }
@@ -730,7 +736,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Text {
                                 text: qsTr("Счета") + " · " + root.assetTitle(financeController.selectedAsset)
-                                color: root.ink
+                                color: root.accent
                                 font.pixelSize: 15
                                 font.weight: Font.DemiBold
                             }
@@ -744,7 +750,7 @@ ApplicationWindow {
 
                                 contentItem: Text {
                                     text: addAccountButton.text
-                                    color: root.green2
+                                    color: root.navSelected
                                     font.pixelSize: 14
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
@@ -775,9 +781,9 @@ ApplicationWindow {
                                 width: 245
                                 height: 64
                                 radius: 13
-                                color: financeController.selectedAccountId === modelData.id ? root.green : root.panel
+                                color: financeController.selectedAccountId === modelData.id ? root.accent : root.panel
                                 border.width: 1
-                                border.color: financeController.selectedAccountId === modelData.id ? root.green : root.line
+                                border.color: financeController.selectedAccountId === modelData.id ? root.accent : root.line
                                 MouseArea {
                                     id: overviewAccountMouseArea
                                     anchors.fill: parent
@@ -802,7 +808,7 @@ ApplicationWindow {
                                     anchors.margins: 13
                                     Text {
                                         text: "▣"
-                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.green
+                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
                                         font.pixelSize: 20
                                     }
                                     ColumnLayout {
@@ -811,7 +817,7 @@ ApplicationWindow {
                                         Text {
                                             Layout.fillWidth: true
                                             text: modelData.name
-                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.ink
+                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
                                             font.pixelSize: 14
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideRight
@@ -826,7 +832,7 @@ ApplicationWindow {
                                     }
                                     Text {
                                         text: financeController.selectedAccountId === modelData.id ? "✓" : "›"
-                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.ink
+                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
                                         font.pixelSize: 18
                                     }
                                 }
@@ -846,7 +852,7 @@ ApplicationWindow {
                             anchors.margins: 16
                             Text {
                                 text: qsTr("Расходы по категориям")
-                                color: root.ink
+                                color: root.accent
                                 font.pixelSize: 15
                                 font.weight: Font.DemiBold
                             }
@@ -860,6 +866,8 @@ ApplicationWindow {
                                         required property int index
                                         required property var modelData
                                         Layout.fillWidth: true
+                                        Layout.preferredWidth: 0
+                                        Layout.minimumWidth: 0
                                         Layout.fillHeight: true
                                         Item {
                                             Layout.fillHeight: true
@@ -869,17 +877,20 @@ ApplicationWindow {
                                             width: 44
                                             height: Math.max(5, Math.min(120, modelData.amount / Math.max(1, root.categoryTotals()[0].amount) * 120))
                                             radius: 5
-                                            color: index === 0 ? root.green : root.chartGreen2
+                                            color: root.chartColors[index % root.chartColors.length]
                                             border.width: 1
                                             border.color: root.line
                                         }
                                         Text {
                                             Layout.alignment: Qt.AlignHCenter
+                                            Layout.fillWidth: true
+                                            Layout.preferredWidth: 0
+                                            Layout.maximumWidth: 80
                                             text: modelData.label
                                             color: root.muted
                                             font.pixelSize: 11
+                                            horizontalAlignment: Text.AlignHCenter
                                             elide: Text.ElideRight
-                                            Layout.maximumWidth: 80
                                         }
                                     }
                                 }
@@ -901,7 +912,7 @@ ApplicationWindow {
                             anchors.margins: 16
                             Text {
                                 text: qsTr("Структура расходов")
-                                color: root.ink
+                                color: root.accent
                                 font.pixelSize: 15
                                 font.weight: Font.DemiBold
                             }
@@ -920,7 +931,6 @@ ApplicationWindow {
                                         let total = 0;
                                         for (let i = 0; i < data.length; ++i)
                                             total += data[i].amount;
-                                        const colors = [root.green, root.chartGreen1, root.chartGreen3, root.chartGreen4, root.chartGreen5];
                                         let angle = -Math.PI / 2;
                                         if (total === 0) {
                                             ctx.strokeStyle = root.line;
@@ -932,7 +942,7 @@ ApplicationWindow {
                                         }
                                         for (let j = 0; j < data.length; ++j) {
                                             const next = angle + data[j].amount / total * Math.PI * 2;
-                                            ctx.strokeStyle = colors[j];
+                                            ctx.strokeStyle = root.chartColors[j % root.chartColors.length];
                                             ctx.lineWidth = 25;
                                             ctx.beginPath();
                                             ctx.arc(72, 72, 48, angle, next);
@@ -965,7 +975,7 @@ ApplicationWindow {
                                                 width: 9
                                                 height: 9
                                                 radius: 5
-                                                color: [root.green, root.chartGreen1, root.chartGreen3, root.chartGreen4, root.chartGreen5][index]
+                                                color: root.chartColors[index % root.chartColors.length]
                                             }
                                             Text {
                                                 text: modelData.label
@@ -974,7 +984,7 @@ ApplicationWindow {
                                             }
                                             Text {
                                                 text: root.money(modelData.amount, financeController.appCurrency, false)
-                                                color: root.ink
+                                                color: root.accent
                                                 font.pixelSize: 11
                                             }
                                         }
@@ -1032,7 +1042,7 @@ ApplicationWindow {
 
                 Text {
                     text: transactionBlock.title
-                    color: root.ink
+                    color: root.accent
                     font.pixelSize: 15
                     font.weight: Font.DemiBold
                 }
@@ -1199,7 +1209,7 @@ ApplicationWindow {
 
                                 Text {
                                     text: root.transactionTypeLabel(modelData)
-                                    color: root.ink
+                                    color: root.accent
                                     font.pixelSize: 12
                                     font.weight: Font.Medium
                                     Layout.preferredWidth: transactionTable.operationColumnWidth
@@ -1214,7 +1224,7 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: modelData.categoryName
-                                    color: root.green
+                                    color: root.accent
                                     font.pixelSize: 11
                                     Layout.preferredWidth: transactionTable.categoryColumnWidth
                                     elide: Text.ElideRight
@@ -1234,7 +1244,7 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
-                                    color: modelData.type === "transfer" ? root.green2 : modelData.type === "income" ? root.income : root.red
+                                    color: modelData.type === "transfer" ? root.navSelected : modelData.type === "income" ? root.income : root.red
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: transactionTable.amountColumnWidth
@@ -1289,7 +1299,7 @@ ApplicationWindow {
 
                             Text {
                                 text: root.transactionTypeLabel(modelData)
-                                color: root.ink
+                                color: root.accent
                                 font.pixelSize: 12
                                 font.weight: Font.Medium
                                 Layout.preferredWidth: transactionTable.operationColumnWidth
@@ -1304,7 +1314,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: modelData.categoryName
-                                color: root.green
+                                color: root.accent
                                 font.pixelSize: 11
                                 Layout.preferredWidth: transactionTable.categoryColumnWidth
                                 elide: Text.ElideRight
@@ -1324,7 +1334,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
-                                color: modelData.type === "transfer" ? root.green2 : modelData.type === "income" ? root.income : root.red
+                                color: modelData.type === "transfer" ? root.navSelected : modelData.type === "income" ? root.income : root.red
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                                 Layout.preferredWidth: transactionTable.amountColumnWidth
@@ -1405,26 +1415,26 @@ ApplicationWindow {
                         RowLayout {
                             Text {
                                 text: "▣"
-                                color: root.green
+                                color: root.accent
                                 font.pixelSize: 24
                             }
                             Text {
                                 text: modelData.name
-                                color: root.ink
+                                color: root.accent
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
                             }
                         }
                         Text {
                             text: root.accountPrimaryAmount(modelData)
-                            color: root.ink
+                            color: root.accent
                             font.pixelSize: modelData.isCreditCard ? 20 : 25
                             font.weight: Font.Bold
                         }
                         Text {
                             visible: modelData.isCreditCard
                             text: root.accountAvailableCredit(modelData)
-                            color: root.green2
+                            color: root.navSelected
                             font.pixelSize: 12
                         }
                         Text {
@@ -1499,7 +1509,7 @@ ApplicationWindow {
 
                         // Text {
                         //     text: "Доходы"
-                        //     color: root.ink
+                        //     color: root.accent
                         //     font.pixelSize: 17
                         //     font.weight: Font.DemiBold
                         // }
@@ -1545,7 +1555,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: modelData.label
-                                        color: root.ink
+                                        color: root.accent
                                         Layout.fillWidth: true
                                     }
 
@@ -1582,7 +1592,7 @@ ApplicationWindow {
 
                         // Text {
                         //     text: "Расходы"
-                        //     color: root.ink
+                        //     color: root.accent
                         //     font.pixelSize: 17
                         //     font.weight: Font.DemiBold
                         // }
@@ -1628,7 +1638,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: modelData.label
-                                        color: root.ink
+                                        color: root.accent
                                         Layout.fillWidth: true
                                     }
 
@@ -1710,7 +1720,7 @@ ApplicationWindow {
                     anchors.margins: 24
                     Text {
                         text: qsTr("Категории расходов")
-                        color: root.ink
+                        color: root.accent
                         font.pixelSize: 17
                         font.weight: Font.DemiBold
                     }
@@ -1726,7 +1736,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: root.money(modelData.amount, financeController.appCurrency, false)
-                                color: root.ink
+                                color: root.accent
                             }
                         }
                     }
@@ -1747,7 +1757,7 @@ ApplicationWindow {
                 anchors.margins: 28
                 Text {
                     text: qsTr("Основная валюта")
-                    color: root.ink
+                    color: root.accent
                     font.pixelSize: 17
                     font.weight: Font.DemiBold
                 }
@@ -1770,7 +1780,7 @@ ApplicationWindow {
                 Text {
                     Layout.topMargin: 8
                     text: qsTr("Курсы валют")
-                    color: root.ink
+                    color: root.accent
                     font.pixelSize: 17
                     font.weight: Font.DemiBold
                 }
@@ -1812,7 +1822,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 text: qsTr("Текущие курсы в %1")
                                     .arg(financeController.appCurrency)
-                                color: root.ink
+                                color: root.accent
                                 font.weight: Font.DemiBold
                             }
                             Text {
@@ -1865,7 +1875,7 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: "1 " + modelData.code
-                                        color: root.ink
+                                        color: root.accent
                                     }
                                     Text {
                                         readonly property int decimals:
@@ -1875,7 +1885,7 @@ ApplicationWindow {
                                                   root.uiLocale(), "f", decimals)
                                               + " "
                                               + root.symbol(financeController.appCurrency)
-                                        color: root.ink
+                                        color: root.accent
                                         font.weight: Font.DemiBold
                                     }
                                 }
@@ -1901,7 +1911,7 @@ ApplicationWindow {
 
                     Text {
                         text: qsTr("1 USD в рублях")
-                        color: root.ink
+                        color: root.accent
                     }
                     AppTextField {
                         id: manualUsdRateField
@@ -1920,7 +1930,7 @@ ApplicationWindow {
 
                     Text {
                         text: qsTr("1 EUR в рублях")
-                        color: root.ink
+                        color: root.accent
                     }
                     AppTextField {
                         id: manualEurRateField
@@ -1972,7 +1982,7 @@ ApplicationWindow {
                 Text {
                     Layout.topMargin: 8
                     text: qsTr("Язык интерфейса")
-                    color: root.ink
+                    color: root.accent
                     font.pixelSize: 17
                     font.weight: Font.DemiBold
                 }
@@ -2112,7 +2122,7 @@ ApplicationWindow {
                        ? qsTr("Редактирование счёта")
                        : qsTr("Новый счёт"))
                       + " · " + root.assetTitle(accountDialog.editingAsset)
-                color: root.ink
+                color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
@@ -2320,7 +2330,7 @@ ApplicationWindow {
 
             Text {
                 text: qsTr("Удалить счёт?")
-                color: root.ink
+                color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
@@ -2351,7 +2361,7 @@ ApplicationWindow {
                         text: deleteAccountDialog.accountData
                               ? deleteAccountDialog.accountData.name
                               : ""
-                        color: root.ink
+                        color: root.accent
                         font.pixelSize: 14
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
@@ -2479,7 +2489,7 @@ ApplicationWindow {
 
             Text {
                 text: qsTr("Удалить операцию?")
-                color: root.ink
+                color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
@@ -2515,7 +2525,7 @@ ApplicationWindow {
                                          ? qsTr("Доход")
                                          : qsTr("Расход")))
                               : ""
-                        color: root.ink
+                        color: root.accent
                         font.pixelSize: 14
                         font.weight: Font.DemiBold
                         elide: Text.ElideRight
@@ -2708,7 +2718,7 @@ ApplicationWindow {
                 text: operationDialog.editingId
                       ? qsTr("Редактирование операции")
                       : qsTr("Новая операция")
-                color: root.ink
+                color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
@@ -2830,13 +2840,13 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: operationDateButton.text
-                            color: root.ink
+                            color: root.accent
                             font.pixelSize: 14
                             verticalAlignment: Text.AlignVCenter
                         }
                         Text {
                             text: "▦"
-                            color: root.green2
+                            color: root.navSelected
                             font.pixelSize: 18
                         }
                     }
@@ -2850,7 +2860,7 @@ ApplicationWindow {
                                  : root.soft
                         border.width: operationDateButton.activeFocus ? 2 : 1
                         border.color: operationDateButton.activeFocus
-                                      ? root.green2
+                                      ? root.navSelected
                                       : root.line
                     }
                 }
@@ -3000,7 +3010,7 @@ ApplicationWindow {
 
             Text {
                 text: qsTr("Дата операции")
-                color: root.ink
+                color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
@@ -3018,7 +3028,7 @@ ApplicationWindow {
                 Text {
                     Layout.fillWidth: true
                     text: operationCalendar.title
-                    color: root.ink
+                    color: root.accent
                     font.pixelSize: 16
                     font.weight: Font.DemiBold
                     horizontalAlignment: Text.AlignHCenter
@@ -3069,7 +3079,7 @@ ApplicationWindow {
                                    operationDialog.selectedDate
                                )
                                ? root.white
-                               : root.ink
+                               : root.accent
                         font.pixelSize: 13
                         font.weight: dayButton.model.today ? Font.DemiBold : Font.Normal
                         horizontalAlignment: Text.AlignHCenter
@@ -3082,7 +3092,7 @@ ApplicationWindow {
                                    dayButton.model.date,
                                    operationDialog.selectedDate
                                )
-                               ? root.green
+                               ? root.accent
                                : dayButton.hovered
                                  ? root.controlHovered
                                  : dayButton.model.today
@@ -3093,7 +3103,7 @@ ApplicationWindow {
                                           dayButton.model.date,
                                           operationDialog.selectedDate
                                       ) ? 1 : 0
-                        border.color: root.greenSoft
+                        border.color: root.accentSoft
                     }
                 }
             }
@@ -3144,7 +3154,7 @@ ApplicationWindow {
             spacing: 12
             Text {
                 text: qsTr("Категории")
-                color: root.ink
+                color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
@@ -3199,7 +3209,7 @@ ApplicationWindow {
                         anchors.margins: 10
                         Text {
                             text: modelData.label
-                            color: root.ink
+                            color: root.accent
                             Layout.fillWidth: true
                         }
                         Text {
