@@ -23,13 +23,17 @@
     <message><source>Дебетовая карта</source><translation>Debit card</translation></message>
     <message><source>Для выбранной операции нет доступного счёта</source><translation>No account is available for the selected transaction</translation></message>
     <message><source>Для перевода нужны два счёта</source><translation>A transfer requires two accounts</translation></message>
+    <message><source>Долг %1 · доступно %2</source><translation>Debt %1 · available %2</translation></message>
     <message><source>Добавить</source><translation>Add</translation></message>
     <message><source>Добавьте расходы — здесь появится график</source><translation>Add expenses to see a chart here</translation></message>
     <message><source>Доход</source><translation>Income</translation></message>
     <message><source>Доходы</source><translation>Income</translation></message>
+    <message><source>Доступно: %1 из %2</source><translation>Available: %1 of %2</translation></message>
     <message><source>Другой</source><translation>Other</translation></message>
     <message><source>Другой счёт</source><translation>Other account</translation></message>
     <message><source>Закрыть</source><translation>Close</translation></message>
+    <message><source>Задолженность на момент добавления</source><translation>Debt when added</translation></message>
+    <message><source>Задолженность: %1</source><translation>Debt: %1</translation></message>
     <message><source>Инвестиции</source><translation>Investments</translation></message>
     <message><source>История операций</source><translation>Transaction history</translation></message>
     <message><source>Категории</source><translation>Categories</translation></message>
@@ -38,6 +42,8 @@
     <message><source>Категорий расходов пока нет</source><translation>No expense categories yet</translation></message>
     <message><source>Категория</source><translation>Category</translation></message>
     <message><source>Кредитная карта</source><translation>Credit card</translation></message>
+    <message><source>Кредитный лимит</source><translation>Credit limit</translation></message>
+    <message><source>Кредитный лимит не считается активом. Расходы увеличивают задолженность, а перевод на кредитку её погашает.</source><translation>The credit limit is not an asset. Expenses increase the debt, while a transfer to the credit card repays it.</translation></message>
     <message><source>Крипта</source><translation>Crypto</translation></message>
     <message><source>Криптокошелёк</source><translation>Crypto wallet</translation></message>
     <message><source>Куда</source><translation>To</translation></message>
@@ -85,6 +91,7 @@
     <message><source>Счёт будет удалён. Это действие нельзя отменить.</source><translation>The account will be deleted. This action cannot be undone.</translation></message>
     <message><source>Счёт и все связанные операции будут удалены. Связанные переводы удалятся целиком. Это действие нельзя отменить.</source><translation>The account and all related transactions will be deleted. Related transfers will be removed in full. This action cannot be undone.</translation></message>
     <message><source>У этого актива пока нет счетов</source><translation>This asset has no accounts yet</translation></message>
+    <message><source>Укажите кредитный лимит</source><translation>Enter the credit limit</translation></message>
     <message><source>Удалить</source><translation>Delete</translation></message>
     <message><source>Удалить операцию?</source><translation>Delete transaction?</translation></message>
     <message><source>Удалить счёт?</source><translation>Delete account?</translation></message>

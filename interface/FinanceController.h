@@ -132,7 +132,8 @@ public:
         const QString& name,
         const QString& type,
         const QString& currency,
-        qint64 initialBalanceMinor
+        qint64 initialBalanceMinor,
+        qint64 creditLimitMinor
         );
 
     Q_INVOKABLE bool updateAccount(
@@ -140,7 +141,8 @@ public:
         const QString& name,
         const QString& type,
         const QString& currency,
-        qint64 initialBalanceMinor
+        qint64 initialBalanceMinor,
+        qint64 creditLimitMinor
         );
 
     Q_INVOKABLE bool deleteAccount(const QString& id);

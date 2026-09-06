@@ -23,6 +23,21 @@ QString transferId(const Transaction& transaction)
     }
     return {};
 }
+
+void addAccountFinancialRoles(
+    QVariantMap& item,
+    const Account& account,
+    const qint64 balanceMinor
+    )
+{
+    const bool creditCard = account.isCreditCard();
+
+    item["isCreditCard"] = creditCard;
+    item["creditLimitMinor"] = account.creditLimitMinor();
+    item["initialDebtMinor"] = account.debtMinor(account.initialBalanceMinor());
+    item["debtMinor"] = account.debtMinor(balanceMinor);
+    item["availableCreditMinor"] = account.availableCreditMinor(balanceMinor);
+}
 }
 
 FinanceController::FinanceController(QObject* parent)
@@ -204,7 +219,9 @@ QVariantList FinanceController::accounts() const
         item["asset"] = assetTypeToString(account.assetType());
         item["currency"] = currencyCode(account.currency());
         item["initialBalanceMinor"] = account.initialBalanceMinor();
-        item["balanceMinor"] = accountBalanceMinor(account);
+        const qint64 balanceMinor = accountBalanceMinor(account);
+        item["balanceMinor"] = balanceMinor;
+        addAccountFinancialRoles(item, account, balanceMinor);
         item["transactionCount"] = accountTransactionCount(account.id());
         result.append(item);
     }
@@ -229,8 +246,10 @@ QVariantList FinanceController::allAccounts() const
         item["displayName"] = item["assetTitle"].toString()
             + QStringLiteral(" · ") + accountDisplayName(account)
             + QStringLiteral(" · ") + currencyCode(account.currency());
-        item["balanceMinor"] = accountBalanceMinor(account);
+        const qint64 balanceMinor = accountBalanceMinor(account);
+        item["balanceMinor"] = balanceMinor;
         item["initialBalanceMinor"] = account.initialBalanceMinor();
+        addAccountFinancialRoles(item, account, balanceMinor);
         item["transactionCount"] = accountTransactionCount(account.id());
         result.append(item);
     }
@@ -307,7 +326,8 @@ bool FinanceController::addAccount(
     const QString& name,
     const QString& type,
     const QString& currency,
-    const qint64 initialBalanceMinor
+    const qint64 initialBalanceMinor,
+    const qint64 creditLimitMinor
     )
 {
     const QString normalizedName = name.trimmed();
@@ -339,6 +359,13 @@ bool FinanceController::addAccount(
         return false;
     }
 
+    const bool creditCard = accountType == AccountType::CreditCard;
+    if ((creditCard && (initialBalanceMinor > 0 || creditLimitMinor <= 0)) ||
+        creditLimitMinor < 0) {
+        return false;
+    }
+    const qint64 resolvedCreditLimitMinor = creditCard ? creditLimitMinor : 0;
+
     const Currency accountCurrency = currencyFromString(currency);
     const Account account(
         QUuid::createUuid().toString(QUuid::WithoutBraces),
@@ -346,7 +373,8 @@ bool FinanceController::addAccount(
         selectedAsset_,
         accountType,
         accountCurrency,
-        initialBalanceMinor);
+        initialBalanceMinor,
+        resolvedCreditLimitMinor);
 
     if (!repository_.insertAccount(account)) {
         qWarning() << "Failed to save account:" << repository_.lastError();
@@ -365,7 +393,8 @@ bool FinanceController::updateAccount(
     const QString& name,
     const QString& type,
     const QString& currency,
-    const qint64 initialBalanceMinor
+    const qint64 initialBalanceMinor,
+    const qint64 creditLimitMinor
     )
 {
     const QString normalizedName = name.trimmed();
@@ -413,6 +442,13 @@ bool FinanceController::updateAccount(
         return false;
     }
 
+    const bool creditCard = accountType == AccountType::CreditCard;
+    if ((creditCard && (initialBalanceMinor > 0 || creditLimitMinor <= 0)) ||
+        creditLimitMinor < 0) {
+        return false;
+    }
+    const qint64 resolvedCreditLimitMinor = creditCard ? creditLimitMinor : 0;
+
     const Currency accountCurrency = currencyFromString(currency);
     if (accountCurrency != original.currency() &&
         accountTransactionCount(id) > 0) {
@@ -425,7 +461,8 @@ bool FinanceController::updateAccount(
         original.assetType(),
         accountType,
         accountCurrency,
-        initialBalanceMinor);
+        initialBalanceMinor,
+        resolvedCreditLimitMinor);
     if (!repository_.isOpen() || !repository_.updateAccount(updated)) {
         qWarning() << "Failed to update account:" << repository_.lastError();
         return false;

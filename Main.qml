@@ -112,6 +112,30 @@ ApplicationWindow {
         return qsTr("Другой");
     }
 
+    function accountPrimaryAmount(row) {
+        if (row && row.isCreditCard)
+            return qsTr("Задолженность: %1").arg(
+                root.money(row.debtMinor, row.currency, false)
+            );
+        return row ? root.money(row.balanceMinor, row.currency, false) : "";
+    }
+
+    function accountCompactAmount(row) {
+        if (row && row.isCreditCard)
+            return qsTr("Долг %1 · доступно %2")
+                .arg(root.money(row.debtMinor, row.currency, false))
+                .arg(root.money(row.availableCreditMinor, row.currency, false));
+        return row ? root.money(row.balanceMinor, row.currency, false) : "";
+    }
+
+    function accountAvailableCredit(row) {
+        return row && row.isCreditCard
+             ? qsTr("Доступно: %1 из %2")
+                   .arg(root.money(row.availableCreditMinor, row.currency, false))
+                   .arg(root.money(row.creditLimitMinor, row.currency, false))
+             : "";
+    }
+
     function accountName(id) {
         const rows = financeController.allAccounts;
         for (let i = 0; i < rows.length; ++i)
@@ -736,21 +760,23 @@ ApplicationWindow {
                                         font.pixelSize: 20
                                     }
                                     ColumnLayout {
+                                        Layout.fillWidth: true
                                         spacing: 1
                                         Text {
+                                            Layout.fillWidth: true
                                             text: modelData.name
                                             color: financeController.selectedAccountId === modelData.id ? root.white : root.ink
                                             font.pixelSize: 14
                                             font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
                                         }
                                         Text {
-                                            text: root.money(modelData.balanceMinor, modelData.currency, false)
+                                            text: root.accountCompactAmount(modelData)
                                             color: financeController.selectedAccountId === modelData.id ? root.paleText : root.muted
                                             font.pixelSize: 12
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
                                         }
-                                    }
-                                    Item {
-                                        Layout.fillWidth: true
                                     }
                                     Text {
                                         text: financeController.selectedAccountId === modelData.id ? "✓" : "›"
@@ -1319,10 +1345,16 @@ ApplicationWindow {
                             }
                         }
                         Text {
-                            text: root.money(modelData.balanceMinor, modelData.currency, false)
+                            text: root.accountPrimaryAmount(modelData)
                             color: root.ink
-                            font.pixelSize: 25
+                            font.pixelSize: modelData.isCreditCard ? 20 : 25
                             font.weight: Font.Bold
+                        }
+                        Text {
+                            visible: modelData.isCreditCard
+                            text: root.accountAvailableCredit(modelData)
+                            color: root.green2
+                            font.pixelSize: 12
                         }
                         Text {
                             text: modelData.currency + " · " + root.accountTypeLabel(modelData.type)
@@ -1700,6 +1732,10 @@ ApplicationWindow {
         property string editingId: ""
         property var editingAccount: null
         property string editingAsset: financeController.selectedAsset
+        readonly property bool creditCardSelected:
+            accountTypeBox.currentIndex >= 0
+            && accountTypeBox.currentIndex < accountTypes.length
+            && accountTypes[accountTypeBox.currentIndex].value === "credit_card"
 
         function typesForAsset(asset) {
             return asset === "fiat" ? [
@@ -1755,6 +1791,7 @@ ApplicationWindow {
             accountTypes = typesForAsset(editingAsset);
             accountNameField.clear();
             accountBalanceField.clear();
+            accountCreditLimitField.clear();
             accountTypeBox.currentIndex = 0;
             accountCurrencyBox.currentIndex = 0;
             accountError.text = "";
@@ -1776,9 +1813,10 @@ ApplicationWindow {
                 0,
                 accountCurrencyBox.model.indexOf(row.currency)
             );
-            accountBalanceField.text = root.signedAmountForInput(
-                row.initialBalanceMinor
-            );
+            accountBalanceField.text = row.isCreditCard
+                                     ? root.amountForInput(row.initialDebtMinor)
+                                     : root.signedAmountForInput(row.initialBalanceMinor);
+            accountCreditLimitField.text = root.amountForInput(row.creditLimitMinor);
             accountError.text = "";
             open();
         }
@@ -1833,15 +1871,51 @@ ApplicationWindow {
                 color: root.muted
                 font.pixelSize: 11
             }
-            AppTextField {
-                id: accountBalanceField
+            Text {
                 Layout.fillWidth: true
-                placeholderText: qsTr("Начальный баланс")
+                visible: accountDialog.creditCardSelected
+                text: qsTr("Кредитный лимит")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppTextField {
+                id: accountCreditLimitField
+                Layout.fillWidth: true
+                visible: accountDialog.creditCardSelected
+                placeholderText: qsTr("Кредитный лимит")
                 validator: DoubleValidator {
-                    bottom: -999999999
+                    bottom: 0.01
                     top: 999999999
                     decimals: 2
                 }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: accountDialog.creditCardSelected
+                      ? qsTr("Задолженность на момент добавления")
+                      : qsTr("Начальный баланс")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppTextField {
+                id: accountBalanceField
+                Layout.fillWidth: true
+                placeholderText: accountDialog.creditCardSelected
+                                 ? qsTr("Задолженность на момент добавления")
+                                 : qsTr("Начальный баланс")
+                validator: DoubleValidator {
+                    bottom: accountDialog.creditCardSelected ? 0 : -999999999
+                    top: 999999999
+                    decimals: 2
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.creditCardSelected
+                text: qsTr("Кредитный лимит не считается активом. Расходы увеличивают задолженность, а перевод на кредитку её погашает.")
+                color: root.muted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
             }
             Text {
                 id: accountError
@@ -1860,21 +1934,33 @@ ApplicationWindow {
                     text: accountDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
                     highlighted: true
                     onClicked: {
-                        const minor = Math.round((Number(accountBalanceField.text.replace(",", ".")) || 0) * 100);
                         const type = accountDialog.accountTypes[accountTypeBox.currentIndex].value;
+                        const enteredMinor = Math.round((Number(accountBalanceField.text.replace(",", ".")) || 0) * 100);
+                        const initialBalanceMinor = accountDialog.creditCardSelected
+                                                  ? -Math.abs(enteredMinor)
+                                                  : enteredMinor;
+                        const creditLimitMinor = accountDialog.creditCardSelected
+                                               ? Math.round((Number(accountCreditLimitField.text.replace(",", ".")) || 0) * 100)
+                                               : 0;
+                        if (accountDialog.creditCardSelected && creditLimitMinor <= 0) {
+                            accountError.text = qsTr("Укажите кредитный лимит");
+                            return;
+                        }
                         const ok = accountDialog.editingId
                                  ? financeController.updateAccount(
                                      accountDialog.editingId,
                                      accountNameField.text,
                                      type,
                                      accountCurrencyBox.currentText,
-                                     minor
+                                     initialBalanceMinor,
+                                     creditLimitMinor
                                  )
                                  : financeController.addAccount(
                                      accountNameField.text,
                                      type,
                                      accountCurrencyBox.currentText,
-                                     minor
+                                     initialBalanceMinor,
+                                     creditLimitMinor
                                  );
                         if (ok)
                             accountDialog.close();
@@ -2001,10 +2087,8 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         text: deleteAccountDialog.accountData
-                              ? root.money(
-                                    deleteAccountDialog.accountData.balanceMinor,
-                                    deleteAccountDialog.accountData.currency,
-                                    false
+                              ? root.accountCompactAmount(
+                                    deleteAccountDialog.accountData
                                 )
                                 + " · " + qsTr("операций: ")
                                 + deleteAccountDialog.accountData.transactionCount

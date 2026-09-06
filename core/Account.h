@@ -27,7 +27,8 @@ public:
         AssetType assetType,
         AccountType type,
         Currency currency,
-        qint64 initialBalanceMinor = 0
+        qint64 initialBalanceMinor = 0,
+        qint64 creditLimitMinor = 0
         )
         : id_(std::move(id))
         , name_(std::move(name))
@@ -35,6 +36,7 @@ public:
         , type_(type)
         , currency_(currency)
         , initialBalanceMinor_(initialBalanceMinor)
+        , creditLimitMinor_(creditLimitMinor)
     {
     }
 
@@ -68,6 +70,32 @@ public:
         return initialBalanceMinor_;
     }
 
+    qint64 creditLimitMinor() const noexcept
+    {
+        return creditLimitMinor_;
+    }
+
+    bool isCreditCard() const noexcept
+    {
+        return type_ == AccountType::CreditCard;
+    }
+
+    qint64 debtMinor(const qint64 currentBalanceMinor) const noexcept
+    {
+        return isCreditCard() && currentBalanceMinor < 0
+            ? -currentBalanceMinor
+            : 0;
+    }
+
+    qint64 availableCreditMinor(const qint64 currentBalanceMinor) const noexcept
+    {
+        if (!isCreditCard()) {
+            return 0;
+        }
+        const qint64 available = creditLimitMinor_ + currentBalanceMinor;
+        return available > 0 ? available : 0;
+    }
+
 private:
     QString id_;
     QString name_;
@@ -75,4 +103,5 @@ private:
     AccountType type_;
     Currency currency_;
     qint64 initialBalanceMinor_;
+    qint64 creditLimitMinor_;
 };

@@ -1,7 +1,10 @@
 #include "../persistence/FinanceRepository.h"
 
+#include <QSqlError>
+#include <QSqlQuery>
 #include <QSet>
 #include <QTemporaryDir>
+#include <QUuid>
 #include <QtTest>
 
 class FinanceRepositoryTest : public QObject
@@ -11,6 +14,8 @@ class FinanceRepositoryTest : public QObject
 private slots:
     void preservesSelectedAccountAfterReopen();
     void storesUiLanguage();
+    void storesCreditCardTerms();
+    void migratesCreditLimitForExistingDatabase();
     void updatesAndDeletesTransaction();
     void storesTransferAtomicallyWithoutAffectingIncomeAndExpense();
     void replacesIncomeWithTransferAtomically();
@@ -19,6 +24,103 @@ private slots:
     void updatesAccountAndProtectsTransactionCurrency();
     void deletesAccountWithRelatedOperations();
 };
+
+void FinanceRepositoryTest::storesCreditCardTerms()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    FinanceRepository repository(temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-credit-card-test.sqlite3")));
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+    const Account creditCard(
+        QStringLiteral("credit-card"),
+        QStringLiteral("Credit card"),
+        AssetType::Fiat,
+        AccountType::CreditCard,
+        Currency::RUB,
+        -5'000,
+        85'000);
+    QVERIFY2(repository.insertAccount(creditCard),
+             qPrintable(repository.lastError()));
+
+    const QVector<Account> accounts = repository.loadAccounts();
+    bool restored = false;
+    for (const Account& account : accounts) {
+        if (account.id() != creditCard.id()) {
+            continue;
+        }
+        restored = true;
+        QCOMPARE(account.type(), AccountType::CreditCard);
+        QCOMPARE(account.initialBalanceMinor(), qint64(-5'000));
+        QCOMPARE(account.creditLimitMinor(), qint64(85'000));
+        QCOMPARE(account.debtMinor(-5'000), qint64(5'000));
+        QCOMPARE(account.availableCreditMinor(-5'000), qint64(80'000));
+        QCOMPARE(account.debtMinor(0), qint64(0));
+        QCOMPARE(account.availableCreditMinor(0), qint64(85'000));
+        QCOMPARE(account.availableCreditMinor(2'000), qint64(87'000));
+    }
+    QVERIFY(restored);
+
+    const FinanceRepository::Summary summary = repository.loadSummary();
+    QCOMPARE(summary.balance[static_cast<int>(Currency::RUB)], qint64(-5'000));
+}
+
+void FinanceRepositoryTest::migratesCreditLimitForExistingDatabase()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-credit-limit-migration.sqlite3"));
+    const QString connectionName = QStringLiteral("credit-limit-migration-")
+        + QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    {
+        QSqlDatabase database = QSqlDatabase::addDatabase(
+            QStringLiteral("QSQLITE"), connectionName);
+        database.setDatabaseName(databasePath);
+        QVERIFY(database.open());
+        QSqlQuery query(database);
+        QVERIFY2(query.exec(QStringLiteral(
+            "CREATE TABLE accounts ("
+            "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+            "asset_type INTEGER NOT NULL, account_type INTEGER NOT NULL, "
+            "currency TEXT NOT NULL, initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
+            "is_archived INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)")),
+            qPrintable(query.lastError().text()));
+        QVERIFY2(query.exec(QStringLiteral(
+            "INSERT INTO accounts(id, name, asset_type, account_type, currency, "
+            "initial_balance_minor, is_archived, created_at) "
+            "VALUES('legacy-credit-card', 'Legacy card', 0, 2, 'RUB', -5000, 0, 1)")),
+            qPrintable(query.lastError().text()));
+        QVERIFY2(query.exec(QStringLiteral(
+            "INSERT INTO accounts(id, name, asset_type, account_type, currency, "
+            "initial_balance_minor, is_archived, created_at) "
+            "VALUES('legacy-credit-limit', 'Legacy limit', 0, 2, 'RUB', 85000, 0, 2)")),
+            qPrintable(query.lastError().text()));
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(connectionName);
+
+    FinanceRepository repository(databasePath);
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+    const QVector<Account> accounts = repository.loadAccounts();
+    bool restoredDebt = false;
+    bool restoredLimit = false;
+    for (const Account& account : accounts) {
+        if (account.id() == QStringLiteral("legacy-credit-card")) {
+            restoredDebt = true;
+            QCOMPARE(account.initialBalanceMinor(), qint64(-5'000));
+            QCOMPARE(account.creditLimitMinor(), qint64(0));
+        } else if (account.id() == QStringLiteral("legacy-credit-limit")) {
+            restoredLimit = true;
+            QCOMPARE(account.initialBalanceMinor(), qint64(0));
+            QCOMPARE(account.creditLimitMinor(), qint64(85'000));
+        }
+    }
+    QVERIFY(restoredDebt);
+    QVERIFY(restoredLimit);
+}
 
 void FinanceRepositoryTest::storesUiLanguage()
 {

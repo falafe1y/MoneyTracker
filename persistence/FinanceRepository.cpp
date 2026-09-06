@@ -247,7 +247,7 @@ QVector<Account> FinanceRepository::loadAccounts()
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
             "SELECT id, name, asset_type, account_type, currency, "
-            "       initial_balance_minor "
+            "       initial_balance_minor, credit_limit_minor "
             "FROM accounts WHERE is_archived = 0 "
             "ORDER BY asset_type, created_at, name COLLATE NOCASE"))) {
         setLastError(query.lastError().text());
@@ -261,7 +261,8 @@ QVector<Account> FinanceRepository::loadAccounts()
             assetTypeFromInt(query.value(2).toInt()),
             static_cast<AccountType>(query.value(3).toInt()),
             currencyFromCode(query.value(4).toString()),
-            query.value(5).toLongLong()));
+            query.value(5).toLongLong(),
+            query.value(6).toLongLong()));
     }
     return result;
 }
@@ -516,14 +517,15 @@ bool FinanceRepository::insertAccount(const Account& account)
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "INSERT INTO accounts(id, name, asset_type, account_type, currency, "
-        "initial_balance_minor, is_archived, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, 0, ?)"));
+        "initial_balance_minor, credit_limit_minor, is_archived, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)"));
     query.addBindValue(account.id());
     query.addBindValue(account.name());
     query.addBindValue(static_cast<int>(account.assetType()));
     query.addBindValue(static_cast<int>(account.type()));
     query.addBindValue(currencyCode(account.currency()));
     query.addBindValue(account.initialBalanceMinor());
+    query.addBindValue(account.creditLimitMinor());
     query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
 
     if (!query.exec()) {
@@ -539,7 +541,7 @@ bool FinanceRepository::updateAccount(const Account& account)
     query.prepare(QStringLiteral(
         "UPDATE accounts "
         "SET name = ?, asset_type = ?, account_type = ?, currency = ?, "
-        "    initial_balance_minor = ? "
+        "    initial_balance_minor = ?, credit_limit_minor = ? "
         "WHERE id = ? AND is_archived = 0 "
         "  AND (currency = ? OR NOT EXISTS ("
         "      SELECT 1 FROM transactions WHERE account_id = ?"
@@ -549,6 +551,7 @@ bool FinanceRepository::updateAccount(const Account& account)
     query.addBindValue(static_cast<int>(account.type()));
     query.addBindValue(currencyCode(account.currency()));
     query.addBindValue(account.initialBalanceMinor());
+    query.addBindValue(account.creditLimitMinor());
     query.addBindValue(account.id());
     query.addBindValue(currencyCode(account.currency()));
     query.addBindValue(account.id());
@@ -747,6 +750,8 @@ bool FinanceRepository::initializeSchema()
                        "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,3,4,5,6,7)), "
                        "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
                        "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
+                       "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
+                       "CHECK(credit_limit_minor >= 0), "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS categories ("
@@ -793,22 +798,64 @@ bool FinanceRepository::migrateLegacySchema()
 
     bool hasLegacyGroupType = false;
     bool hasAssetType = false;
+    bool hasCreditLimit = false;
     while (columns.next()) {
         const QString name = columns.value(1).toString();
         hasLegacyGroupType = hasLegacyGroupType ||
             name == QStringLiteral("group_type");
         hasAssetType = hasAssetType ||
             name == QStringLiteral("asset_type");
+        hasCreditLimit = hasCreditLimit ||
+            name == QStringLiteral("credit_limit_minor");
     }
 
-    if (!hasLegacyGroupType || hasAssetType) {
+    const bool needsAssetTypeRename = hasLegacyGroupType && !hasAssetType;
+    if (!needsAssetTypeRename && hasCreditLimit) {
         return true;
+    }
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
     }
 
     QSqlQuery migration(database_);
-    if (!migration.exec(QStringLiteral(
+    if (needsAssetTypeRename &&
+        !migration.exec(QStringLiteral(
             "ALTER TABLE accounts RENAME COLUMN group_type TO asset_type"))) {
         setLastError(migration.lastError().text());
+        database_.rollback();
+        return false;
+    }
+
+    if (!hasCreditLimit) {
+        if (!migration.exec(QStringLiteral(
+                "ALTER TABLE accounts ADD COLUMN "
+                "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(credit_limit_minor >= 0)"))) {
+            setLastError(migration.lastError().text());
+            database_.rollback();
+            return false;
+        }
+
+        // Before credit cards had their own semantics, a positive initial
+        // balance was commonly used as the available credit. Preserve that
+        // intent by turning it into a limit instead of counting bank money as
+        // the user's asset.
+        if (!migration.exec(QStringLiteral(
+                "UPDATE accounts "
+                "SET credit_limit_minor = initial_balance_minor, "
+                "    initial_balance_minor = 0 "
+                "WHERE account_type = %1 AND initial_balance_minor > 0")
+                .arg(static_cast<int>(AccountType::CreditCard)))) {
+            setLastError(migration.lastError().text());
+            database_.rollback();
+            return false;
+        }
+    }
+
+    if (!database_.commit()) {
+        setLastError(database_.lastError().text());
+        database_.rollback();
         return false;
     }
     return true;
