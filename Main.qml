@@ -81,9 +81,13 @@ ApplicationWindow {
     }
 
     function money(minor, code, sign) {
-        const value = Number(minor) / 100;
+        const roundedMinor = Math.round(Number(minor));
+        const value = roundedMinor / 100;
+        const decimals = Math.abs(roundedMinor) % 100 === 0 ? 0 : 2;
         const prefix = sign ? (value >= 0 ? "+" : "−") : (value < 0 ? "−" : "");
-        return prefix + Math.abs(value).toLocaleString(root.uiLocale(), "f", 0) + " " + symbol(code || financeController.appCurrency);
+        return prefix
+             + Math.abs(value).toLocaleString(root.uiLocale(), "f", decimals)
+             + " " + symbol(code || financeController.appCurrency);
     }
 
     function assetTitle(code) {
