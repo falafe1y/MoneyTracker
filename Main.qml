@@ -165,6 +165,12 @@ ApplicationWindow {
              ? row.amount : -row.amount;
     }
 
+    function transactionTypeLabel(row) {
+        if (row.type === "transfer")
+            return qsTr("Перевод");
+        return row.type === "income" ? qsTr("Доход") : qsTr("Расход");
+    }
+
     function indexByRole(model, role, value) {
         for (let i = 0; i < model.length; ++i)
             if (model[i][role] === value)
@@ -1036,6 +1042,11 @@ ApplicationWindow {
 
         readonly property int tableHeaderHeight: 34
         readonly property int rowHeight: 38
+        readonly property int operationColumnWidth: 100
+        readonly property int accountColumnWidth: 150
+        readonly property int categoryColumnWidth: 160
+        readonly property int dateColumnWidth: 110
+        readonly property int amountColumnWidth: 130
 
         ColumnLayout {
             anchors.fill: parent
@@ -1064,16 +1075,22 @@ ApplicationWindow {
                         text: qsTr("Операция")
                         color: root.muted
                         font.pixelSize: 11
-                        Layout.preferredWidth: 250
+                        Layout.preferredWidth: transactionTable.operationColumnWidth
                     }
                     Text {
                         text: qsTr("Счёт")
                         color: root.muted
                         font.pixelSize: 11
-                        Layout.preferredWidth: 170
+                        Layout.preferredWidth: transactionTable.accountColumnWidth
                     }
                     Text {
                         text: qsTr("Категория")
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.preferredWidth: transactionTable.categoryColumnWidth
+                    }
+                    Text {
+                        text: qsTr("Описание")
                         color: root.muted
                         font.pixelSize: 11
                         Layout.fillWidth: true
@@ -1082,13 +1099,13 @@ ApplicationWindow {
                         text: qsTr("Дата")
                         color: root.muted
                         font.pixelSize: 11
-                        Layout.preferredWidth: 120
+                        Layout.preferredWidth: transactionTable.dateColumnWidth
                     }
                     Text {
                         text: qsTr("Сумма")
                         color: root.muted
                         font.pixelSize: 11
-                        Layout.preferredWidth: 130
+                        Layout.preferredWidth: transactionTable.amountColumnWidth
                         horizontalAlignment: Text.AlignRight
                     }
                 }
@@ -1145,39 +1162,46 @@ ApplicationWindow {
                                 anchors.rightMargin: 22
 
                                 Text {
-                                    text: modelData.description || (modelData.type === "transfer"
-                                        ? qsTr("Перевод")
-                                        : modelData.type === "income" ? qsTr("Доход") : qsTr("Расход"))
+                                    text: root.transactionTypeLabel(modelData)
                                     color: root.ink
                                     font.pixelSize: 12
-                                    Layout.preferredWidth: 250
+                                    font.weight: Font.Medium
+                                    Layout.preferredWidth: transactionTable.operationColumnWidth
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     text: root.accountName(modelData.accountId)
                                     color: root.muted
                                     font.pixelSize: 12
-                                    Layout.preferredWidth: 170
+                                    Layout.preferredWidth: transactionTable.accountColumnWidth
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     text: modelData.categoryName
                                     color: root.green
                                     font.pixelSize: 11
+                                    Layout.preferredWidth: transactionTable.categoryColumnWidth
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: modelData.rawDescription || "—"
+                                    color: root.muted
+                                    font.pixelSize: 12
                                     Layout.fillWidth: true
+                                    elide: Text.ElideRight
                                 }
                                 Text {
                                     text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
                                     color: root.muted
                                     font.pixelSize: 12
-                                    Layout.preferredWidth: 120
+                                    Layout.preferredWidth: transactionTable.dateColumnWidth
                                 }
                                 Text {
                                     text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
                                     color: modelData.type === "transfer" ? root.green2 : modelData.type === "income" ? root.income : root.red
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
-                                    Layout.preferredWidth: 130
+                                    Layout.preferredWidth: transactionTable.amountColumnWidth
                                     horizontalAlignment: Text.AlignRight
                                 }
                             }
@@ -1228,39 +1252,46 @@ ApplicationWindow {
                             anchors.rightMargin: 22
 
                             Text {
-                                text: modelData.description || (modelData.type === "transfer"
-                                    ? qsTr("Перевод")
-                                    : modelData.type === "income" ? qsTr("Доход") : qsTr("Расход"))
+                                text: root.transactionTypeLabel(modelData)
                                 color: root.ink
                                 font.pixelSize: 12
-                                Layout.preferredWidth: 250
+                                font.weight: Font.Medium
+                                Layout.preferredWidth: transactionTable.operationColumnWidth
                                 elide: Text.ElideRight
                             }
                             Text {
                                 text: root.accountName(modelData.accountId)
                                 color: root.muted
                                 font.pixelSize: 12
-                                Layout.preferredWidth: 170
+                                Layout.preferredWidth: transactionTable.accountColumnWidth
                                 elide: Text.ElideRight
                             }
                             Text {
                                 text: modelData.categoryName
                                 color: root.green
                                 font.pixelSize: 11
+                                Layout.preferredWidth: transactionTable.categoryColumnWidth
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: modelData.rawDescription || "—"
+                                color: root.muted
+                                font.pixelSize: 12
                                 Layout.fillWidth: true
+                                elide: Text.ElideRight
                             }
                             Text {
                                 text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
                                 color: root.muted
                                 font.pixelSize: 12
-                                Layout.preferredWidth: 120
+                                Layout.preferredWidth: transactionTable.dateColumnWidth
                             }
                             Text {
                                 text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
                                 color: modelData.type === "transfer" ? root.green2 : modelData.type === "income" ? root.income : root.red
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
-                                Layout.preferredWidth: 130
+                                Layout.preferredWidth: transactionTable.amountColumnWidth
                                 horizontalAlignment: Text.AlignRight
                             }
                         }
