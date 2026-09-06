@@ -10,6 +10,8 @@
 #include <QStringList>
 #include <QUuid>
 
+#include <cmath>
+
 namespace
 {
 constexpr int currencyIndex(const Currency currency)
@@ -741,6 +743,104 @@ bool FinanceRepository::saveUiLanguage(const QString& language)
     return true;
 }
 
+bool FinanceRepository::loadAutomaticCurrencyRates() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings "
+            "WHERE key = 'automatic_currency_rates'")) &&
+        query.next()) {
+        return query.value(0).toString() != QStringLiteral("0");
+    }
+    return true;
+}
+
+double FinanceRepository::loadManualUsdToRubRate() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings "
+            "WHERE key = 'manual_usd_to_rub_rate'")) &&
+        query.next()) {
+        bool valid = false;
+        const double value = query.value(0).toString().toDouble(&valid);
+        if (valid && std::isfinite(value) && value > 0.0) {
+            return value;
+        }
+    }
+    return 90.909090909;
+}
+
+double FinanceRepository::loadManualEurToRubRate() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings "
+            "WHERE key = 'manual_eur_to_rub_rate'")) &&
+        query.next()) {
+        bool valid = false;
+        const double value = query.value(0).toString().toDouble(&valid);
+        if (valid && std::isfinite(value) && value > 0.0) {
+            return value;
+        }
+    }
+    return 106.363636364;
+}
+
+bool FinanceRepository::saveAutomaticCurrencyRates(const bool enabled)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO settings(key, value) "
+        "VALUES('automatic_currency_rates', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"));
+    query.addBindValue(enabled ? QStringLiteral("1") : QStringLiteral("0"));
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::saveManualCurrencyRates(
+    const double rublesPerUsd,
+    const double rublesPerEur
+    )
+{
+    if (!std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
+        !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0) {
+        setLastError(QStringLiteral("Currency rates must be positive numbers"));
+        return false;
+    }
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO settings(key, value) VALUES(?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"));
+    const auto saveRate = [&query](const QString& key, const double value)
+    {
+        query.bindValue(0, key);
+        query.bindValue(1, QString::number(value, 'g', 15));
+        return query.exec();
+    };
+    if (!saveRate(QStringLiteral("manual_usd_to_rub_rate"), rublesPerUsd) ||
+        !saveRate(QStringLiteral("manual_eur_to_rub_rate"), rublesPerEur)) {
+        setLastError(query.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    if (!database_.commit()) {
+        setLastError(database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
@@ -926,6 +1026,15 @@ bool FinanceRepository::seedDefaults()
             "INSERT OR IGNORE INTO settings(key,value) VALUES('selected_asset','fiat')")) ||
         !setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) VALUES('ui_language','ru')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) "
+            "VALUES('automatic_currency_rates','1')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) "
+            "VALUES('manual_usd_to_rub_rate','90.909090909')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) "
+            "VALUES('manual_eur_to_rub_rate','106.363636364')")) ||
         !database_.commit()) {
         setLastError(setting.lastError().isValid()
                          ? setting.lastError().text()

@@ -319,6 +319,42 @@ ApplicationWindow {
             border.color: field.activeFocus ? root.green2 : root.line
         }
     }
+    component AppCheckBox: CheckBox {
+        id: check
+        hoverEnabled: true
+        spacing: 10
+        implicitHeight: 32
+
+        indicator: Rectangle {
+            implicitWidth: 22
+            implicitHeight: 22
+            x: check.leftPadding
+            y: (check.height - height) / 2
+            radius: 6
+            color: check.checked
+                   ? (check.hovered ? root.green2 : root.green)
+                   : (check.hovered ? root.controlHovered : root.soft)
+            border.width: check.checked ? 0 : 1
+            border.color: root.line
+
+            Text {
+                anchors.centerIn: parent
+                visible: check.checked
+                text: "✓"
+                color: root.white
+                font.pixelSize: 15
+                font.weight: Font.Bold
+            }
+        }
+
+        contentItem: Text {
+            leftPadding: check.indicator.width + check.spacing
+            text: check.text
+            color: check.enabled ? root.ink : root.muted
+            font.pixelSize: 14
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
     component AppComboBox: ComboBox {
         id: combo
         hoverEnabled: true
@@ -1724,6 +1760,107 @@ ApplicationWindow {
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
                     onActivated: financeController.appCurrency = currentText
                     implicitWidth: 180
+                }
+                Rectangle {
+                    Layout.topMargin: 12
+                    Layout.preferredWidth: 360
+                    height: 1
+                    color: root.line
+                }
+                Text {
+                    Layout.topMargin: 8
+                    text: qsTr("Курсы валют")
+                    color: root.ink
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.preferredWidth: 460
+                    text: automaticRatesCheck.checked
+                          ? qsTr("Курсы загружаются из ЦБ РФ дважды в сутки. При ошибке используется последний успешный результат.")
+                          : qsTr("Автоматические запросы отключены. Для пересчёта используются сохранённые ниже значения.")
+                    color: root.muted
+                    wrapMode: Text.WordWrap
+                }
+                AppCheckBox {
+                    id: automaticRatesCheck
+                    text: qsTr("Обновлять курсы автоматически")
+                    checked: financeController.automaticCurrencyRates
+                    onToggled: {
+                        financeController.automaticCurrencyRates = checked;
+                        rateSaveStatus.text = "";
+                    }
+                }
+                GridLayout {
+                    columns: 2
+                    columnSpacing: 12
+                    rowSpacing: 10
+                    enabled: !automaticRatesCheck.checked
+                    opacity: enabled ? 1.0 : 0.55
+
+                    Text {
+                        text: qsTr("1 USD в рублях")
+                        color: root.ink
+                    }
+                    AppTextField {
+                        id: manualUsdRateField
+                        implicitWidth: 180
+                        text: financeController.manualUsdToRubRate.toLocaleString(
+                            root.uiLocale(), "f", 4)
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        validator: DoubleValidator {
+                            bottom: 0.0001
+                            top: 999999999
+                            decimals: 4
+                            locale: root.uiLocale().name
+                        }
+                        onTextEdited: rateSaveStatus.text = ""
+                    }
+
+                    Text {
+                        text: qsTr("1 EUR в рублях")
+                        color: root.ink
+                    }
+                    AppTextField {
+                        id: manualEurRateField
+                        implicitWidth: 180
+                        text: financeController.manualEurToRubRate.toLocaleString(
+                            root.uiLocale(), "f", 4)
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        validator: DoubleValidator {
+                            bottom: 0.0001
+                            top: 999999999
+                            decimals: 4
+                            locale: root.uiLocale().name
+                        }
+                        onTextEdited: rateSaveStatus.text = ""
+                    }
+                }
+                RowLayout {
+                    enabled: !automaticRatesCheck.checked
+                    opacity: enabled ? 1.0 : 0.55
+
+                    SoftButton {
+                        text: qsTr("Сохранить курсы")
+                        highlighted: true
+                        enabled: manualUsdRateField.acceptableInput
+                              && manualEurRateField.acceptableInput
+                        onClicked: {
+                            const usdRate = Number(manualUsdRateField.text.replace(",", "."));
+                            const eurRate = Number(manualEurRateField.text.replace(",", "."));
+                            const saved = financeController.saveManualCurrencyRates(
+                                usdRate, eurRate);
+                            rateSaveStatus.color = saved ? root.income : root.red;
+                            rateSaveStatus.text = saved
+                                ? qsTr("Курсы сохранены")
+                                : qsTr("Введите положительные числовые значения");
+                        }
+                    }
+                    Text {
+                        id: rateSaveStatus
+                        color: root.income
+                        font.pixelSize: 12
+                    }
                 }
                 Rectangle {
                     Layout.topMargin: 12

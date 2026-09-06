@@ -101,12 +101,15 @@ add_test(
 add_executable(CurrencyRateCacheTest
     tests/CurrencyRateCacheTest.cpp
     core/Currency.cpp
+    services/CurrencyConverter.cpp
     services/CurrencyRateCache.cpp
+    services/CbrCurrencyRateProvider.cpp
 )
 
 target_link_libraries(CurrencyRateCacheTest
     PRIVATE
         Qt6::Core
+        Qt6::Network
         Qt6::Test
 )
 

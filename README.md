@@ -58,3 +58,9 @@ cache replaced using an atomic file commit. Network errors, non-200 responses,
 malformed XML, missing quotes, and older rate dates leave the previous cache
 untouched. Until the first successful request, the bundled fallback rates are
 used.
+
+Automatic updates can be disabled in Settings. In manual mode the application
+makes no rate requests and uses the saved `USD/RUB` and `EUR/RUB` values instead.
+Manual values are stored independently from the last successful automatic
+cache, so switching modes never overwrites either set. A future version can
+extend the same settings section with a choice of automatic rate provider.

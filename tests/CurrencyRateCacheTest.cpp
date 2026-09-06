@@ -1,5 +1,7 @@
 #include "../services/CurrencyRateCache.h"
 #include "../services/CurrencyRateProvider.h"
+#include "../services/CbrCurrencyRateProvider.h"
+#include "../services/CurrencyConverter.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -68,12 +70,44 @@ class CurrencyRateCacheTest final : public QObject
 
 private slots:
     void parsesCompleteCbrResponse();
+    void loadsLegacyRateScaleWithoutRewritingCache();
     void rejectsResponseWithoutEverySupportedCurrency();
     void rejectsStaleResponse();
     void completeResponseReplacesCache();
     void invalidResponseDoesNotReplaceCache();
     void olderResponseDoesNotReplaceNewerCache();
+    void manualRatesAreUsedWhenAutomaticUpdatesAreDisabled();
+    void invalidManualRatesAreRejected();
 };
+
+void CurrencyRateCacheTest::loadsLegacyRateScaleWithoutRewritingCache()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString cachePath = directory.filePath(QStringLiteral("rates.json"));
+    const QByteArray legacy = QByteArrayLiteral(
+        "{\"formatVersion\":1,\"source\":\"cbr.ru\","
+        "\"sourceDate\":\"2026-09-06\","
+        "\"fetchedAtUtc\":\"2026-09-06T03:00:00.000Z\","
+        "\"ratesToUsd\":{\"RUB\":10000,\"USD\":1000000,\"EUR\":1200000}}");
+    QFile file(cachePath);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QCOMPARE(file.write(legacy), legacy.size());
+    file.close();
+
+    CurrencyRateSnapshot snapshot;
+    QVERIFY(CurrencyRateCache(cachePath).load(snapshot));
+    QCOMPARE(
+        snapshot.ratesToUsd[currencyIndex(Currency::RUB)],
+        qint64(10'000'000));
+    QCOMPARE(
+        snapshot.ratesToUsd[currencyIndex(Currency::USD)],
+        kCurrencyRateScale);
+    QCOMPARE(
+        snapshot.ratesToUsd[currencyIndex(Currency::EUR)],
+        qint64(1'200'000'000));
+    QCOMPARE(readFile(cachePath), legacy);
+}
 
 void CurrencyRateCacheTest::parsesCompleteCbrResponse()
 {
@@ -92,13 +126,13 @@ void CurrencyRateCacheTest::parsesCompleteCbrResponse()
     QCOMPARE(snapshot.sourceDate, QDate(2026, 9, 6));
     QCOMPARE(
         snapshot.ratesToUsd[currencyIndex(Currency::RUB)],
-        qint64(10'000));
+        qint64(10'000'000));
     QCOMPARE(
         snapshot.ratesToUsd[currencyIndex(Currency::USD)],
         kCurrencyRateScale);
     QCOMPARE(
         snapshot.ratesToUsd[currencyIndex(Currency::EUR)],
-        qint64(1'200'000));
+        qint64(1'200'000'000));
 }
 
 void CurrencyRateCacheTest::rejectsResponseWithoutEverySupportedCurrency()
@@ -164,10 +198,10 @@ void CurrencyRateCacheTest::completeResponseReplacesCache()
     compareRates(cached, updated);
     QCOMPARE(
         cached.ratesToUsd[currencyIndex(Currency::RUB)],
-        qint64(10'000));
+        qint64(10'000'000));
     QCOMPARE(
         cached.ratesToUsd[currencyIndex(Currency::EUR)],
-        qint64(1'200'000));
+        qint64(1'200'000'000));
     QVERIFY(readFile(cachePath) != cacheBeforeUpdate);
 }
 
@@ -234,6 +268,35 @@ void CurrencyRateCacheTest::olderResponseDoesNotReplaceNewerCache()
     QCOMPARE(afterFailure.fetchedAtUtc, original.fetchedAtUtc);
     compareRates(afterFailure, original);
     QCOMPARE(readFile(cachePath), cacheBeforeFailure);
+}
+
+void CurrencyRateCacheTest::manualRatesAreUsedWhenAutomaticUpdatesAreDisabled()
+{
+    CbrCurrencyRateProvider provider;
+    provider.setAutomaticUpdatesEnabled(false);
+    QVERIFY(provider.setManualRates(86.54, 100.0));
+
+    const CurrencyConverter converter(provider);
+    QCOMPARE(
+        converter.convert(Money(100'00, Currency::USD), Currency::RUB)
+            .minorUnits(),
+        qint64(865'400));
+    QCOMPARE(
+        converter.convert(Money(100'00, Currency::EUR), Currency::RUB)
+            .minorUnits(),
+        qint64(1'000'000));
+}
+
+void CurrencyRateCacheTest::invalidManualRatesAreRejected()
+{
+    CbrCurrencyRateProvider provider;
+    provider.setAutomaticUpdatesEnabled(false);
+    QVERIFY(provider.setManualRates(86.54, 100.0));
+    const qint64 previousRubRate = provider.rateToUsd(Currency::RUB);
+
+    QVERIFY(!provider.setManualRates(0.0, 100.0));
+    QVERIFY(!provider.setManualRates(86.54, -1.0));
+    QCOMPARE(provider.rateToUsd(Currency::RUB), previousRubRate);
 }
 
 QTEST_MAIN(CurrencyRateCacheTest)

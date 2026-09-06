@@ -65,6 +65,14 @@ FinanceController::FinanceController(QObject* parent)
     uiLanguage_ = repository_.loadUiLanguage() == QStringLiteral("en")
         ? QStringLiteral("en")
         : QStringLiteral("ru");
+    manualUsdToRubRate_ = repository_.loadManualUsdToRubRate();
+    manualEurToRubRate_ = repository_.loadManualEurToRubRate();
+    if (!rateProvider_.setManualRates(
+            manualUsdToRubRate_, manualEurToRubRate_)) {
+        qWarning() << "Failed to apply stored manual currency rates";
+    }
+    automaticCurrencyRates_ = repository_.loadAutomaticCurrencyRates();
+    rateProvider_.setAutomaticUpdatesEnabled(automaticCurrencyRates_);
     selectedAsset_ = assetTypeFromString(repository_.loadSelectedAsset());
     transactions_ = repository_.loadTransactions();
     categories_ = repository_.loadCategories();
@@ -145,6 +153,61 @@ void FinanceController::retranslate()
     emit categoriesChanged();
     emit accountsChanged();
     emit transactionsChanged();
+}
+
+bool FinanceController::automaticCurrencyRates() const
+{
+    return automaticCurrencyRates_;
+}
+
+void FinanceController::setAutomaticCurrencyRates(const bool enabled)
+{
+    if (enabled == automaticCurrencyRates_) {
+        return;
+    }
+    if (repository_.isOpen() &&
+        !repository_.saveAutomaticCurrencyRates(enabled)) {
+        qWarning() << "Failed to save automatic currency-rate setting:"
+                   << repository_.lastError();
+        return;
+    }
+
+    automaticCurrencyRates_ = enabled;
+    rateProvider_.setAutomaticUpdatesEnabled(enabled);
+    emit automaticCurrencyRatesChanged();
+}
+
+double FinanceController::manualUsdToRubRate() const
+{
+    return manualUsdToRubRate_;
+}
+
+double FinanceController::manualEurToRubRate() const
+{
+    return manualEurToRubRate_;
+}
+
+bool FinanceController::saveManualCurrencyRates(
+    const double rublesPerUsd,
+    const double rublesPerEur
+    )
+{
+    if (!rateProvider_.setManualRates(rublesPerUsd, rublesPerEur)) {
+        return false;
+    }
+    if (repository_.isOpen() &&
+        !repository_.saveManualCurrencyRates(rublesPerUsd, rublesPerEur)) {
+        qWarning() << "Failed to save manual currency rates:"
+                   << repository_.lastError();
+        rateProvider_.setManualRates(
+            manualUsdToRubRate_, manualEurToRubRate_);
+        return false;
+    }
+
+    manualUsdToRubRate_ = rublesPerUsd;
+    manualEurToRubRate_ = rublesPerEur;
+    emit manualCurrencyRatesChanged();
+    return true;
 }
 
 QVariantList FinanceController::transactions() const

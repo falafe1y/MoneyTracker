@@ -8,6 +8,7 @@
 #include <QUrl>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace
@@ -28,7 +29,7 @@ CbrCurrencyRateProvider::CbrCurrencyRateProvider(QObject* parent)
 {
     CurrencyRateSnapshot cached;
     if (cache_.load(cached)) {
-        ratesToUsd_ = cached.ratesToUsd;
+        automaticRatesToUsd_ = cached.ratesToUsd;
         lastSuccessfulFetchUtc_ = cached.fetchedAtUtc;
     }
 
@@ -47,11 +48,64 @@ CbrCurrencyRateProvider::CbrCurrencyRateProvider(QObject* parent)
 
 qint64 CbrCurrencyRateProvider::rateToUsd(const Currency currency) const
 {
-    return ratesToUsd_[currencyIndex(currency)];
+    const auto& rates = automaticUpdatesEnabled_
+        ? automaticRatesToUsd_
+        : manualRatesToUsd_;
+    return rates[currencyIndex(currency)];
+}
+
+bool CbrCurrencyRateProvider::automaticUpdatesEnabled() const
+{
+    return automaticUpdatesEnabled_;
+}
+
+void CbrCurrencyRateProvider::setAutomaticUpdatesEnabled(const bool enabled)
+{
+    if (enabled == automaticUpdatesEnabled_) {
+        return;
+    }
+
+    automaticUpdatesEnabled_ = enabled;
+    refreshTimer_.stop();
+
+    if (activeReply_ != nullptr) {
+        QNetworkReply* reply = activeReply_;
+        activeReply_ = nullptr;
+        reply->abort();
+        reply->deleteLater();
+    }
+
+    emit ratesUpdated();
+    if (automaticUpdatesEnabled_) {
+        scheduleInitialRefresh();
+    }
+}
+
+bool CbrCurrencyRateProvider::setManualRates(
+    const double rublesPerUsd,
+    const double rublesPerEur
+    )
+{
+    std::array<qint64, 3> candidate;
+    if (!buildRatesToUsd(rublesPerUsd, rublesPerEur, candidate)) {
+        return false;
+    }
+
+    if (candidate == manualRatesToUsd_) {
+        return true;
+    }
+    manualRatesToUsd_ = candidate;
+    if (!automaticUpdatesEnabled_) {
+        emit ratesUpdated();
+    }
+    return true;
 }
 
 void CbrCurrencyRateProvider::scheduleInitialRefresh()
 {
+    if (!automaticUpdatesEnabled_) {
+        return;
+    }
     if (!lastSuccessfulFetchUtc_.isValid()) {
         requestRefresh();
         return;
@@ -70,7 +124,7 @@ void CbrCurrencyRateProvider::scheduleInitialRefresh()
 
 void CbrCurrencyRateProvider::requestRefresh()
 {
-    if (activeReply_ != nullptr) {
+    if (!automaticUpdatesEnabled_ || activeReply_ != nullptr) {
         return;
     }
 
@@ -111,7 +165,7 @@ void CbrCurrencyRateProvider::finishRefresh(QNetworkReply* reply)
         statusCode == 200 &&
         response.size() <= kMaximumResponseSize;
 
-    if (networkSucceeded) {
+    if (automaticUpdatesEnabled_ && networkSucceeded) {
         CurrencyRateSnapshot updated;
         QString updateError;
         if (updateCurrencyRateCacheFromCbrResponse(
@@ -120,24 +174,29 @@ void CbrCurrencyRateProvider::finishRefresh(QNetworkReply* reply)
                 QDateTime::currentDateTimeUtc(),
                 updated,
                 &updateError)) {
-            ratesToUsd_ = updated.ratesToUsd;
+            automaticRatesToUsd_ = updated.ratesToUsd;
             lastSuccessfulFetchUtc_ = updated.fetchedAtUtc;
             emit ratesUpdated();
         } else {
             qWarning() << "Currency rates were not updated:" << updateError;
         }
-    } else {
+    } else if (automaticUpdatesEnabled_) {
         qWarning() << "Currency-rate request failed:"
                    << reply->errorString()
                    << "HTTP status" << statusCode;
     }
 
     reply->deleteLater();
-    scheduleNextRefresh(kRefreshIntervalMs);
+    if (automaticUpdatesEnabled_) {
+        scheduleNextRefresh(kRefreshIntervalMs);
+    }
 }
 
 void CbrCurrencyRateProvider::scheduleNextRefresh(const qint64 delayMs)
 {
+    if (!automaticUpdatesEnabled_) {
+        return;
+    }
     const qint64 boundedDelay = std::clamp<qint64>(
         delayMs,
         1,
@@ -149,4 +208,35 @@ QString CbrCurrencyRateProvider::defaultCacheFilePath()
 {
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
         + QStringLiteral("/currency-rates.json");
+}
+
+bool CbrCurrencyRateProvider::buildRatesToUsd(
+    const double rublesPerUsd,
+    const double rublesPerEur,
+    std::array<qint64, 3>& ratesToUsd
+    )
+{
+    if (!std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
+        !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0) {
+        return false;
+    }
+
+    const double rubRate =
+        static_cast<double>(kCurrencyRateScale) / rublesPerUsd;
+    const double eurRate =
+        static_cast<double>(kCurrencyRateScale) *
+        rublesPerEur / rublesPerUsd;
+    if (!std::isfinite(rubRate) || rubRate < 1.0 ||
+        rubRate > static_cast<double>(std::numeric_limits<qint64>::max()) ||
+        !std::isfinite(eurRate) || eurRate < 1.0 ||
+        eurRate > static_cast<double>(std::numeric_limits<qint64>::max())) {
+        return false;
+    }
+
+    ratesToUsd = {
+        static_cast<qint64>(std::llround(rubRate)),
+        kCurrencyRateScale,
+        static_cast<qint64>(std::llround(eurRate))
+    };
+    return true;
 }

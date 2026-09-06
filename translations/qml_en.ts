@@ -9,11 +9,13 @@
     <message><source>+ Управление категориями</source><translation>+ Manage categories</translation></message>
     <message><source>Аналитика</source><translation>Analytics</translation></message>
     <message><source>Английский</source><translation>English</translation></message>
+    <message><source>Автоматические запросы отключены. Для пересчёта используются сохранённые ниже значения.</source><translation>Automatic requests are disabled. The saved values below are used for conversion.</translation></message>
     <message><source>Без категории</source><translation>Uncategorized</translation></message>
     <message><source>Брокер</source><translation>Brokerage</translation></message>
     <message><source>Будут удалены обе части перевода. Баланс и статистика будут пересчитаны.</source><translation>Both sides of the transfer will be deleted. Balances and statistics will be recalculated.</translation></message>
     <message><source>Валюту счёта с операциями изменить нельзя</source><translation>The currency of an account with transactions cannot be changed</translation></message>
     <message><source>Вклад</source><translation>Deposit</translation></message>
+    <message><source>Введите положительные числовые значения</source><translation>Enter positive numeric values</translation></message>
     <message><source>Все активы</source><translation>All assets</translation></message>
     <message><source>Все итоговые суммы пересчитываются в эту валюту.</source><translation>All totals are converted to this currency.</translation></message>
     <message><source>Все счета</source><translation>All accounts</translation></message>
@@ -46,6 +48,9 @@
     <message><source>Кредитный лимит не считается активом. Расходы увеличивают задолженность, а перевод на кредитку её погашает.</source><translation>The credit limit is not an asset. Expenses increase the debt, while a transfer to the credit card repays it.</translation></message>
     <message><source>Крипта</source><translation>Crypto</translation></message>
     <message><source>Криптокошелёк</source><translation>Crypto wallet</translation></message>
+    <message><source>Курсы валют</source><translation>Currency rates</translation></message>
+    <message><source>Курсы загружаются из ЦБ РФ дважды в сутки. При ошибке используется последний успешный результат.</source><translation>Rates are loaded from the Bank of Russia twice a day. If a request fails, the last successful result is used.</translation></message>
+    <message><source>Курсы сохранены</source><translation>Rates saved</translation></message>
     <message><source>Куда</source><translation>To</translation></message>
     <message><source>Мои финансы</source><translation>My finances</translation></message>
     <message><source>Название категории</source><translation>Category name</translation></message>
@@ -60,6 +65,7 @@
     <message><source>Новая операция</source><translation>New transaction</translation></message>
     <message><source>Новый счёт</source><translation>New account</translation></message>
     <message><source>Обзор</source><translation>Overview</translation></message>
+    <message><source>Обновлять курсы автоматически</source><translation>Update rates automatically</translation></message>
     <message><source>Операции</source><translation>Transactions</translation></message>
     <message><source>Операций пока нет</source><translation>No transactions yet</translation></message>
     <message><source>Операция</source><translation>Transaction</translation></message>
@@ -83,6 +89,7 @@
     <message><source>Сначала добавьте категорию</source><translation>Add a category first</translation></message>
     <message><source>Сначала добавьте счёт</source><translation>Add an account first</translation></message>
     <message><source>Сохранить</source><translation>Save</translation></message>
+    <message><source>Сохранить курсы</source><translation>Save rates</translation></message>
     <message><source>Сегодня</source><translation>Today</translation></message>
     <message><source>Структура расходов</source><translation>Expense breakdown</translation></message>
     <message><source>Сумма</source><translation>Amount</translation></message>
@@ -98,6 +105,8 @@
     <message><source>Фиат</source><translation>Fiat</translation></message>
     <message><source>Это действие нельзя отменить. Баланс и статистика будут пересчитаны.</source><translation>This action cannot be undone. Balances and statistics will be recalculated.</translation></message>
     <message><source>Язык интерфейса</source><translation>Interface language</translation></message>
+    <message><source>1 USD в рублях</source><translation>1 USD in rubles</translation></message>
+    <message><source>1 EUR в рублях</source><translation>1 EUR in rubles</translation></message>
     <message><source>операций: </source><translation>transactions: </translation></message>
   </context>
   <context>

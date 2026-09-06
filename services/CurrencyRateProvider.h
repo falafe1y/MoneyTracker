@@ -4,7 +4,9 @@
 
 #include <QtGlobal>
 
-inline constexpr qint64 kCurrencyRateScale = 1'000'000;
+// Nine decimal places keep user-entered RUB quotes precise enough that
+// ordinary cent/kopeck conversions round exactly as expected.
+inline constexpr qint64 kCurrencyRateScale = 1'000'000'000;
 
 class CurrencyRateProvider
 {

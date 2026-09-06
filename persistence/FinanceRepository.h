@@ -61,6 +61,14 @@ public:
     bool saveSelectedAsset(const QString& asset);
     QString loadUiLanguage() const;
     bool saveUiLanguage(const QString& language);
+    bool loadAutomaticCurrencyRates() const;
+    double loadManualUsdToRubRate() const;
+    double loadManualEurToRubRate() const;
+    bool saveAutomaticCurrencyRates(bool enabled);
+    bool saveManualCurrencyRates(
+        double rublesPerUsd,
+        double rublesPerEur
+        );
 
 private:
     bool initializeSchema();

@@ -93,7 +93,7 @@ void BalanceCalculatorTest::calculatesBalanceWithDifferentCurrencies()
             Currency::RUB
         );
 
-    // 100000 RUB + 100 USD * 1'000'000 / 11'000
+    // 100000 RUB + 100 USD * 1'000'000'000 / 11'000'000
     QCOMPARE(balance.currency(), Currency::RUB);
     QCOMPARE(balance.minorUnits(), qint64(10'909'091));
 }

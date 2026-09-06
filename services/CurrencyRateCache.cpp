@@ -17,7 +17,9 @@
 namespace
 {
 
-constexpr int kCacheFormatVersion = 1;
+constexpr int kCacheFormatVersion = 2;
+constexpr int kLegacyCacheFormatVersion = 1;
+constexpr qint64 kLegacyScaleMultiplier = 1'000;
 
 constexpr qsizetype currencyIndex(const Currency currency)
 {
@@ -159,8 +161,10 @@ bool CurrencyRateCache::load(
     }
 
     const QJsonObject object = document.object();
-    if (object.value(QStringLiteral("formatVersion")).toInt(-1) !=
-            kCacheFormatVersion ||
+    const int formatVersion =
+        object.value(QStringLiteral("formatVersion")).toInt(-1);
+    if ((formatVersion != kCacheFormatVersion &&
+         formatVersion != kLegacyCacheFormatVersion) ||
         object.value(QStringLiteral("source")).toString() !=
             QStringLiteral("cbr.ru") ||
         !object.value(QStringLiteral("ratesToUsd")).isObject()) {
@@ -188,8 +192,22 @@ bool CurrencyRateCache::load(
         !readPositiveInteger(
             rates,
             QStringLiteral("EUR"),
-            candidate.ratesToUsd[currencyIndex(Currency::EUR)]) ||
-        !validSnapshot(candidate)) {
+            candidate.ratesToUsd[currencyIndex(Currency::EUR)])) {
+        setError(error, QStringLiteral("Invalid currency-rate cache values"));
+        return false;
+    }
+
+    if (formatVersion == kLegacyCacheFormatVersion) {
+        for (qint64& rate : candidate.ratesToUsd) {
+            if (rate > std::numeric_limits<qint64>::max() /
+                    kLegacyScaleMultiplier) {
+                setError(error, QStringLiteral("Legacy currency rates overflow"));
+                return false;
+            }
+            rate *= kLegacyScaleMultiplier;
+        }
+    }
+    if (!validSnapshot(candidate)) {
         setError(error, QStringLiteral("Invalid currency-rate cache values"));
         return false;
     }

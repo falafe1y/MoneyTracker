@@ -12,10 +12,10 @@ public:
             return kCurrencyRateScale; // 1 USD
 
         case Currency::RUB:
-            return 11'000;    // 0.011 USD
+            return 11'000'000;    // 0.011 USD
 
         case Currency::EUR:
-            return 1'170'000; // 1.17 USD
+            return 1'170'000'000; // 1.17 USD
         }
 
         return kCurrencyRateScale;

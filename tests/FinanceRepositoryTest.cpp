@@ -14,6 +14,7 @@ class FinanceRepositoryTest : public QObject
 private slots:
     void preservesSelectedAccountAfterReopen();
     void storesUiLanguage();
+    void storesCurrencyRateSettings();
     void storesCreditCardTerms();
     void migratesCreditLimitForExistingDatabase();
     void updatesAndDeletesTransaction();
@@ -24,6 +25,28 @@ private slots:
     void updatesAccountAndProtectsTransactionCurrency();
     void deletesAccountWithRelatedOperations();
 };
+
+void FinanceRepositoryTest::storesCurrencyRateSettings()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-rate-settings-test.sqlite3"));
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        QVERIFY(repository.loadAutomaticCurrencyRates());
+        QVERIFY(repository.saveAutomaticCurrencyRates(false));
+        QVERIFY(repository.saveManualCurrencyRates(86.54, 100.12));
+    }
+
+    FinanceRepository reopened(databasePath);
+    QVERIFY2(reopened.isOpen(), qPrintable(reopened.lastError()));
+    QVERIFY(!reopened.loadAutomaticCurrencyRates());
+    QCOMPARE(reopened.loadManualUsdToRubRate(), 86.54);
+    QCOMPARE(reopened.loadManualEurToRubRate(), 100.12);
+}
 
 void FinanceRepositoryTest::storesCreditCardTerms()
 {
