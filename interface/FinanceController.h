@@ -77,6 +77,12 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QVariantList currentCurrencyRates
+            READ currentCurrencyRates
+                NOTIFY currencyRatesChanged
+        )
+
+    Q_PROPERTY(
         QVariantList transactions
             READ transactions
                 NOTIFY transactionsChanged
@@ -140,6 +146,7 @@ public:
     void setAutomaticCurrencyRates(bool enabled);
     double manualUsdToRubRate() const;
     double manualEurToRubRate() const;
+    QVariantList currentCurrencyRates() const;
     Q_INVOKABLE bool saveManualCurrencyRates(
         double rublesPerUsd,
         double rublesPerEur
@@ -255,6 +262,7 @@ signals:
     void uiLanguageChanged();
     void automaticCurrencyRatesChanged();
     void manualCurrencyRatesChanged();
+    void currencyRatesChanged();
 
 private:
     static int currencyIndex(Currency currency);

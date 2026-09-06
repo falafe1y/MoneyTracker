@@ -1782,6 +1782,107 @@ ApplicationWindow {
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
+                Rectangle {
+                    id: currentRatesBlock
+                    property bool expanded: false
+
+                    Layout.topMargin: 4
+                    Layout.preferredWidth: 460
+                    implicitHeight: ratesHeader.height
+                                  + (expanded ? ratesList.implicitHeight : 0)
+                    radius: 10
+                    color: root.soft
+                    border.color: root.line
+                    clip: true
+
+                    Rectangle {
+                        id: ratesHeader
+                        width: parent.width
+                        height: 44
+                        color: ratesMouse.containsMouse
+                               ? root.controlHovered
+                               : root.transparentColor
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 14
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Текущие курсы в %1")
+                                    .arg(financeController.appCurrency)
+                                color: root.ink
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: currentRatesBlock.expanded ? "⌃" : "⌄"
+                                color: root.muted
+                                font.pixelSize: 16
+                            }
+                        }
+
+                        MouseArea {
+                            id: ratesMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: currentRatesBlock.expanded =
+                                           !currentRatesBlock.expanded
+                        }
+                    }
+
+                    Column {
+                        id: ratesList
+                        anchors.top: ratesHeader.bottom
+                        width: parent.width
+                        visible: currentRatesBlock.expanded
+
+                        Repeater {
+                            model: financeController.currentCurrencyRates
+
+                            Rectangle {
+                                required property var modelData
+                                width: ratesList.width
+                                height: 38
+                                color: root.transparentColor
+
+                                Rectangle {
+                                    anchors.top: parent.top
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.leftMargin: 14
+                                    anchors.rightMargin: 14
+                                    height: 1
+                                    color: root.line
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 14
+                                    anchors.rightMargin: 14
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: "1 " + modelData.code
+                                        color: root.ink
+                                    }
+                                    Text {
+                                        readonly property int decimals:
+                                            modelData.rate >= 100 ? 2
+                                          : modelData.rate >= 1 ? 4 : 6
+                                        text: Number(modelData.rate).toLocaleString(
+                                                  root.uiLocale(), "f", decimals)
+                                              + " "
+                                              + root.symbol(financeController.appCurrency)
+                                        color: root.ink
+                                        font.weight: Font.DemiBold
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 AppCheckBox {
                     id: automaticRatesCheck
                     text: qsTr("Обновлять курсы автоматически")

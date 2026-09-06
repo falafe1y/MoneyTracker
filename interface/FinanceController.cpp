@@ -53,6 +53,7 @@ FinanceController::FinanceController(QObject* parent)
         {
             emit balanceChanged();
             emit transactionsChanged();
+            emit currencyRatesChanged();
         });
 
     if (!repository_.isOpen()) {
@@ -125,6 +126,7 @@ void FinanceController::setAppCurrency(const QString& currency)
     emit appCurrencyChanged();
     emit balanceChanged();
     emit transactionsChanged();
+    emit currencyRatesChanged();
 }
 
 QString FinanceController::uiLanguage() const
@@ -185,6 +187,25 @@ double FinanceController::manualUsdToRubRate() const
 double FinanceController::manualEurToRubRate() const
 {
     return manualEurToRubRate_;
+}
+
+QVariantList FinanceController::currentCurrencyRates() const
+{
+    QVariantList result;
+    const qint64 targetRate = rateProvider_.rateToUsd(appCurrency_);
+    if (targetRate <= 0) {
+        return result;
+    }
+
+    for (const Currency currency : {Currency::RUB, Currency::USD, Currency::EUR}) {
+        QVariantMap item;
+        item[QStringLiteral("code")] = currencyCode(currency);
+        item[QStringLiteral("rate")] =
+            static_cast<double>(rateProvider_.rateToUsd(currency)) /
+            static_cast<double>(targetRate);
+        result.append(item);
+    }
+    return result;
 }
 
 bool FinanceController::saveManualCurrencyRates(
