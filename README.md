@@ -45,3 +45,16 @@ On startup, account balances and income/expense totals are aggregated by
 currency in SQLite and kept in memory. New transactions are committed to the
 database synchronously before the in-memory state and QML interface are
 updated.
+
+## Currency rates
+
+The application requests the official daily RUB exchange rates from the Bank
+of Russia over HTTPS. A refresh is attempted at most once every 12 hours while
+the application is running, and immediately on startup when the last successful
+result is older than 12 hours.
+
+The response must contain valid USD and EUR quotes. Only then is the local JSON
+cache replaced using an atomic file commit. Network errors, non-200 responses,
+malformed XML, missing quotes, and older rate dates leave the previous cache
+untouched. Until the first successful request, the bundled fallback rates are
+used.

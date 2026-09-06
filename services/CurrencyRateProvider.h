@@ -4,6 +4,8 @@
 
 #include <QtGlobal>
 
+inline constexpr qint64 kCurrencyRateScale = 1'000'000;
+
 class CurrencyRateProvider
 {
 public:

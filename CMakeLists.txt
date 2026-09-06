@@ -4,7 +4,7 @@ project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql LinguistTools)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -35,7 +35,10 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/BalanceCalculator.h
         SOURCES services/BalanceCalculator.cpp
         SOURCES services/CurrencyRateProvider.h
-        SOURCES services/TestCurrencyRateProvider.h
+        SOURCES services/CurrencyRateCache.h
+        SOURCES services/CurrencyRateCache.cpp
+        SOURCES services/CbrCurrencyRateProvider.h
+        SOURCES services/CbrCurrencyRateProvider.cpp
         SOURCES interface/FinanceController.h
         SOURCES interface/FinanceController.cpp
         SOURCES persistence/FinanceRepository.h
@@ -65,6 +68,7 @@ target_link_libraries(appMoneyTracker
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Sql
+        Qt6::Network
 )
 
 install(TARGETS appMoneyTracker
@@ -92,6 +96,23 @@ target_link_libraries(CurrencyConverterTest
 add_test(
     NAME CurrencyConverterTest
     COMMAND CurrencyConverterTest
+)
+
+add_executable(CurrencyRateCacheTest
+    tests/CurrencyRateCacheTest.cpp
+    core/Currency.cpp
+    services/CurrencyRateCache.cpp
+)
+
+target_link_libraries(CurrencyRateCacheTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME CurrencyRateCacheTest
+    COMMAND CurrencyRateCacheTest
 )
 
 add_executable(BalanceCalculatorTest

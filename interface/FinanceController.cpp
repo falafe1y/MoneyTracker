@@ -45,6 +45,16 @@ FinanceController::FinanceController(QObject* parent)
     , currencyConverter_(rateProvider_)
     , balanceCalculator_(currencyConverter_)
 {
+    QObject::connect(
+        &rateProvider_,
+        &CbrCurrencyRateProvider::ratesUpdated,
+        this,
+        [this]()
+        {
+            emit balanceChanged();
+            emit transactionsChanged();
+        });
+
     if (!repository_.isOpen()) {
         qWarning() << "Failed to open finance database:"
                    << repository_.lastError();

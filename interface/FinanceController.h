@@ -3,8 +3,8 @@
 #include "../core/Transaction.h"
 #include "../persistence/FinanceRepository.h"
 #include "../services/BalanceCalculator.h"
+#include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
-#include "../services/TestCurrencyRateProvider.h"
 
 #include <QDateTime>
 #include <QObject>
@@ -259,7 +259,7 @@ private:
         );
 
     FinanceRepository repository_;
-    TestCurrencyRateProvider rateProvider_;
+    CbrCurrencyRateProvider rateProvider_;
     CurrencyConverter currencyConverter_;
     BalanceCalculator balanceCalculator_;
 

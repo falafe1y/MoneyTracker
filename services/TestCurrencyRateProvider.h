@@ -9,7 +9,7 @@ public:
     {
         switch (currency) {
         case Currency::USD:
-            return 1'000'000; // 1 USD
+            return kCurrencyRateScale; // 1 USD
 
         case Currency::RUB:
             return 11'000;    // 0.011 USD
@@ -18,6 +18,6 @@ public:
             return 1'170'000; // 1.17 USD
         }
 
-        return 1'000'000;
+        return kCurrencyRateScale;
     }
 };
