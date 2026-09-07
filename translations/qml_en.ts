@@ -16,7 +16,9 @@
     <message><source>Валюту счёта с операциями изменить нельзя</source><translation>The currency of an account with transactions cannot be changed</translation></message>
     <message><source>Вклад</source><translation>Deposit</translation></message>
     <message><source>Введите положительные числовые значения</source><translation>Enter positive numeric values</translation></message>
+    <message><source>Выберите начало периода</source><translation>Select the start date</translation></message>
     <message><source>Все активы</source><translation>All assets</translation></message>
+    <message><source>Все время</source><translation>All time</translation></message>
     <message><source>Все итоговые суммы пересчитываются в эту валюту.</source><translation>All totals are converted to this currency.</translation></message>
     <message><source>Все счета</source><translation>All accounts</translation></message>
     <message><source>Выберите счёт назначения</source><translation>Select a destination account</translation></message>
@@ -74,11 +76,13 @@
     <message><source>Откуда</source><translation>From</translation></message>
     <message><source>Отмена</source><translation>Cancel</translation></message>
     <message><source>Перевод</source><translation>Transfer</translation></message>
+    <message><source>Период</source><translation>Date range</translation></message>
     <message><source>Поиск по операциям...</source><translation>Search transactions...</translation></message>
     <message><source>Пользовательские названия счетов и категорий не переводятся.</source><translation>Custom account and category names are not translated.</translation></message>
     <message><source>Проверьте название и параметры счёта</source><translation>Check the account name and settings</translation></message>
     <message><source>Проверьте сумму и выбранные счета</source><translation>Check the amount and selected accounts</translation></message>
     <message><source>Проверьте сумму, счёт и категорию</source><translation>Check the amount, account, and category</translation></message>
+    <message><source>Применить</source><translation>Apply</translation></message>
     <message><source>Расход</source><translation>Expense</translation></message>
     <message><source>Расходы</source><translation>Expenses</translation></message>
     <message><source>Расходы по категориям</source><translation>Expenses by category</translation></message>
@@ -91,6 +95,7 @@
     <message><source>Сохранить</source><translation>Save</translation></message>
     <message><source>Сохранить курсы</source><translation>Save rates</translation></message>
     <message><source>Сегодня</source><translation>Today</translation></message>
+    <message><source>Теперь выберите конец периода</source><translation>Now select the end date</translation></message>
     <message><source>Структура расходов</source><translation>Expense breakdown</translation></message>
     <message><source>Сумма</source><translation>Amount</translation></message>
     <message><source>Счета</source><translation>Accounts</translation></message>
@@ -102,11 +107,14 @@
     <message><source>Удалить</source><translation>Delete</translation></message>
     <message><source>Удалить операцию?</source><translation>Delete transaction?</translation></message>
     <message><source>Удалить счёт?</source><translation>Delete account?</translation></message>
+    <message><source>Этот год</source><translation>This year</translation></message>
+    <message><source>Этот месяц</source><translation>This month</translation></message>
     <message><source>Фиат</source><translation>Fiat</translation></message>
     <message><source>Это действие нельзя отменить. Баланс и статистика будут пересчитаны.</source><translation>This action cannot be undone. Balances and statistics will be recalculated.</translation></message>
     <message><source>Язык интерфейса</source><translation>Interface language</translation></message>
     <message><source>1 USD в рублях</source><translation>1 USD in rubles</translation></message>
     <message><source>1 EUR в рублях</source><translation>1 EUR in rubles</translation></message>
+    <message><source>30 дней</source><translation>30 days</translation></message>
     <message><source>операций: </source><translation>transactions: </translation></message>
   </context>
   <context>

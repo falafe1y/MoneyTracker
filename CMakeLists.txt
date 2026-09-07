@@ -34,6 +34,10 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CurrencyConverter.cpp
         SOURCES services/BalanceCalculator.h
         SOURCES services/BalanceCalculator.cpp
+        SOURCES services/TransactionDateFilter.h
+        SOURCES services/TransactionDateFilter.cpp
+        SOURCES services/DateSliceCalculator.h
+        SOURCES services/DateSliceCalculator.cpp
         SOURCES services/CurrencyRateProvider.h
         SOURCES services/CurrencyRateCache.h
         SOURCES services/CurrencyRateCache.cpp
@@ -134,6 +138,23 @@ target_link_libraries(BalanceCalculatorTest
 add_test(
     NAME BalanceCalculatorTest
     COMMAND BalanceCalculatorTest
+)
+
+add_executable(TransactionDateFilterTest
+    tests/TransactionDateFilterTest.cpp
+    services/TransactionDateFilter.cpp
+    services/DateSliceCalculator.cpp
+)
+
+target_link_libraries(TransactionDateFilterTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME TransactionDateFilterTest
+    COMMAND TransactionDateFilterTest
 )
 
 add_executable(FinanceRepositoryTest

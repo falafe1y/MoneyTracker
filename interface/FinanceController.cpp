@@ -1,5 +1,8 @@
 #include "FinanceController.h"
 
+#include "../services/DateSliceCalculator.h"
+#include "../services/TransactionDateFilter.h"
+
 #include <QDebug>
 #include <QUuid>
 
@@ -84,7 +87,7 @@ FinanceController::FinanceController(QObject* parent)
 
 qint64 FinanceController::balanceMinorUnits() const
 {
-    return convertedTotal(summary_.balance);
+    return convertedTotal(dateFilteredSummary().balance);
 }
 
 QString FinanceController::balanceCurrency() const
@@ -94,12 +97,12 @@ QString FinanceController::balanceCurrency() const
 
 qint64 FinanceController::incomeMinorUnits() const
 {
-    return convertedTotal(summary_.income);
+    return convertedTotal(dateFilteredSummary().income);
 }
 
 qint64 FinanceController::expenseMinorUnits() const
 {
-    return convertedTotal(summary_.expense);
+    return convertedTotal(dateFilteredSummary().expense);
 }
 
 QString FinanceController::appCurrency() const
@@ -235,7 +238,7 @@ QVariantList FinanceController::transactions() const
 {
     QVariantList result;
 
-    for (const Transaction& transaction : transactions_) {
+    for (const Transaction& transaction : dateFilteredTransactions()) {
         QVariantMap item;
 
         item["id"] = transaction.id();
@@ -414,6 +417,62 @@ void FinanceController::setSelectedAccountId(const QString& accountId)
 
     selectedAccountId_ = accountId;
     emit selectedAccountIdChanged();
+}
+
+bool FinanceController::dateFilterActive() const
+{
+    return dateFilterFrom_.isValid() && dateFilterTo_.isValid();
+}
+
+QString FinanceController::dateFilterFrom() const
+{
+    return dateFilterFrom_.toString(Qt::ISODate);
+}
+
+QString FinanceController::dateFilterTo() const
+{
+    return dateFilterTo_.toString(Qt::ISODate);
+}
+
+bool FinanceController::setDateFilter(
+    const QDateTime& from,
+    const QDateTime& to
+    )
+{
+    if (!from.isValid() || !to.isValid()) {
+        return false;
+    }
+
+    const QDate newFrom = from.toLocalTime().date();
+    const QDate newTo = to.toLocalTime().date();
+    if (newFrom > newTo) {
+        return false;
+    }
+    if (newFrom == dateFilterFrom_ && newTo == dateFilterTo_) {
+        return true;
+    }
+
+    dateFilterFrom_ = newFrom;
+    dateFilterTo_ = newTo;
+    emit dateFilterChanged();
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
+    return true;
+}
+
+void FinanceController::clearDateFilter()
+{
+    if (!dateFilterActive()) {
+        return;
+    }
+
+    dateFilterFrom_ = {};
+    dateFilterTo_ = {};
+    emit dateFilterChanged();
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
 }
 
 bool FinanceController::addAccount(
@@ -730,8 +789,9 @@ qint64 FinanceController::convertTransaction(
     const QString& targetCurrency
     ) const
 {
+    const QVector<Transaction> visibleTransactions = dateFilteredTransactions();
     if (transactionIndex < 0 ||
-        transactionIndex >= transactions_.size()) {
+        transactionIndex >= visibleTransactions.size()) {
         return 0;
     }
 
@@ -740,7 +800,7 @@ qint64 FinanceController::convertTransaction(
         );
 
     const Money converted = currencyConverter_.convert(
-        transactions_[transactionIndex].money(),
+        visibleTransactions[transactionIndex].money(),
         target
         );
 
@@ -1166,6 +1226,11 @@ qint64 FinanceController::accountBalanceMinor(const Account& account) const
         if (transaction.accountId() != account.id()) {
             continue;
         }
+        if (dateFilterActive() &&
+            !TransactionDateFilter::isOnOrBefore(
+                transaction, dateFilterTo_)) {
+            continue;
+        }
         balance += transaction.type() == TransactionType::Income
             ? transaction.money().minorUnits()
             : -transaction.money().minorUnits();
@@ -1177,7 +1242,9 @@ int FinanceController::accountTransactionCount(const QString& accountId) const
 {
     int count = 0;
     for (const Transaction& transaction : transactions_) {
-        if (transaction.accountId() == accountId) {
+        if (transaction.accountId() == accountId &&
+            (!dateFilterActive() || TransactionDateFilter::contains(
+                transaction, dateFilterFrom_, dateFilterTo_))) {
             ++count;
         }
     }
@@ -1196,6 +1263,30 @@ qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
             appCurrency_).minorUnits();
     }
     return total;
+}
+
+QVector<Transaction> FinanceController::dateFilteredTransactions() const
+{
+    if (!dateFilterActive()) {
+        return transactions_;
+    }
+    return TransactionDateFilter::between(
+        transactions_, dateFilterFrom_, dateFilterTo_);
+}
+
+FinanceRepository::Summary FinanceController::dateFilteredSummary() const
+{
+    if (!dateFilterActive()) {
+        return summary_;
+    }
+
+    const DateSliceCalculator::Totals totals = DateSliceCalculator::calculate(
+        accounts_, transactions_, dateFilterFrom_, dateFilterTo_);
+    FinanceRepository::Summary result;
+    result.balance = totals.balance;
+    result.income = totals.income;
+    result.expense = totals.expense;
+    return result;
 }
 
 QString FinanceController::accountDisplayName(const Account& account) const

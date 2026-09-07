@@ -214,6 +214,33 @@ ApplicationWindow {
         accountContextMenu.open();
     }
 
+    function dateFromIso(value) {
+        if (!value)
+            return null;
+        const parts = value.split("-");
+        if (parts.length !== 3)
+            return null;
+        return new Date(
+            Number(parts[0]),
+            Number(parts[1]) - 1,
+            Number(parts[2]),
+            12, 0, 0, 0
+        );
+    }
+
+    function dateFilterLabel() {
+        if (!financeController.dateFilterActive)
+            return qsTr("Все время");
+        const from = dateFromIso(financeController.dateFilterFrom);
+        const to = dateFromIso(financeController.dateFilterTo);
+        if (!from || !to)
+            return qsTr("Все время");
+        if (from.getTime() === to.getTime())
+            return Qt.formatDate(from, "dd.MM.yyyy");
+        return Qt.formatDate(from, "dd.MM.yyyy")
+             + " — " + Qt.formatDate(to, "dd.MM.yyyy");
+    }
+
     function visibleTransactions() {
         const result = [], ids = {}, accounts = financeController.accounts;
         for (let i = 0; i < accounts.length; ++i)
@@ -574,13 +601,6 @@ ApplicationWindow {
                 Item {
                     Layout.fillWidth: true
                 }
-                AppTextField {
-                    visible: page === "overview" || page === "operations"
-                    Layout.preferredWidth: 265
-                    implicitHeight: 42
-                    placeholderText: qsTr("Поиск по операциям...")
-                    onTextChanged: root.searchText = text
-                }
                 AppComboBox {
                     id: currencyBox
                     Layout.preferredWidth: 126
@@ -588,6 +608,30 @@ ApplicationWindow {
                     model: ["RUB", "USD", "EUR"]
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
                     onActivated: financeController.appCurrency = currentText
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: page === "overview"
+                      || page === "accounts"
+                      || page === "operations"
+                      || page === "analytics"
+
+                Item {
+                    Layout.fillWidth: true
+                }
+                SoftButton {
+                    implicitWidth: 205
+                    implicitHeight: 42
+                    text: "◷  " + root.dateFilterLabel()
+                    onClicked: dateFilterDialog.openForCurrent()
+                }
+                AppTextField {
+                    visible: page === "overview" || page === "operations"
+                    Layout.preferredWidth: 265
+                    implicitHeight: 42
+                    placeholderText: qsTr("Поиск по операциям...")
+                    onTextChanged: root.searchText = text
                 }
             }
             Loader {
@@ -2960,6 +3004,270 @@ ApplicationWindow {
                                 ? qsTr("Проверьте сумму и выбранные счета")
                                 : qsTr("Проверьте сумму, счёт и категорию");
                     }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: dateFilterDialog
+        width: 450
+        modal: true
+        anchors.centerIn: parent
+        padding: 22
+        closePolicy: Popup.CloseOnEscape
+
+        property var pendingFrom: null
+        property var pendingTo: null
+        property int displayedMonth: new Date().getMonth()
+        property int displayedYear: new Date().getFullYear()
+
+        function normalizedDate(date) {
+            return new Date(
+                date.getFullYear(),
+                date.getMonth(),
+                date.getDate(),
+                12, 0, 0, 0
+            );
+        }
+
+        function openForCurrent() {
+            const now = normalizedDate(new Date());
+            pendingFrom = financeController.dateFilterActive
+                ? root.dateFromIso(financeController.dateFilterFrom)
+                : new Date(now.getFullYear(), now.getMonth(), 1, 12);
+            pendingTo = financeController.dateFilterActive
+                ? root.dateFromIso(financeController.dateFilterTo)
+                : now;
+            displayedMonth = pendingFrom.getMonth();
+            displayedYear = pendingFrom.getFullYear();
+            open();
+        }
+
+        function shiftMonth(offset) {
+            const shifted = new Date(displayedYear, displayedMonth + offset, 1);
+            displayedMonth = shifted.getMonth();
+            displayedYear = shifted.getFullYear();
+        }
+
+        function isSameDay(left, right) {
+            return left && right
+                && left.getFullYear() === right.getFullYear()
+                && left.getMonth() === right.getMonth()
+                && left.getDate() === right.getDate();
+        }
+
+        function isInsideRange(date) {
+            if (!pendingFrom || !pendingTo)
+                return false;
+            const value = normalizedDate(date).getTime();
+            return value >= pendingFrom.getTime()
+                && value <= pendingTo.getTime();
+        }
+
+        function chooseDate(date) {
+            const chosen = normalizedDate(date);
+            if (!pendingFrom || pendingTo) {
+                pendingFrom = chosen;
+                pendingTo = null;
+            } else if (chosen.getTime() < pendingFrom.getTime()) {
+                pendingTo = pendingFrom;
+                pendingFrom = chosen;
+            } else {
+                pendingTo = chosen;
+            }
+        }
+
+        function applyRange(from, to) {
+            financeController.setDateFilter(
+                normalizedDate(from),
+                normalizedDate(to)
+            );
+            close();
+        }
+
+        function applyCurrentSelection() {
+            if (!pendingFrom)
+                return;
+            applyRange(pendingFrom, pendingTo || pendingFrom);
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: qsTr("Период")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                SoftButton {
+                    Layout.fillWidth: true
+                    text: qsTr("30 дней")
+                    onClicked: {
+                        const to = dateFilterDialog.normalizedDate(new Date());
+                        const from = new Date(to);
+                        from.setDate(from.getDate() - 29);
+                        dateFilterDialog.applyRange(from, to);
+                    }
+                }
+                SoftButton {
+                    Layout.fillWidth: true
+                    text: qsTr("Этот месяц")
+                    onClicked: {
+                        const to = dateFilterDialog.normalizedDate(new Date());
+                        dateFilterDialog.applyRange(
+                            new Date(to.getFullYear(), to.getMonth(), 1, 12),
+                            to
+                        );
+                    }
+                }
+                SoftButton {
+                    Layout.fillWidth: true
+                    text: qsTr("Этот год")
+                    onClicked: {
+                        const to = dateFilterDialog.normalizedDate(new Date());
+                        dateFilterDialog.applyRange(
+                            new Date(to.getFullYear(), 0, 1, 12),
+                            to
+                        );
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                SoftButton {
+                    Layout.preferredWidth: 44
+                    text: "‹"
+                    onClicked: dateFilterDialog.shiftMonth(-1)
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: dateFilterCalendar.title
+                    color: root.accent
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                }
+
+                SoftButton {
+                    Layout.preferredWidth: 44
+                    text: "›"
+                    onClicked: dateFilterDialog.shiftMonth(1)
+                }
+            }
+
+            DayOfWeekRow {
+                Layout.fillWidth: true
+                locale: root.uiLocale()
+
+                delegate: Text {
+                    required property string shortName
+                    text: shortName
+                    color: root.muted
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            MonthGrid {
+                id: dateFilterCalendar
+                Layout.fillWidth: true
+                Layout.preferredHeight: 258
+                month: dateFilterDialog.displayedMonth
+                year: dateFilterDialog.displayedYear
+                locale: root.uiLocale()
+
+                delegate: Button {
+                    id: filterDayButton
+                    required property var model
+                    flat: true
+                    hoverEnabled: true
+                    opacity: model.month === dateFilterCalendar.month ? 1 : 0.42
+                    onClicked: dateFilterDialog.chooseDate(model.date)
+
+                    readonly property bool rangeEdge:
+                        dateFilterDialog.isSameDay(model.date, dateFilterDialog.pendingFrom)
+                        || dateFilterDialog.isSameDay(model.date, dateFilterDialog.pendingTo)
+
+                    contentItem: Text {
+                        text: filterDayButton.model.day
+                        color: filterDayButton.rangeEdge ? root.white : root.accent
+                        font.pixelSize: 13
+                        font.weight: filterDayButton.model.today
+                                     ? Font.DemiBold
+                                     : Font.Normal
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+
+                    background: Rectangle {
+                        radius: 9
+                        color: filterDayButton.rangeEdge
+                               ? root.accent
+                               : dateFilterDialog.isInsideRange(filterDayButton.model.date)
+                                 ? root.pale
+                                 : filterDayButton.hovered
+                                   ? root.controlHovered
+                                   : root.transparentColor
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: !dateFilterDialog.pendingFrom
+                      ? qsTr("Выберите начало периода")
+                      : !dateFilterDialog.pendingTo
+                        ? qsTr("Теперь выберите конец периода")
+                        : Qt.formatDate(dateFilterDialog.pendingFrom, "dd.MM.yyyy")
+                          + " — "
+                          + Qt.formatDate(dateFilterDialog.pendingTo, "dd.MM.yyyy")
+                color: root.muted
+                font.pixelSize: 13
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                SoftButton {
+                    text: qsTr("Все время")
+                    onClicked: {
+                        financeController.clearDateFilter();
+                        dateFilterDialog.close();
+                    }
+                }
+                Item {
+                    Layout.fillWidth: true
+                }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: dateFilterDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Применить")
+                    highlighted: true
+                    enabled: dateFilterDialog.pendingFrom !== null
+                    onClicked: dateFilterDialog.applyCurrentSelection()
                 }
             }
         }

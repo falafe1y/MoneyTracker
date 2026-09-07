@@ -7,6 +7,7 @@
 #include "../services/CurrencyConverter.h"
 
 #include <QDateTime>
+#include <QDate>
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
@@ -126,6 +127,24 @@ class FinanceController final : public QObject
                     NOTIFY selectedAccountIdChanged
         )
 
+    Q_PROPERTY(
+        bool dateFilterActive
+            READ dateFilterActive
+                NOTIFY dateFilterChanged
+        )
+
+    Q_PROPERTY(
+        QString dateFilterFrom
+            READ dateFilterFrom
+                NOTIFY dateFilterChanged
+        )
+
+    Q_PROPERTY(
+        QString dateFilterTo
+            READ dateFilterTo
+                NOTIFY dateFilterChanged
+        )
+
 public:
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -162,6 +181,15 @@ public:
     void setSelectedAsset(const QString& asset);
     QString selectedAccountId() const;
     void setSelectedAccountId(const QString& accountId);
+
+    bool dateFilterActive() const;
+    QString dateFilterFrom() const;
+    QString dateFilterTo() const;
+    Q_INVOKABLE bool setDateFilter(
+        const QDateTime& from,
+        const QDateTime& to
+        );
+    Q_INVOKABLE void clearDateFilter();
 
     Q_INVOKABLE bool addAccount(
         const QString& name,
@@ -263,6 +291,7 @@ signals:
     void automaticCurrencyRatesChanged();
     void manualCurrencyRatesChanged();
     void currencyRatesChanged();
+    void dateFilterChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -288,6 +317,8 @@ private:
     qint64 accountBalanceMinor(const Account& account) const;
     int accountTransactionCount(const QString& accountId) const;
     qint64 assetBalanceMinor(AssetType asset) const;
+    QVector<Transaction> dateFilteredTransactions() const;
+    FinanceRepository::Summary dateFilteredSummary() const;
     QString accountDisplayName(const Account& account) const;
     QString categoryDisplayName(const Category& category) const;
     QString transactionDisplayDescription(const Transaction& transaction) const;
@@ -314,4 +345,6 @@ private:
     double manualEurToRubRate_ = 106.363636364;
     AssetType selectedAsset_ = AssetType::Fiat;
     QString selectedAccountId_;
+    QDate dateFilterFrom_;
+    QDate dateFilterTo_;
 };
