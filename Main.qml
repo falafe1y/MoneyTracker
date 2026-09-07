@@ -286,6 +286,40 @@ ApplicationWindow {
         border.width: 1
         border.color: root.line
     }
+
+    // Item.clip and ListView.clip are rectangular. These masks cover content
+    // that would otherwise remain visible outside the rounded bottom corners.
+    component BottomCornerMask: Canvas {
+        id: cornerMask
+        property bool mirrored: false
+
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        onMirroredChanged: requestPaint()
+
+        onPaint: {
+            const ctx = getContext("2d");
+            const radius = Math.min(width, height);
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = root.canvas;
+            ctx.beginPath();
+
+            if (mirrored) {
+                ctx.moveTo(width, 0);
+                ctx.lineTo(width, height);
+                ctx.lineTo(0, height);
+                ctx.arc(0, 0, radius, Math.PI / 2, 0, true);
+            } else {
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, height);
+                ctx.lineTo(width, height);
+                ctx.arc(width, 0, radius, Math.PI / 2, Math.PI, false);
+            }
+
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
     component SoftButton: Button {
         id: control
         property bool destructive: false
@@ -1112,6 +1146,23 @@ ApplicationWindow {
             }
         }
 
+        BottomCornerMask {
+            width: transactionBlock.radius
+            height: transactionBlock.radius
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            z: 999
+        }
+
+        BottomCornerMask {
+            width: transactionBlock.radius
+            height: transactionBlock.radius
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            mirrored: true
+            z: 999
+        }
+
         // IMPORTANT: frame is deliberately rendered ABOVE all table content.
         Rectangle {
             anchors.fill: parent
@@ -1208,11 +1259,7 @@ ApplicationWindow {
                 Rectangle {
                     anchors.fill: parent
                     color: root.white
-                    radius: transactionTable.expandToContent
-                            ? transactionTable.bottomCornerRadius
-                            : (transactionList.contentHeight >= parent.height - 0.5
-                               ? transactionTable.bottomCornerRadius
-                               : 0)
+                    radius: transactionTable.bottomCornerRadius
 
                     // Rectangle.radius rounds all four corners; cover upper pair so the
                     // body remains square where it touches the table header.
