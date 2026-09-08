@@ -116,6 +116,27 @@
     <message><source>1 EUR в рублях</source><translation>1 EUR in rubles</translation></message>
     <message><source>30 дней</source><translation>30 days</translation></message>
     <message><source>операций: </source><translation>transactions: </translation></message>
+    <message><source>+ Счёт</source><translation>+ Account</translation></message>
+    <message><source>Баланс на конец периода</source><translation>Balance at end of period</translation></message>
+    <message><source>Всё время</source><translation>All time</translation></message>
+    <message><source>Выберите конец</source><translation>Select the end date</translation></message>
+    <message><source>Выберите начало</source><translation>Select the start date</translation></message>
+    <message><source>Добавьте расходы — здесь появится аналитика</source><translation>Add expenses to see analytics here</translation></message>
+    <message><source>Долг</source><translation>Debt</translation></message>
+    <message><source>Ещё</source><translation>More</translation></message>
+    <message><source>Месяц</source><translation>Month</translation></message>
+    <message><source>Название</source><translation>Name</translation></message>
+    <message><source>Накопительный счёт</source><translation>Savings account</translation></message>
+    <message><source>Новая категория</source><translation>New category</translation></message>
+    <message><source>Обновлять автоматически</source><translation>Update automatically</translation></message>
+    <message><source>Общий баланс</source><translation>Total balance</translation></message>
+    <message><source>Операций</source><translation>Transactions</translation></message>
+    <message><source>Основные настройки</source><translation>General settings</translation></message>
+    <message><source>По всем активам</source><translation>Across all assets</translation></message>
+    <message><source>Последние операции</source><translation>Recent transactions</translation></message>
+    <message><source>Проверьте данные счёта</source><translation>Check the account details</translation></message>
+    <message><source>Проверьте сумму, счета и категорию</source><translation>Check the amount, accounts, and category</translation></message>
+    <message><source>Текущий долг</source><translation>Current debt</translation></message>
   </context>
   <context>
     <name>FinanceController</name>

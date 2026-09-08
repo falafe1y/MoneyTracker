@@ -60,7 +60,11 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection
         );
 
-    engine.loadFromModule("MoneyTracker", "Main");
+#if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    engine.loadFromModule("MoneyTracker", "Mobile");
+#else
+    engine.loadFromModule("MoneyTracker", "Desktop");
+#endif
 
     return app.exec();
 }

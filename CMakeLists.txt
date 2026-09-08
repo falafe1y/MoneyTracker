@@ -20,7 +20,8 @@ qt_add_executable(appMoneyTracker
 qt_add_qml_module(appMoneyTracker
     URI MoneyTracker
     QML_FILES
-        Main.qml
+        Desktop.qml
+        Mobile.qml
         # BankComboBox.qml
         # CategoryPicker.qml
         SOURCES core/Account.h
@@ -83,6 +84,7 @@ install(TARGETS appMoneyTracker
 
 enable_testing()
 
+if (NOT ANDROID)
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
 add_executable(CurrencyConverterTest
@@ -174,3 +176,4 @@ add_test(
     NAME FinanceRepositoryTest
     COMMAND FinanceRepositoryTest
 )
+endif()
