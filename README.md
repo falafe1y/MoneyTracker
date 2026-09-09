@@ -64,3 +64,16 @@ makes no rate requests and uses the saved `USD/RUB` and `EUR/RUB` values instead
 Manual values are stored independently from the last successful automatic
 cache, so switching modes never overwrites either set. A future version can
 extend the same settings section with a choice of automatic rate provider.
+
+## CSV import and export
+
+Settings provides import and export for all transactions. Ledgera writes
+UTF-8 CSV with a BOM and semicolon separators so the file opens correctly in
+spreadsheet applications configured for Russian locales. Amounts are stored as
+integer minor units, which avoids rounding money during a round trip.
+
+Income and expense transactions occupy one row each. A transfer also occupies
+one row and contains both source and target amounts, accounts, and currencies;
+it is restored as the application's atomic outgoing/incoming pair. Import
+validates every row before changing SQLite, inserts the complete file in one
+database transaction, and skips operation identifiers that already exist.

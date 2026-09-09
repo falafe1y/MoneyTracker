@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 ApplicationWindow {
@@ -60,6 +61,8 @@ ApplicationWindow {
 
     property string page: "overview"
     property string searchText: ""
+    property string csvStatus: ""
+    property bool csvStatusOk: true
     readonly property var assets: [
         {
             code: "fiat",
@@ -2072,6 +2075,47 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.topMargin: 8
+                    text: qsTr("Импорт и экспорт")
+                    color: root.accent
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.preferredWidth: 520
+                    text: qsTr("CSV содержит операции, переводы, даты, исходные суммы, счета и категории.")
+                    color: root.muted
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    spacing: 10
+                    SoftButton {
+                        text: qsTr("Экспортировать CSV")
+                        highlighted: true
+                        implicitWidth: 180
+                        onClicked: exportCsvDialog.open()
+                    }
+                    SoftButton {
+                        text: qsTr("Импортировать CSV")
+                        implicitWidth: 180
+                        onClicked: importCsvDialog.open()
+                    }
+                }
+                Text {
+                    Layout.preferredWidth: 520
+                    visible: root.csvStatus.length > 0
+                    text: root.csvStatus
+                    color: root.csvStatusOk ? root.income : root.red
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+                Rectangle {
+                    Layout.topMargin: 12
+                    Layout.preferredWidth: 360
+                    height: 1
+                    color: root.line
+                }
+                Text {
+                    Layout.topMargin: 8
                     text: qsTr("Язык интерфейса")
                     color: root.accent
                     font.pixelSize: 17
@@ -2093,6 +2137,37 @@ ApplicationWindow {
                     implicitWidth: 180
                 }
             }
+        }
+    }
+
+    FileDialog {
+        id: exportCsvDialog
+        title: qsTr("Экспорт операций в CSV")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("CSV-файлы (*.csv)")]
+        defaultSuffix: "csv"
+        onAccepted: {
+            const result = financeController.exportTransactionsCsv(selectedFile);
+            root.csvStatusOk = result.ok;
+            root.csvStatus = result.ok
+                ? qsTr("Экспортировано операций: %1. Файл: %2")
+                    .arg(result.count).arg(result.path)
+                : qsTr("Не удалось экспортировать CSV: %1").arg(result.error);
+        }
+    }
+
+    FileDialog {
+        id: importCsvDialog
+        title: qsTr("Импорт операций из CSV")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("CSV-файлы (*.csv)")]
+        onAccepted: {
+            const result = financeController.importTransactionsCsv(selectedFile);
+            root.csvStatusOk = result.ok;
+            root.csvStatus = result.ok
+                ? qsTr("Импортировано: %1, пропущено дубликатов: %2")
+                    .arg(result.imported).arg(result.skipped)
+                : qsTr("Не удалось импортировать CSV: %1").arg(result.error);
         }
     }
 

@@ -39,6 +39,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/TransactionDateFilter.cpp
         SOURCES services/DateSliceCalculator.h
         SOURCES services/DateSliceCalculator.cpp
+        SOURCES services/CsvCodec.h
+        SOURCES services/CsvCodec.cpp
         SOURCES services/CurrencyRateProvider.h
         SOURCES services/CurrencyRateCache.h
         SOURCES services/CurrencyRateCache.cpp
@@ -175,5 +177,21 @@ target_link_libraries(FinanceRepositoryTest
 add_test(
     NAME FinanceRepositoryTest
     COMMAND FinanceRepositoryTest
+)
+
+add_executable(CsvCodecTest
+    tests/CsvCodecTest.cpp
+    services/CsvCodec.cpp
+)
+
+target_link_libraries(CsvCodecTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME CsvCodecTest
+    COMMAND CsvCodecTest
 )
 endif()

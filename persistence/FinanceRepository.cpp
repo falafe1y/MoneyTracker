@@ -389,6 +389,36 @@ bool FinanceRepository::insertTransfer(
     return true;
 }
 
+bool FinanceRepository::insertTransactions(
+    const QVector<Transaction>& transactions
+    )
+{
+    if (transactions.isEmpty()) {
+        return true;
+    }
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery query(database_);
+    prepareTransactionInsert(query);
+    const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    for (const Transaction& transaction : transactions) {
+        if (!insertTransactionRow(query, transaction, createdAt)) {
+            setLastError(query.lastError().text());
+            database_.rollback();
+            return false;
+        }
+    }
+    if (!database_.commit()) {
+        setLastError(database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::updateTransaction(const Transaction& transaction)
 {
     QSqlQuery query(database_);

@@ -1,10 +1,13 @@
 #include "FinanceController.h"
 
 #include "../services/DateSliceCalculator.h"
+#include "../services/CsvCodec.h"
 #include "../services/TransactionDateFilter.h"
 
 #include <QDebug>
 #include <QUuid>
+
+#include <QFileInfo>
 
 namespace
 {
@@ -232,6 +235,280 @@ bool FinanceController::saveManualCurrencyRates(
     manualEurToRubRate_ = rublesPerEur;
     emit manualCurrencyRatesChanged();
     return true;
+}
+
+QVariantMap FinanceController::exportTransactionsCsv(const QUrl& fileUrl) const
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    QString filePath = fileUrl.toLocalFile();
+    if (filePath.isEmpty()) {
+        result["error"] = tr("Не выбран файл для экспорта");
+        return result;
+    }
+    if (!filePath.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive)) {
+        filePath += QStringLiteral(".csv");
+    }
+
+    const QStringList header{
+        QStringLiteral("ledgera_csv_version"), QStringLiteral("operation_id"),
+        QStringLiteral("date"), QStringLiteral("type"),
+        QStringLiteral("source_account_id"), QStringLiteral("source_account_name"),
+        QStringLiteral("target_account_id"), QStringLiteral("target_account_name"),
+        QStringLiteral("category_id"), QStringLiteral("category_name"),
+        QStringLiteral("amount_minor"), QStringLiteral("target_amount_minor"),
+        QStringLiteral("currency"), QStringLiteral("target_currency"),
+        QStringLiteral("description")};
+    QVector<QStringList> rows{header};
+    QSet<QString> exportedTransfers;
+
+    const auto accountById = [this](const QString& id) -> const Account* {
+        for (const Account& account : accounts_) {
+            if (account.id() == id) return &account;
+        }
+        return nullptr;
+    };
+    const auto categoryById = [this](const QString& id) -> const Category* {
+        for (const Category& category : categories_) {
+            if (category.id() == id) return &category;
+        }
+        return nullptr;
+    };
+
+    for (const Transaction& transaction : transactions_) {
+        const Account* source = accountById(transaction.accountId());
+        if (!source) continue;
+
+        if (isTransfer(transaction)) {
+            const QString id = transferId(transaction);
+            if (id.isEmpty() || exportedTransfers.contains(id)) continue;
+            const Transaction* outgoing = nullptr;
+            const Transaction* incoming = nullptr;
+            for (const Transaction& candidate : transactions_) {
+                if (transferId(candidate) != id) continue;
+                if (candidate.categoryId() == QStringLiteral("transfer-out")) {
+                    outgoing = &candidate;
+                } else if (candidate.categoryId() == QStringLiteral("transfer-in")) {
+                    incoming = &candidate;
+                }
+            }
+            if (!outgoing || !incoming) continue;
+            const Account* outgoingAccount = accountById(outgoing->accountId());
+            const Account* incomingAccount = accountById(incoming->accountId());
+            if (!outgoingAccount || !incomingAccount) continue;
+            rows.append({QStringLiteral("1"), id,
+                         outgoing->date().toUTC().toString(Qt::ISODateWithMs),
+                         QStringLiteral("transfer"), outgoingAccount->id(),
+                         outgoingAccount->name(), incomingAccount->id(),
+                         incomingAccount->name(), QString(), QString(),
+                         QString::number(outgoing->money().minorUnits()),
+                         QString::number(incoming->money().minorUnits()),
+                         currencyCode(outgoingAccount->currency()),
+                         currencyCode(incomingAccount->currency()),
+                         outgoing->description()});
+            exportedTransfers.insert(id);
+            continue;
+        }
+
+        const Category* category = categoryById(transaction.categoryId());
+        rows.append({QStringLiteral("1"), transaction.id(),
+                     transaction.date().toUTC().toString(Qt::ISODateWithMs),
+                     transaction.type() == TransactionType::Income
+                         ? QStringLiteral("income") : QStringLiteral("expense"),
+                     source->id(), source->name(), QString(), QString(),
+                     transaction.categoryId(), category ? category->name() : QString(),
+                     QString::number(transaction.money().minorUnits()), QString(),
+                     currencyCode(source->currency()), QString(),
+                     transaction.description()});
+    }
+
+    QString error;
+    if (!CsvCodec::writeFile(filePath, rows, error)) {
+        result["error"] = error;
+        return result;
+    }
+    result["ok"] = true;
+    result["count"] = rows.size() - 1;
+    result["path"] = QFileInfo(filePath).absoluteFilePath();
+    return result;
+}
+
+QVariantMap FinanceController::importTransactionsCsv(const QUrl& fileUrl)
+{
+    QVariantMap result{{QStringLiteral("ok"), false},
+                       {QStringLiteral("imported"), 0},
+                       {QStringLiteral("skipped"), 0}};
+    const QString filePath = fileUrl.toLocalFile();
+    if (filePath.isEmpty()) {
+        result["error"] = tr("Не выбран CSV-файл");
+        return result;
+    }
+    const CsvCodec::ReadResult csv = CsvCodec::readFile(filePath);
+    if (!csv.error.isEmpty()) {
+        result["error"] = csv.error;
+        return result;
+    }
+    const QStringList expectedHeader{
+        QStringLiteral("ledgera_csv_version"), QStringLiteral("operation_id"),
+        QStringLiteral("date"), QStringLiteral("type"),
+        QStringLiteral("source_account_id"), QStringLiteral("source_account_name"),
+        QStringLiteral("target_account_id"), QStringLiteral("target_account_name"),
+        QStringLiteral("category_id"), QStringLiteral("category_name"),
+        QStringLiteral("amount_minor"), QStringLiteral("target_amount_minor"),
+        QStringLiteral("currency"), QStringLiteral("target_currency"),
+        QStringLiteral("description")};
+    if (csv.rows.isEmpty() || csv.rows.first() != expectedHeader) {
+        result["error"] = tr("Неверный формат CSV Ledgera");
+        return result;
+    }
+
+    const auto resolveAccount = [this](
+        const QString& id, const QString& name, const QString& currency
+        ) -> const Account* {
+        for (const Account& account : accounts_) {
+            if (account.id() == id && currencyCode(account.currency()) == currency) {
+                return &account;
+            }
+        }
+        const Account* match = nullptr;
+        for (const Account& account : accounts_) {
+            if (account.name().compare(name, Qt::CaseInsensitive) == 0 &&
+                currencyCode(account.currency()) == currency) {
+                if (match) return nullptr;
+                match = &account;
+            }
+        }
+        return match;
+    };
+    const auto resolveCategory = [this](
+        const QString& id, const QString& name, const TransactionType type
+        ) -> const Category* {
+        for (const Category& category : categories_) {
+            if (category.id() == id &&
+                ((type == TransactionType::Income && category.type() == CategoryType::Income) ||
+                 (type == TransactionType::Expense && category.type() == CategoryType::Expense))) {
+                return &category;
+            }
+        }
+        const Category* match = nullptr;
+        for (const Category& category : categories_) {
+            const bool sameType =
+                (type == TransactionType::Income && category.type() == CategoryType::Income) ||
+                (type == TransactionType::Expense && category.type() == CategoryType::Expense);
+            if (sameType && category.name().compare(name, Qt::CaseInsensitive) == 0) {
+                if (match) return nullptr;
+                match = &category;
+            }
+        }
+        return match;
+    };
+
+    QSet<QString> existingIds;
+    for (const Transaction& transaction : transactions_) existingIds.insert(transaction.id());
+    QSet<QString> pendingIds;
+    QVector<Transaction> importedTransactions;
+    int operationCount = 0;
+    int skipped = 0;
+
+    for (qsizetype rowIndex = 1; rowIndex < csv.rows.size(); ++rowIndex) {
+        const QStringList& row = csv.rows[rowIndex];
+        if (row.size() == 1 && row.first().isEmpty()) continue;
+        if (row.size() != expectedHeader.size() || row[0] != QStringLiteral("1")) {
+            result["error"] = tr("Ошибка в строке %1: неверное число столбцов или версия")
+                                  .arg(rowIndex + 1);
+            return result;
+        }
+        QString operationId = row[1].trimmed();
+        if (operationId.isEmpty()) {
+            operationId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        }
+        const QDateTime date = QDateTime::fromString(row[2], Qt::ISODateWithMs);
+        bool amountOk = false;
+        const qint64 amount = row[10].toLongLong(&amountOk);
+        if (!date.isValid() || !amountOk || amount <= 0) {
+            result["error"] = tr("Ошибка в строке %1: неверная дата или сумма")
+                                  .arg(rowIndex + 1);
+            return result;
+        }
+        const QString type = row[3].trimmed().toLower();
+        const Account* source = resolveAccount(row[4], row[5], row[12]);
+        if (!source) {
+            result["error"] = tr("Ошибка в строке %1: исходный счёт не найден")
+                                  .arg(rowIndex + 1);
+            return result;
+        }
+
+        if (type == QStringLiteral("transfer")) {
+            bool targetAmountOk = false;
+            const qint64 targetAmount = row[11].toLongLong(&targetAmountOk);
+            const Account* target = resolveAccount(row[6], row[7], row[13]);
+            const QString outgoingId = operationId + QStringLiteral("-out");
+            const QString incomingId = operationId + QStringLiteral("-in");
+            if (existingIds.contains(outgoingId) || existingIds.contains(incomingId)) {
+                ++skipped;
+                continue;
+            }
+            if (!target || target == source || !targetAmountOk || targetAmount <= 0 ||
+                pendingIds.contains(outgoingId) || pendingIds.contains(incomingId)) {
+                result["error"] = tr("Ошибка в строке %1: неверные данные перевода")
+                                      .arg(rowIndex + 1);
+                return result;
+            }
+            importedTransactions.append(Transaction(
+                outgoingId, source->id(), QStringLiteral("transfer-out"),
+                Money(amount, source->currency()), TransactionType::Expense,
+                date, row[14]));
+            importedTransactions.append(Transaction(
+                incomingId, target->id(), QStringLiteral("transfer-in"),
+                Money(targetAmount, target->currency()), TransactionType::Income,
+                date, row[14]));
+            pendingIds.insert(outgoingId);
+            pendingIds.insert(incomingId);
+            ++operationCount;
+            continue;
+        }
+
+        if (type != QStringLiteral("income") && type != QStringLiteral("expense")) {
+            result["error"] = tr("Ошибка в строке %1: неизвестный тип операции")
+                                  .arg(rowIndex + 1);
+            return result;
+        }
+        if (existingIds.contains(operationId)) {
+            ++skipped;
+            continue;
+        }
+        if (pendingIds.contains(operationId)) {
+            result["error"] = tr("Ошибка в строке %1: повторяющийся идентификатор")
+                                  .arg(rowIndex + 1);
+            return result;
+        }
+        const TransactionType transactionType = type == QStringLiteral("income")
+            ? TransactionType::Income : TransactionType::Expense;
+        const Category* category = resolveCategory(row[8], row[9], transactionType);
+        if (!category) {
+            result["error"] = tr("Ошибка в строке %1: категория не найдена")
+                                  .arg(rowIndex + 1);
+            return result;
+        }
+        importedTransactions.append(Transaction(
+            operationId, source->id(), category->id(),
+            Money(amount, source->currency()), transactionType, date, row[14]));
+        pendingIds.insert(operationId);
+        ++operationCount;
+    }
+
+    if (!repository_.insertTransactions(importedTransactions)) {
+        result["error"] = repository_.lastError();
+        return result;
+    }
+    transactions_ = repository_.loadTransactions();
+    summary_ = repository_.loadSummary();
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
+    result["ok"] = true;
+    result["imported"] = operationCount;
+    result["skipped"] = skipped;
+    return result;
 }
 
 QVariantList FinanceController::transactions() const

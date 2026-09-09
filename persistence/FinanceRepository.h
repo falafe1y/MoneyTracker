@@ -38,6 +38,7 @@ public:
         const Transaction& outgoing,
         const Transaction& incoming
         );
+    bool insertTransactions(const QVector<Transaction>& transactions);
     bool updateTransaction(const Transaction& transaction);
     bool replaceTransaction(
         const QString& currentId,

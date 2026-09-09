@@ -112,6 +112,17 @@
     <message><source>Фиат</source><translation>Fiat</translation></message>
     <message><source>Это действие нельзя отменить. Баланс и статистика будут пересчитаны.</source><translation>This action cannot be undone. Balances and statistics will be recalculated.</translation></message>
     <message><source>Язык интерфейса</source><translation>Interface language</translation></message>
+    <message><source>Импорт и экспорт</source><translation>Import and export</translation></message>
+    <message><source>CSV содержит операции, переводы, даты, исходные суммы, счета и категории.</source><translation>CSV includes transactions, transfers, dates, original amounts, accounts, and categories.</translation></message>
+    <message><source>Экспортировать CSV</source><translation>Export CSV</translation></message>
+    <message><source>Импортировать CSV</source><translation>Import CSV</translation></message>
+    <message><source>Экспорт операций в CSV</source><translation>Export transactions to CSV</translation></message>
+    <message><source>Импорт операций из CSV</source><translation>Import transactions from CSV</translation></message>
+    <message><source>CSV-файлы (*.csv)</source><translation>CSV files (*.csv)</translation></message>
+    <message><source>Экспортировано операций: %1. Файл: %2</source><translation>Exported transactions: %1. File: %2</translation></message>
+    <message><source>Не удалось экспортировать CSV: %1</source><translation>Could not export CSV: %1</translation></message>
+    <message><source>Импортировано: %1, пропущено дубликатов: %2</source><translation>Imported: %1, duplicates skipped: %2</translation></message>
+    <message><source>Не удалось импортировать CSV: %1</source><translation>Could not import CSV: %1</translation></message>
     <message><source>1 USD в рублях</source><translation>1 USD in rubles</translation></message>
     <message><source>1 EUR в рублях</source><translation>1 EUR in rubles</translation></message>
     <message><source>30 дней</source><translation>30 days</translation></message>
@@ -158,5 +169,15 @@
     <message><source>Транспорт</source><translation>Transport</translation></message>
     <message><source>Фиат</source><translation>Fiat</translation></message>
     <message><source>Фриланс</source><translation>Freelance</translation></message>
+    <message><source>Не выбран файл для экспорта</source><translation>No export file selected</translation></message>
+    <message><source>Не выбран CSV-файл</source><translation>No CSV file selected</translation></message>
+    <message><source>Неверный формат CSV Ledgera</source><translation>Invalid Ledgera CSV format</translation></message>
+    <message><source>Ошибка в строке %1: неверное число столбцов или версия</source><translation>Error on row %1: invalid column count or version</translation></message>
+    <message><source>Ошибка в строке %1: неверная дата или сумма</source><translation>Error on row %1: invalid date or amount</translation></message>
+    <message><source>Ошибка в строке %1: исходный счёт не найден</source><translation>Error on row %1: source account not found</translation></message>
+    <message><source>Ошибка в строке %1: неверные данные перевода</source><translation>Error on row %1: invalid transfer data</translation></message>
+    <message><source>Ошибка в строке %1: неизвестный тип операции</source><translation>Error on row %1: unknown transaction type</translation></message>
+    <message><source>Ошибка в строке %1: повторяющийся идентификатор</source><translation>Error on row %1: duplicate identifier</translation></message>
+    <message><source>Ошибка в строке %1: категория не найдена</source><translation>Error on row %1: category not found</translation></message>
   </context>
 </TS>

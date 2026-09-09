@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
+#include <QUrl>
 #include <QVector>
 #include <QSet>
 
@@ -273,6 +274,9 @@ public:
     Q_INVOKABLE QVariantMap transferDetails(const QString& id) const;
 
     Q_INVOKABLE bool deleteTransaction(const QString& id);
+
+    Q_INVOKABLE QVariantMap exportTransactionsCsv(const QUrl& fileUrl) const;
+    Q_INVOKABLE QVariantMap importTransactionsCsv(const QUrl& fileUrl);
 
     Q_INVOKABLE qint64 convertTransaction(
         int transactionIndex,
