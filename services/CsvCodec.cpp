@@ -21,7 +21,7 @@ bool CsvCodec::writeFile(
     )
 {
     QSaveFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    if (!file.open(QIODevice::WriteOnly)) {
         error = file.errorString();
         return false;
     }

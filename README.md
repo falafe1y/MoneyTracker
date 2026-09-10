@@ -1,12 +1,12 @@
 # Money Tracker
 
-Qt 6 / QML personal finance desktop application.
+Qt 6 / QML personal finance application for desktop and mobile.
 
 The UI uses fully custom QML styling for the banking-style controls. No QSS is required.
 
 ## UI components
 
-- `Main.qml` — main application shell, balance card, transaction list and add-transaction dialog.
+- `Desktop.qml` and `Mobile.qml` — platform-specific application shells.
 - `BankComboBox.qml` — custom currency selector and popup.
 - `CategoryPicker.qml` — custom category grid used instead of a native-looking dropdown.
 
@@ -34,6 +34,20 @@ the settings table. The Accounts menu lists only accounts belonging to that
 asset and creates new accounts with the selected asset type.
 
 The default transaction currency and application currency are RUB.
+
+## TRON USDT wallets
+
+The Crypto asset can track a public TRON Mainnet address and its USDT TRC-20
+balance. Public addresses are validated locally with Base58Check before they
+are stored. Private keys and seed phrases are never requested or stored.
+
+Balances are read directly from the official USDT contract through TronGrid's
+read-only `triggerconstantcontract` endpoint. The USDT/USD quote is read from
+CoinGecko. Successful snapshots are stored in SQLite; a failed request keeps
+the previous balance and price. Refreshes run every six hours while the app is
+open, and once on startup only when the saved data is stale. The network code
+is isolated in `TronUsdtProvider`, so these requests can later be routed
+through an application server without changing the database or QML UI.
 
 ## Storage
 

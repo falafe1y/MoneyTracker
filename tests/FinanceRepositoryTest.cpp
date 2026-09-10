@@ -24,7 +24,62 @@ private slots:
     void replacesTransferWithTransactionAtomically();
     void updatesAccountAndProtectsTransactionCurrency();
     void deletesAccountWithRelatedOperations();
+    void storesCryptoWalletAndPriceSnapshots();
 };
+
+void FinanceRepositoryTest::storesCryptoWalletAndPriceSnapshots()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-crypto-test.sqlite3"));
+    const QDateTime balanceFetchedAt = QDateTime::fromMSecsSinceEpoch(
+        1'788'100'000'000, Qt::UTC);
+    const QDateTime priceFetchedAt = balanceFetchedAt.addSecs(2);
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        const CryptoWallet wallet(
+            QStringLiteral("tron-wallet"),
+            QStringLiteral("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
+        QVERIFY2(repository.insertCryptoWallet(wallet),
+                 qPrintable(repository.lastError()));
+        QVERIFY2(repository.updateCryptoWalletBalance(
+                     wallet.id(), 12'345'678, balanceFetchedAt),
+                 qPrintable(repository.lastError()));
+        QVERIFY2(repository.saveUsdtPrice(999'731, priceFetchedAt),
+                 qPrintable(repository.lastError()));
+        QVERIFY2(repository.saveCryptoRefreshAttemptUtc(priceFetchedAt),
+                 qPrintable(repository.lastError()));
+    }
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        const QVector<CryptoWallet> wallets = repository.loadCryptoWallets();
+        QCOMPARE(wallets.size(), 1);
+        QCOMPARE(wallets.constFirst().id(), QStringLiteral("tron-wallet"));
+        QCOMPARE(wallets.constFirst().balanceAtomic(), qint64(12'345'678));
+        QCOMPARE(wallets.constFirst().balanceFetchedAtUtc(), balanceFetchedAt);
+
+        const FinanceRepository::CryptoPriceSnapshot price =
+            repository.loadUsdtPrice();
+        QCOMPARE(price.priceUsdMicros, qint64(999'731));
+        QCOMPARE(price.fetchedAtUtc, priceFetchedAt);
+        QCOMPARE(repository.loadCryptoRefreshAttemptUtc(), priceFetchedAt);
+
+        QVERIFY2(repository.deleteCryptoWallet(QStringLiteral("tron-wallet")),
+                 qPrintable(repository.lastError()));
+        QVERIFY(repository.loadCryptoWallets().isEmpty());
+
+        const CryptoWallet replacement(
+            QStringLiteral("tron-wallet-replacement"),
+            QStringLiteral("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"));
+        QVERIFY2(repository.insertCryptoWallet(replacement),
+                 qPrintable(repository.lastError()));
+    }
+}
 
 void FinanceRepositoryTest::storesCurrencyRateSettings()
 {

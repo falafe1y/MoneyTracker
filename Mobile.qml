@@ -125,6 +125,8 @@ ApplicationWindow {
     }
 
     function accountPrimaryAmount(row) {
+        if (row && row.isCrypto)
+            return row.balanceText + " " + row.symbol;
         if (row && row.isCreditCard)
             return qsTr("Задолженность: %1").arg(
                 root.money(row.debtMinor, row.currency, false)
@@ -133,6 +135,9 @@ ApplicationWindow {
     }
 
     function accountCompactAmount(row) {
+        if (row && row.isCrypto)
+            return row.balanceText + " " + row.symbol
+                 + " · ≈ " + root.money(row.valueMinor, financeController.appCurrency, false);
         if (row && row.isCreditCard)
             return qsTr("Долг %1 · доступно %2")
                 .arg(root.money(row.debtMinor, row.currency, false))
@@ -146,6 +151,22 @@ ApplicationWindow {
                    .arg(root.money(row.availableCreditMinor, row.currency, false))
                    .arg(root.money(row.creditLimitMinor, row.currency, false))
              : "";
+    }
+
+    function cryptoWalletStatus(row) {
+        if (!row || !row.isCrypto)
+            return "";
+        if (row.refreshing)
+            return qsTr("Обновление баланса…");
+        if (!row.hasSnapshot)
+            return qsTr("Баланс ещё не обновлён");
+        const updated = qsTr("Обновлено: %1").arg(
+            Qt.formatDateTime(row.updatedAt, "dd.MM.yyyy HH:mm")
+        );
+        return row.priceHasSnapshot
+             ? updated + " · 1 USDT = "
+               + Number(row.priceUsd).toLocaleString(root.uiLocale(), "f", 4) + " $"
+             : updated;
     }
 
     function accountName(id) {
@@ -837,7 +858,10 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
-                                text: qsTr("Счета") + " · " + root.assetTitle(financeController.selectedAsset)
+                                text: (financeController.selectedAsset === "crypto"
+                                       ? qsTr("Криптовалюты")
+                                       : qsTr("Счета"))
+                                      + " · " + root.assetTitle(financeController.selectedAsset)
                                 color: root.accent
                                 font.pixelSize: 15
                                 font.weight: Font.DemiBold
@@ -848,7 +872,9 @@ ApplicationWindow {
                             Button {
                                 id: addAccountButton
                                 flat: true
-                                text: qsTr("+  Добавить счёт")
+                                text: financeController.selectedAsset === "crypto"
+                                      ? qsTr("+  Добавить криптовалюту")
+                                      : qsTr("+  Добавить счёт")
 
                                 contentItem: Text {
                                     text: addAccountButton.text
@@ -858,7 +884,12 @@ ApplicationWindow {
                                     verticalAlignment: Text.AlignVCenter
                                 }
 
-                                onClicked: accountDialog.openForSelectedAsset()
+                                onClicked: {
+                                    if (financeController.selectedAsset === "crypto")
+                                        cryptoWalletDialog.openForNewWallet();
+                                    else
+                                        accountDialog.openForSelectedAsset();
+                                }
                             }
                         }
                         ListView {
@@ -873,11 +904,15 @@ ApplicationWindow {
                             model: [
                                 {
                                     id: "",
-                                    name: qsTr("Все счета"),
+                                    name: financeController.selectedAsset === "crypto"
+                                          ? qsTr("Все кошельки")
+                                          : qsTr("Все счета"),
                                     balanceMinor: root.assetAmount(financeController.selectedAsset),
                                     currency: financeController.appCurrency
                                 }
-                            ].concat(financeController.accounts)
+                            ].concat(financeController.selectedAsset === "crypto"
+                                     ? financeController.cryptoWallets
+                                     : financeController.accounts)
                             delegate: Rectangle {
                                 required property var modelData
                                 width: 245
@@ -892,7 +927,7 @@ ApplicationWindow {
                                     cursorShape: Qt.PointingHandCursor
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     onClicked: function (mouse) {
-                                        if (mouse.button === Qt.LeftButton)
+                                        if (mouse.button === Qt.LeftButton && !modelData.isCrypto)
                                             financeController.selectedAccountId = modelData.id;
                                     }
                                     onPressAndHold: {
@@ -1776,9 +1811,40 @@ ApplicationWindow {
 
                 SoftButton {
                     Layout.fillWidth: true
-                    text: qsTr("+ Добавить счёт")
+                    text: financeController.selectedAsset === "crypto"
+                          ? qsTr("+ Добавить криптовалюту")
+                          : qsTr("+ Добавить счёт")
                     highlighted: true
-                    onClicked: accountDialog.openForSelectedAsset()
+                    onClicked: {
+                        if (financeController.selectedAsset === "crypto")
+                            cryptoWalletDialog.openForNewWallet();
+                        else
+                            accountDialog.openForSelectedAsset();
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: financeController.selectedAsset === "crypto"
+                      && (financeController.cryptoRefreshing
+                          || financeController.cryptoLastError.length > 0)
+
+                Text {
+                    Layout.fillWidth: true
+                    text: financeController.cryptoRefreshing
+                          ? qsTr("Обновляем баланс USDT и его цену…")
+                          : qsTr("Не удалось обновить криптоданные: %1")
+                                .arg(financeController.cryptoLastError)
+                    color: financeController.cryptoRefreshing ? root.muted : root.red
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+                SoftButton {
+                    Layout.fillWidth: true
+                    visible: !financeController.cryptoRefreshing
+                    text: qsTr("Повторить")
+                    onClicked: financeController.refreshCryptoWallets()
                 }
             }
 
@@ -1790,11 +1856,13 @@ ApplicationWindow {
                 // Scrollbars intentionally hidden application-wide.
                 ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-                model: financeController.accounts
+                model: financeController.selectedAsset === "crypto"
+                       ? financeController.cryptoWallets
+                       : financeController.accounts
                 delegate: Panel {
                     required property var modelData
                     width: ListView.view.width
-                    height: 138
+                    height: modelData.isCrypto ? 174 : 138
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 18
@@ -1834,9 +1902,31 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: modelData.currency + " · " + root.accountTypeLabel(modelData.type)
+                            visible: modelData.isCrypto
+                            text: "≈ " + root.money(
+                                modelData.valueMinor,
+                                financeController.appCurrency,
+                                false
+                            )
+                            color: root.navSelected
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.isCrypto
+                                  ? modelData.network + " · " + modelData.address
+                                  : modelData.currency + " · " + root.accountTypeLabel(modelData.type)
                             color: root.muted
                             font.pixelSize: 12
+                            elide: Text.ElideMiddle
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: modelData.isCrypto
+                            text: root.cryptoWalletStatus(modelData)
+                            color: modelData.refreshing ? root.navSelected : root.muted
+                            font.pixelSize: 11
                             elide: Text.ElideRight
                         }
                     }
@@ -1883,7 +1973,9 @@ ApplicationWindow {
                 Label {
                     anchors.centerIn: parent
                     visible: parent.count === 0
-                    text: qsTr("У этого актива пока нет счетов")
+                    text: financeController.selectedAsset === "crypto"
+                          ? qsTr("Добавьте публичный адрес TRON-кошелька")
+                          : qsTr("У этого актива пока нет счетов")
                     color: root.muted
                 }
             }
@@ -2448,6 +2540,88 @@ ApplicationWindow {
     }
 
     Dialog {
+        id: cryptoWalletDialog
+        width: Math.min(500, root.width - 20)
+        modal: true
+        anchors.centerIn: parent
+        padding: root.width < 380 ? 16 : 20
+
+        function openForNewWallet() {
+            cryptoAddressField.clear();
+            cryptoWalletError.text = "";
+            open();
+            cryptoAddressField.forceActiveFocus();
+        }
+
+        function submit() {
+            const result = financeController.addCryptoWallet(
+                cryptoAddressField.text
+            );
+            if (result.ok)
+                close();
+            else
+                cryptoWalletError.text = result.error || qsTr("Не удалось добавить кошелёк");
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: qsTr("Добавить криптовалюту")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+            Text {
+                text: "USDT · TRC-20"
+                color: root.navSelected
+                font.pixelSize: 14
+                font.weight: Font.DemiBold
+            }
+            AppTextField {
+                id: cryptoAddressField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Публичный адрес TRON (T…)")
+                maximumLength: 64
+                onAccepted: cryptoWalletDialog.submit()
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Вводите только публичный адрес. Никогда не указывайте seed-фразу или приватный ключ.")
+                color: root.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                id: cryptoWalletError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Item { Layout.fillWidth: true }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: cryptoWalletDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Добавить")
+                    highlighted: true
+                    onClicked: cryptoWalletDialog.submit()
+                }
+            }
+        }
+    }
+
+    Dialog {
         id: accountDialog
         width: Math.min(500, root.width - 20)
         height: Math.min(700, root.height - 24)
@@ -2719,7 +2893,9 @@ ApplicationWindow {
         AppMenuItem {
             width: accountContextMenu.availableWidth
             text: qsTr("Редактировать")
-            enabled: accountContextMenu.accountData !== null
+            visible: accountContextMenu.accountData !== null
+                  && !accountContextMenu.accountData.isCrypto
+            enabled: visible
             onTriggered: {
                 if (accountContextMenu.accountData)
                     accountDialog.openForEdit(accountContextMenu.accountData);
@@ -2728,6 +2904,8 @@ ApplicationWindow {
 
         MenuSeparator {
             width: accountContextMenu.availableWidth
+            visible: accountContextMenu.accountData !== null
+                  && !accountContextMenu.accountData.isCrypto
             topPadding: 4
             bottomPadding: 4
             contentItem: Rectangle {
@@ -2783,7 +2961,10 @@ ApplicationWindow {
             spacing: 14
 
             Text {
-                text: qsTr("Удалить счёт?")
+                text: deleteAccountDialog.accountData
+                      && deleteAccountDialog.accountData.isCrypto
+                      ? qsTr("Удалить криптовалюту?")
+                      : qsTr("Удалить счёт?")
                 color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
@@ -2792,6 +2973,9 @@ ApplicationWindow {
             Text {
                 Layout.fillWidth: true
                 text: deleteAccountDialog.accountData
+                      && deleteAccountDialog.accountData.isCrypto
+                      ? qsTr("Публичный адрес и сохранённый снимок баланса будут удалены. Средства в блокчейне это не затронет.")
+                      : deleteAccountDialog.accountData
                       && deleteAccountDialog.accountData.transactionCount > 0
                       ? qsTr("Счёт и все связанные операции будут удалены. Связанные переводы удалятся целиком. Это действие нельзя отменить.")
                       : qsTr("Счёт будет удалён. Это действие нельзя отменить.")
@@ -2827,8 +3011,10 @@ ApplicationWindow {
                               ? root.accountCompactAmount(
                                     deleteAccountDialog.accountData
                                 )
-                                + " · " + qsTr("операций: ")
-                                + deleteAccountDialog.accountData.transactionCount
+                                + (deleteAccountDialog.accountData.isCrypto
+                                   ? ""
+                                   : " · " + qsTr("операций: ")
+                                     + deleteAccountDialog.accountData.transactionCount)
                               : ""
                         color: root.muted
                         font.pixelSize: 12
@@ -2858,10 +3044,15 @@ ApplicationWindow {
                     destructive: true
                     onClicked: {
                         const row = deleteAccountDialog.accountData;
-                        if (row && financeController.deleteAccount(row.id))
+                        const ok = row && row.isCrypto
+                                 ? financeController.deleteCryptoWallet(row.id)
+                                 : row && financeController.deleteAccount(row.id);
+                        if (ok)
                             deleteAccountDialog.close();
                         else
-                            deleteAccountError.text = qsTr("Не удалось удалить счёт");
+                            deleteAccountError.text = row && row.isCrypto
+                                                    ? qsTr("Не удалось удалить криптовалюту")
+                                                    : qsTr("Не удалось удалить счёт");
                     }
                 }
             }

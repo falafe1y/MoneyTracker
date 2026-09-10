@@ -3,8 +3,10 @@
 #include "../core/Transaction.h"
 #include "../core/Category.h"
 #include "../core/Account.h"
+#include "../core/CryptoWallet.h"
 
 #include <QSqlDatabase>
+#include <QDateTime>
 #include <QSet>
 #include <QVector>
 
@@ -20,6 +22,12 @@ public:
         std::array<qint64, 3> expense{};
     };
 
+    struct CryptoPriceSnapshot
+    {
+        qint64 priceUsdMicros = 1'000'000;
+        QDateTime fetchedAtUtc;
+    };
+
     explicit FinanceRepository(const QString& databasePath = {});
     ~FinanceRepository();
 
@@ -31,6 +39,9 @@ public:
     QVector<Transaction> loadTransactions();
     QVector<Category> loadCategories();
     QVector<Account> loadAccounts();
+    QVector<CryptoWallet> loadCryptoWallets();
+    CryptoPriceSnapshot loadUsdtPrice() const;
+    QDateTime loadCryptoRefreshAttemptUtc() const;
     QSet<QString> loadArchivedCategoryIds();
     Summary loadSummary();
     bool insertTransaction(const Transaction& transaction);
@@ -54,6 +65,18 @@ public:
     bool insertAccount(const Account& account);
     bool updateAccount(const Account& account);
     bool deleteAccount(const QString& id);
+    bool insertCryptoWallet(const CryptoWallet& wallet);
+    bool updateCryptoWalletBalance(
+        const QString& id,
+        qint64 balanceAtomic,
+        const QDateTime& fetchedAtUtc
+        );
+    bool deleteCryptoWallet(const QString& id);
+    bool saveUsdtPrice(
+        qint64 priceUsdMicros,
+        const QDateTime& fetchedAtUtc
+        );
+    bool saveCryptoRefreshAttemptUtc(const QDateTime& attemptedAtUtc);
     bool updateCategoryName(const QString& id, const QString& name);
     bool archiveCategory(const QString& id);
     QString loadAppCurrency() const;

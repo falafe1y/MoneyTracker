@@ -21,6 +21,7 @@
     <message><source>Все время</source><translation>All time</translation></message>
     <message><source>Все итоговые суммы пересчитываются в эту валюту.</source><translation>All totals are converted to this currency.</translation></message>
     <message><source>Все счета</source><translation>All accounts</translation></message>
+    <message><source>Все кошельки</source><translation>All wallets</translation></message>
     <message><source>Выберите счёт назначения</source><translation>Select a destination account</translation></message>
     <message><source>Дата</source><translation>Date</translation></message>
     <message><source>Дата операции</source><translation>Transaction date</translation></message>
@@ -148,6 +149,23 @@
     <message><source>Проверьте данные счёта</source><translation>Check the account details</translation></message>
     <message><source>Проверьте сумму, счета и категорию</source><translation>Check the amount, accounts, and category</translation></message>
     <message><source>Текущий долг</source><translation>Current debt</translation></message>
+    <message><source>+  Добавить криптовалюту</source><translation>+  Add cryptocurrency</translation></message>
+    <message><source>+ Добавить криптовалюту</source><translation>+ Add cryptocurrency</translation></message>
+    <message><source>Криптовалюты</source><translation>Cryptocurrencies</translation></message>
+    <message><source>Обновление баланса…</source><translation>Updating balance…</translation></message>
+    <message><source>Баланс ещё не обновлён</source><translation>Balance has not been updated yet</translation></message>
+    <message><source>Обновлено: %1</source><translation>Updated: %1</translation></message>
+    <message><source>Добавьте публичный адрес TRON-кошелька</source><translation>Add a public TRON wallet address</translation></message>
+    <message><source>Обновляем баланс USDT и его цену…</source><translation>Updating the USDT balance and price…</translation></message>
+    <message><source>Не удалось обновить криптоданные: %1</source><translation>Could not update crypto data: %1</translation></message>
+    <message><source>Повторить</source><translation>Retry</translation></message>
+    <message><source>Добавить криптовалюту</source><translation>Add cryptocurrency</translation></message>
+    <message><source>Публичный адрес TRON (T…)</source><translation>Public TRON address (T…)</translation></message>
+    <message><source>Вводите только публичный адрес. Никогда не указывайте seed-фразу или приватный ключ.</source><translation>Enter only a public address. Never enter a seed phrase or private key.</translation></message>
+    <message><source>Не удалось добавить кошелёк</source><translation>Could not add wallet</translation></message>
+    <message><source>Удалить криптовалюту?</source><translation>Delete cryptocurrency?</translation></message>
+    <message><source>Публичный адрес и сохранённый снимок баланса будут удалены. Средства в блокчейне это не затронет.</source><translation>The public address and cached balance snapshot will be deleted. Funds on the blockchain will not be affected.</translation></message>
+    <message><source>Не удалось удалить криптовалюту</source><translation>Could not delete cryptocurrency</translation></message>
   </context>
   <context>
     <name>FinanceController</name>
@@ -179,5 +197,9 @@
     <message><source>Ошибка в строке %1: неизвестный тип операции</source><translation>Error on row %1: unknown transaction type</translation></message>
     <message><source>Ошибка в строке %1: повторяющийся идентификатор</source><translation>Error on row %1: duplicate identifier</translation></message>
     <message><source>Ошибка в строке %1: категория не найдена</source><translation>Error on row %1: category not found</translation></message>
+    <message><source>Введите корректный публичный адрес TRON, начинающийся с T</source><translation>Enter a valid public TRON address starting with T</translation></message>
+    <message><source>Этот кошелёк уже добавлен</source><translation>This wallet has already been added</translation></message>
+    <message><source>Не удалось сохранить криптокошелёк</source><translation>Could not save the crypto wallet</translation></message>
+    <message><source>Сначала выберите актив «Крипта»</source><translation>Select the Crypto asset first</translation></message>
   </context>
 </TS>

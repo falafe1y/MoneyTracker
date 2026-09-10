@@ -31,6 +31,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/Currency.cpp
         SOURCES core/Money.h
         SOURCES core/Transaction.h
+        SOURCES core/CryptoWallet.h
         SOURCES services/CurrencyConverter.h
         SOURCES services/CurrencyConverter.cpp
         SOURCES services/BalanceCalculator.h
@@ -46,6 +47,10 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CurrencyRateCache.cpp
         SOURCES services/CbrCurrencyRateProvider.h
         SOURCES services/CbrCurrencyRateProvider.cpp
+        SOURCES services/TronUsdtParser.h
+        SOURCES services/TronUsdtParser.cpp
+        SOURCES services/TronUsdtProvider.h
+        SOURCES services/TronUsdtProvider.cpp
         SOURCES interface/FinanceController.h
         SOURCES interface/FinanceController.cpp
         SOURCES persistence/FinanceRepository.h
@@ -193,5 +198,21 @@ target_link_libraries(CsvCodecTest
 add_test(
     NAME CsvCodecTest
     COMMAND CsvCodecTest
+)
+
+add_executable(TronUsdtParserTest
+    tests/TronUsdtParserTest.cpp
+    services/TronUsdtParser.cpp
+)
+
+target_link_libraries(TronUsdtParserTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME TronUsdtParserTest
+    COMMAND TronUsdtParserTest
 )
 endif()

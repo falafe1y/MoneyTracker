@@ -5,6 +5,7 @@
 #include "../services/BalanceCalculator.h"
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
+#include "../services/TronUsdtProvider.h"
 
 #include <QDateTime>
 #include <QDate>
@@ -14,6 +15,7 @@
 #include <QUrl>
 #include <QVector>
 #include <QSet>
+#include <QTimer>
 
 #include <array>
 
@@ -122,6 +124,24 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QVariantList cryptoWallets
+            READ cryptoWallets
+                NOTIFY cryptoWalletsChanged
+        )
+
+    Q_PROPERTY(
+        bool cryptoRefreshing
+            READ cryptoRefreshing
+                NOTIFY cryptoRefreshingChanged
+        )
+
+    Q_PROPERTY(
+        QString cryptoLastError
+            READ cryptoLastError
+                NOTIFY cryptoLastErrorChanged
+        )
+
+    Q_PROPERTY(
         QString selectedAccountId
             READ selectedAccountId
                 WRITE setSelectedAccountId
@@ -177,6 +197,9 @@ public:
     QVariantList accounts() const;
     QVariantList allAccounts() const;
     QVariantList assetSummaries() const;
+    QVariantList cryptoWallets() const;
+    bool cryptoRefreshing() const;
+    QString cryptoLastError() const;
 
     QString selectedAsset() const;
     void setSelectedAsset(const QString& asset);
@@ -210,6 +233,10 @@ public:
         );
 
     Q_INVOKABLE bool deleteAccount(const QString& id);
+
+    Q_INVOKABLE QVariantMap addCryptoWallet(const QString& address);
+    Q_INVOKABLE bool deleteCryptoWallet(const QString& id);
+    Q_INVOKABLE void refreshCryptoWallets();
 
     Q_INVOKABLE bool addCategory(
         const QString& name,
@@ -296,6 +323,9 @@ signals:
     void manualCurrencyRatesChanged();
     void currencyRatesChanged();
     void dateFilterChanged();
+    void cryptoWalletsChanged();
+    void cryptoRefreshingChanged();
+    void cryptoLastErrorChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -321,6 +351,14 @@ private:
     qint64 accountBalanceMinor(const Account& account) const;
     int accountTransactionCount(const QString& accountId) const;
     qint64 assetBalanceMinor(AssetType asset) const;
+    qint64 cryptoWalletValueMinor(const CryptoWallet& wallet) const;
+    qint64 cryptoWalletsTotalMinor() const;
+    void scheduleInitialCryptoRefresh();
+    void scheduleNextCryptoRefresh(qint64 delayMs);
+    void startCryptoBalanceRequest(const CryptoWallet& wallet);
+    void startCryptoPriceRequest();
+    void finishCryptoRequest();
+    void setCryptoLastError(const QString& error);
     QVector<Transaction> dateFilteredTransactions() const;
     FinanceRepository::Summary dateFilteredSummary() const;
     QString accountDisplayName(const Account& account) const;
@@ -335,10 +373,12 @@ private:
     CbrCurrencyRateProvider rateProvider_;
     CurrencyConverter currencyConverter_;
     BalanceCalculator balanceCalculator_;
+    TronUsdtProvider cryptoProvider_;
 
     QVector<Transaction> transactions_;
     QVector<Category> categories_;
     QVector<Account> accounts_;
+    QVector<CryptoWallet> cryptoWallets_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
 
@@ -351,4 +391,16 @@ private:
     QString selectedAccountId_;
     QDate dateFilterFrom_;
     QDate dateFilterTo_;
+
+    qint64 usdtPriceUsdMicros_ = 1'000'000;
+    QDateTime usdtPriceFetchedAtUtc_;
+    QDateTime lastCryptoRefreshAttemptUtc_;
+    QTimer cryptoRefreshTimer_;
+    QSet<QString> refreshingCryptoWalletIds_;
+    int pendingCryptoRequests_ = 0;
+    bool cryptoRefreshing_ = false;
+    QString cryptoLastError_;
+
+    static constexpr qint64 kCryptoRefreshIntervalMs =
+        6LL * 60LL * 60LL * 1000LL;
 };

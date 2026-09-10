@@ -269,6 +269,68 @@ QVector<Account> FinanceRepository::loadAccounts()
     return result;
 }
 
+QVector<CryptoWallet> FinanceRepository::loadCryptoWallets()
+{
+    QVector<CryptoWallet> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT id, address, balance_atomic, balance_fetched_at "
+            "FROM crypto_wallets WHERE is_archived = 0 "
+            "ORDER BY created_at, address"))) {
+        setLastError(query.lastError().text());
+        return result;
+    }
+
+    while (query.next()) {
+        const QVariant fetchedAt = query.value(3);
+        result.append(CryptoWallet(
+            query.value(0).toString(),
+            query.value(1).toString(),
+            query.value(2).toLongLong(),
+            fetchedAt.isNull()
+                ? QDateTime()
+                : QDateTime::fromMSecsSinceEpoch(
+                      fetchedAt.toLongLong(), Qt::UTC)));
+    }
+    return result;
+}
+
+FinanceRepository::CryptoPriceSnapshot FinanceRepository::loadUsdtPrice() const
+{
+    CryptoPriceSnapshot result;
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "SELECT price_usd_micros, fetched_at "
+        "FROM crypto_prices WHERE symbol = 'USDT'"));
+    if (query.exec() && query.next()) {
+        const qint64 price = query.value(0).toLongLong();
+        if (price > 0) {
+            result.priceUsdMicros = price;
+        }
+        if (!query.value(1).isNull()) {
+            result.fetchedAtUtc = QDateTime::fromMSecsSinceEpoch(
+                query.value(1).toLongLong(), Qt::UTC);
+        }
+    }
+    return result;
+}
+
+QDateTime FinanceRepository::loadCryptoRefreshAttemptUtc() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings "
+            "WHERE key = 'crypto_refresh_attempt_utc'")) &&
+        query.next()) {
+        bool ok = false;
+        const qint64 milliseconds = query.value(0).toString().toLongLong(&ok);
+        if (ok && milliseconds > 0) {
+            return QDateTime::fromMSecsSinceEpoch(milliseconds, Qt::UTC);
+        }
+    }
+    return {};
+}
+
 QSet<QString> FinanceRepository::loadArchivedCategoryIds()
 {
     QSet<QString> result;
@@ -660,6 +722,124 @@ bool FinanceRepository::deleteAccount(const QString& id)
     return true;
 }
 
+bool FinanceRepository::insertCryptoWallet(const CryptoWallet& wallet)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO crypto_wallets("
+        "id, address, network, symbol, balance_atomic, balance_fetched_at, "
+        "is_archived, created_at) "
+        "VALUES (?, ?, 'TRON', 'USDT', ?, ?, 0, ?)"));
+    query.addBindValue(wallet.id());
+    query.addBindValue(wallet.address());
+    query.addBindValue(wallet.balanceAtomic());
+    if (wallet.balanceFetchedAtUtc().isValid()) {
+        query.addBindValue(
+            wallet.balanceFetchedAtUtc().toUTC().toMSecsSinceEpoch());
+    } else {
+        query.addBindValue(QVariant());
+    }
+    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::updateCryptoWalletBalance(
+    const QString& id,
+    const qint64 balanceAtomic,
+    const QDateTime& fetchedAtUtc
+    )
+{
+    if (balanceAtomic < 0 || !fetchedAtUtc.isValid()) {
+        setLastError(QStringLiteral("Invalid crypto-wallet balance snapshot"));
+        return false;
+    }
+
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE crypto_wallets "
+        "SET balance_atomic = ?, balance_fetched_at = ? "
+        "WHERE id = ? AND is_archived = 0"));
+    query.addBindValue(balanceAtomic);
+    query.addBindValue(fetchedAtUtc.toUTC().toMSecsSinceEpoch());
+    query.addBindValue(id);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Crypto wallet was not found"));
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::deleteCryptoWallet(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE crypto_wallets SET is_archived = 1 "
+        "WHERE id = ? AND is_archived = 0"));
+    query.addBindValue(id);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Crypto wallet was not found"));
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::saveUsdtPrice(
+    const qint64 priceUsdMicros,
+    const QDateTime& fetchedAtUtc
+    )
+{
+    if (priceUsdMicros <= 0 || !fetchedAtUtc.isValid()) {
+        setLastError(QStringLiteral("Invalid USDT price snapshot"));
+        return false;
+    }
+
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO crypto_prices(symbol, price_usd_micros, fetched_at) "
+        "VALUES('USDT', ?, ?) "
+        "ON CONFLICT(symbol) DO UPDATE SET "
+        "price_usd_micros = excluded.price_usd_micros, "
+        "fetched_at = excluded.fetched_at"));
+    query.addBindValue(priceUsdMicros);
+    query.addBindValue(fetchedAtUtc.toUTC().toMSecsSinceEpoch());
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::saveCryptoRefreshAttemptUtc(
+    const QDateTime& attemptedAtUtc
+    )
+{
+    if (!attemptedAtUtc.isValid()) {
+        setLastError(QStringLiteral("Invalid crypto refresh timestamp"));
+        return false;
+    }
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO settings(key, value) "
+        "VALUES('crypto_refresh_attempt_utc', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"));
+    query.addBindValue(QString::number(
+        attemptedAtUtc.toUTC().toMSecsSinceEpoch()));
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::updateCategoryName(
     const QString& id,
     const QString& name
@@ -900,6 +1080,23 @@ bool FinanceRepository::initializeSchema()
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS settings ("
                        "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_wallets ("
+                       "id TEXT PRIMARY KEY, address TEXT NOT NULL, "
+                       "network TEXT NOT NULL CHECK(network = 'TRON'), "
+                       "symbol TEXT NOT NULL CHECK(symbol = 'USDT'), "
+                       "balance_atomic INTEGER NOT NULL DEFAULT 0 "
+                       "CHECK(balance_atomic >= 0), "
+                       "balance_fetched_at INTEGER, "
+                       "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
+                       "created_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_prices ("
+                       "symbol TEXT PRIMARY KEY CHECK(symbol = 'USDT'), "
+                       "price_usd_micros INTEGER NOT NULL CHECK(price_usd_micros > 0), "
+                       "fetched_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
+                       "idx_crypto_wallets_active_address "
+                       "ON crypto_wallets(address) "
+                       "WHERE is_archived = 0"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_occurred_at "
                        "ON transactions(occurred_at DESC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_account_date "

@@ -3,11 +3,17 @@
 #include "../services/DateSliceCalculator.h"
 #include "../services/CsvCodec.h"
 #include "../services/TransactionDateFilter.h"
+#include "../services/TronUsdtParser.h"
 
 #include <QDebug>
+#include <QLocale>
 #include <QUuid>
 
 #include <QFileInfo>
+
+#include <algorithm>
+#include <limits>
+#include <utility>
 
 namespace
 {
@@ -44,6 +50,22 @@ void addAccountFinancialRoles(
     item["debtMinor"] = account.debtMinor(balanceMinor);
     item["availableCreditMinor"] = account.availableCreditMinor(balanceMinor);
 }
+
+QString formatUsdtAmount(const qint64 balanceAtomic)
+{
+    const qint64 whole = balanceAtomic / 1'000'000;
+    const qint64 fraction = balanceAtomic % 1'000'000;
+    if (fraction == 0) {
+        return QString::number(whole);
+    }
+
+    QString fractionText = QStringLiteral("%1").arg(
+        fraction, 6, 10, QLatin1Char('0'));
+    while (fractionText.endsWith(QLatin1Char('0'))) {
+        fractionText.chop(1);
+    }
+    return QString::number(whole) + QLatin1Char('.') + fractionText;
+}
 }
 
 FinanceController::FinanceController(QObject* parent)
@@ -60,7 +82,76 @@ FinanceController::FinanceController(QObject* parent)
             emit balanceChanged();
             emit transactionsChanged();
             emit currencyRatesChanged();
+            emit cryptoWalletsChanged();
         });
+
+    QObject::connect(
+        &cryptoProvider_,
+        &TronUsdtProvider::balanceUpdated,
+        this,
+        [this](
+            const QString& walletId,
+            const qint64 balanceAtomic,
+            const QDateTime& fetchedAtUtc
+            )
+        {
+            refreshingCryptoWalletIds_.remove(walletId);
+            for (CryptoWallet& wallet : cryptoWallets_) {
+                if (wallet.id() != walletId) {
+                    continue;
+                }
+                if (!repository_.updateCryptoWalletBalance(
+                        walletId, balanceAtomic, fetchedAtUtc)) {
+                    qWarning() << "Failed to save crypto-wallet balance:"
+                               << repository_.lastError();
+                    return;
+                }
+                wallet.setBalance(balanceAtomic, fetchedAtUtc);
+                emit cryptoWalletsChanged();
+                emit balanceChanged();
+                return;
+            }
+        });
+    QObject::connect(
+        &cryptoProvider_,
+        &TronUsdtProvider::priceUpdated,
+        this,
+        [this](const qint64 priceUsdMicros, const QDateTime& fetchedAtUtc)
+        {
+            if (!repository_.saveUsdtPrice(priceUsdMicros, fetchedAtUtc)) {
+                qWarning() << "Failed to save USDT price:"
+                           << repository_.lastError();
+                return;
+            }
+            usdtPriceUsdMicros_ = priceUsdMicros;
+            usdtPriceFetchedAtUtc_ = fetchedAtUtc.toUTC();
+            emit cryptoWalletsChanged();
+            emit balanceChanged();
+        });
+    QObject::connect(
+        &cryptoProvider_,
+        &TronUsdtProvider::requestFailed,
+        this,
+        [this](const QString& walletId, const QString& message)
+        {
+            if (!walletId.isEmpty()) {
+                refreshingCryptoWalletIds_.remove(walletId);
+            }
+            setCryptoLastError(message);
+            emit cryptoWalletsChanged();
+        });
+    QObject::connect(
+        &cryptoProvider_,
+        &TronUsdtProvider::requestFinished,
+        this,
+        &FinanceController::finishCryptoRequest);
+
+    cryptoRefreshTimer_.setSingleShot(true);
+    QObject::connect(
+        &cryptoRefreshTimer_,
+        &QTimer::timeout,
+        this,
+        &FinanceController::refreshCryptoWallets);
 
     if (!repository_.isOpen()) {
         qWarning() << "Failed to open finance database:"
@@ -84,13 +175,31 @@ FinanceController::FinanceController(QObject* parent)
     transactions_ = repository_.loadTransactions();
     categories_ = repository_.loadCategories();
     accounts_ = repository_.loadAccounts();
+    cryptoWallets_ = repository_.loadCryptoWallets();
+    const FinanceRepository::CryptoPriceSnapshot usdtPrice =
+        repository_.loadUsdtPrice();
+    usdtPriceUsdMicros_ = usdtPrice.priceUsdMicros;
+    usdtPriceFetchedAtUtc_ = usdtPrice.fetchedAtUtc;
+    lastCryptoRefreshAttemptUtc_ = repository_.loadCryptoRefreshAttemptUtc();
     archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
     summary_ = repository_.loadSummary();
+
+    QTimer::singleShot(
+        0,
+        this,
+        &FinanceController::scheduleInitialCryptoRefresh);
 }
 
 qint64 FinanceController::balanceMinorUnits() const
 {
-    return convertedTotal(dateFilteredSummary().balance);
+    const qint64 fiatAndManualAssets = convertedTotal(
+        dateFilteredSummary().balance);
+    const qint64 crypto = cryptoWalletsTotalMinor();
+    if (crypto > 0 && fiatAndManualAssets >
+            std::numeric_limits<qint64>::max() - crypto) {
+        return std::numeric_limits<qint64>::max();
+    }
+    return fiatAndManualAssets + crypto;
 }
 
 QString FinanceController::balanceCurrency() const
@@ -133,6 +242,7 @@ void FinanceController::setAppCurrency(const QString& currency)
     emit balanceChanged();
     emit transactionsChanged();
     emit currencyRatesChanged();
+    emit cryptoWalletsChanged();
 }
 
 QString FinanceController::uiLanguage() const
@@ -644,6 +754,50 @@ QVariantList FinanceController::assetSummaries() const
     return result;
 }
 
+QVariantList FinanceController::cryptoWallets() const
+{
+    QVariantList result;
+    result.reserve(cryptoWallets_.size());
+    for (const CryptoWallet& wallet : cryptoWallets_) {
+        QVariantMap item;
+        item[QStringLiteral("id")] = wallet.id();
+        item[QStringLiteral("name")] = QStringLiteral("USDT");
+        item[QStringLiteral("type")] = QStringLiteral("crypto_wallet");
+        item[QStringLiteral("asset")] = QStringLiteral("crypto");
+        item[QStringLiteral("isCrypto")] = true;
+        item[QStringLiteral("symbol")] = QStringLiteral("USDT");
+        item[QStringLiteral("network")] = QStringLiteral("TRC-20");
+        item[QStringLiteral("address")] = wallet.address();
+        item[QStringLiteral("balanceAtomic")] = wallet.balanceAtomic();
+        item[QStringLiteral("balanceText")] = formatUsdtAmount(
+            wallet.balanceAtomic());
+        item[QStringLiteral("valueMinor")] = cryptoWalletValueMinor(wallet);
+        item[QStringLiteral("balanceMinor")] = item[QStringLiteral("valueMinor")];
+        item[QStringLiteral("currency")] = currencyCode(appCurrency_);
+        item[QStringLiteral("hasSnapshot")] =
+            wallet.balanceFetchedAtUtc().isValid();
+        item[QStringLiteral("updatedAt")] = wallet.balanceFetchedAtUtc();
+        item[QStringLiteral("refreshing")] =
+            refreshingCryptoWalletIds_.contains(wallet.id());
+        item[QStringLiteral("priceUsd")] =
+            static_cast<double>(usdtPriceUsdMicros_) / 1'000'000.0;
+        item[QStringLiteral("priceHasSnapshot")] =
+            usdtPriceFetchedAtUtc_.isValid();
+        result.append(item);
+    }
+    return result;
+}
+
+bool FinanceController::cryptoRefreshing() const
+{
+    return cryptoRefreshing_;
+}
+
+QString FinanceController::cryptoLastError() const
+{
+    return cryptoLastError_;
+}
+
 QString FinanceController::selectedAsset() const
 {
     return assetTypeToString(selectedAsset_);
@@ -666,6 +820,9 @@ void FinanceController::setSelectedAsset(const QString& asset)
     emit selectedAssetChanged();
     emit selectedAccountIdChanged();
     emit accountsChanged();
+    if (selectedAsset_ == AssetType::Crypto) {
+        scheduleInitialCryptoRefresh();
+    }
 }
 
 QString FinanceController::selectedAccountId() const
@@ -935,6 +1092,110 @@ bool FinanceController::deleteAccount(const QString& id)
     emit transactionsChanged();
     emit balanceChanged();
     return true;
+}
+
+QVariantMap FinanceController::addCryptoWallet(const QString& address)
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    const QString normalizedAddress = address.trimmed();
+    if (selectedAsset_ != AssetType::Crypto) {
+        result[QStringLiteral("error")] = tr(
+            "Сначала выберите актив «Крипта»");
+        return result;
+    }
+    if (!isValidTronAddress(normalizedAddress)) {
+        result[QStringLiteral("error")] = tr(
+            "Введите корректный публичный адрес TRON, начинающийся с T");
+        return result;
+    }
+
+    for (const CryptoWallet& wallet : cryptoWallets_) {
+        if (wallet.address() == normalizedAddress) {
+            result[QStringLiteral("error")] = tr(
+                "Этот кошелёк уже добавлен");
+            return result;
+        }
+    }
+
+    const CryptoWallet wallet(
+        QUuid::createUuid().toString(QUuid::WithoutBraces),
+        normalizedAddress);
+    if (!repository_.insertCryptoWallet(wallet)) {
+        qWarning() << "Failed to save crypto wallet:"
+                   << repository_.lastError();
+        result[QStringLiteral("error")] = tr(
+            "Не удалось сохранить криптокошелёк");
+        return result;
+    }
+
+    cryptoWallets_.append(wallet);
+    setCryptoLastError(QString());
+    emit cryptoWalletsChanged();
+    lastCryptoRefreshAttemptUtc_ = QDateTime::currentDateTimeUtc();
+    if (!repository_.saveCryptoRefreshAttemptUtc(
+            lastCryptoRefreshAttemptUtc_)) {
+        qWarning() << "Failed to save crypto refresh time:"
+                   << repository_.lastError();
+    }
+    startCryptoBalanceRequest(cryptoWallets_.constLast());
+
+    const qint64 priceAgeMs = usdtPriceFetchedAtUtc_.isValid()
+        ? usdtPriceFetchedAtUtc_.msecsTo(QDateTime::currentDateTimeUtc())
+        : kCryptoRefreshIntervalMs;
+    if (priceAgeMs < 0 || priceAgeMs >= kCryptoRefreshIntervalMs) {
+        startCryptoPriceRequest();
+    }
+    scheduleNextCryptoRefresh(kCryptoRefreshIntervalMs);
+
+    result[QStringLiteral("ok")] = true;
+    return result;
+}
+
+bool FinanceController::deleteCryptoWallet(const QString& id)
+{
+    int walletIndex = -1;
+    for (int index = 0; index < cryptoWallets_.size(); ++index) {
+        if (cryptoWallets_[index].id() == id) {
+            walletIndex = index;
+            break;
+        }
+    }
+    if (walletIndex < 0 || !repository_.deleteCryptoWallet(id)) {
+        if (walletIndex >= 0) {
+            qWarning() << "Failed to delete crypto wallet:"
+                       << repository_.lastError();
+        }
+        return false;
+    }
+
+    refreshingCryptoWalletIds_.remove(id);
+    cryptoWallets_.removeAt(walletIndex);
+    if (cryptoWallets_.isEmpty()) {
+        cryptoRefreshTimer_.stop();
+    }
+    emit cryptoWalletsChanged();
+    emit balanceChanged();
+    return true;
+}
+
+void FinanceController::refreshCryptoWallets()
+{
+    if (cryptoWallets_.isEmpty() || pendingCryptoRequests_ > 0) {
+        return;
+    }
+
+    setCryptoLastError(QString());
+    lastCryptoRefreshAttemptUtc_ = QDateTime::currentDateTimeUtc();
+    if (!repository_.saveCryptoRefreshAttemptUtc(
+            lastCryptoRefreshAttemptUtc_)) {
+        qWarning() << "Failed to save crypto refresh time:"
+                   << repository_.lastError();
+    }
+    startCryptoPriceRequest();
+    for (const CryptoWallet& wallet : std::as_const(cryptoWallets_)) {
+        startCryptoBalanceRequest(wallet);
+    }
+    scheduleNextCryptoRefresh(kCryptoRefreshIntervalMs);
 }
 
 bool FinanceController::addCategory(
@@ -1539,7 +1800,158 @@ qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
             Money(accountBalanceMinor(account), account.currency()),
             appCurrency_).minorUnits();
     }
+    if (asset == AssetType::Crypto) {
+        const qint64 trackedWallets = cryptoWalletsTotalMinor();
+        if (trackedWallets > 0 && total >
+                std::numeric_limits<qint64>::max() - trackedWallets) {
+            return std::numeric_limits<qint64>::max();
+        }
+        total += trackedWallets;
+    }
     return total;
+}
+
+qint64 FinanceController::cryptoWalletValueMinor(
+    const CryptoWallet& wallet
+    ) const
+{
+    // USDT and its USD quote both use six fractional digits. Convert their
+    // product to USD cents with integer arithmetic before applying the app's
+    // existing fiat converter.
+    using Int128 = __int128_t;
+    constexpr Int128 divisor = static_cast<Int128>(10'000'000'000LL);
+    const Int128 product = static_cast<Int128>(wallet.balanceAtomic()) *
+        static_cast<Int128>(usdtPriceUsdMicros_);
+    const Int128 roundedUsdMinor = (product + divisor / 2) / divisor;
+    const Int128 maximum = std::numeric_limits<qint64>::max();
+    const qint64 usdMinor = roundedUsdMinor > maximum
+        ? std::numeric_limits<qint64>::max()
+        : static_cast<qint64>(roundedUsdMinor);
+    return currencyConverter_.convert(
+        Money(usdMinor, Currency::USD), appCurrency_).minorUnits();
+}
+
+qint64 FinanceController::cryptoWalletsTotalMinor() const
+{
+    qint64 total = 0;
+    for (const CryptoWallet& wallet : cryptoWallets_) {
+        const qint64 value = cryptoWalletValueMinor(wallet);
+        if (value > 0 && total > std::numeric_limits<qint64>::max() - value) {
+            return std::numeric_limits<qint64>::max();
+        }
+        total += value;
+    }
+    return total;
+}
+
+void FinanceController::scheduleInitialCryptoRefresh()
+{
+    if (cryptoWallets_.isEmpty() || pendingCryptoRequests_ > 0) {
+        return;
+    }
+
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    qint64 nextDelayMs = kCryptoRefreshIntervalMs;
+    bool hasStaleSnapshot = false;
+    const auto considerTimestamp = [&](const QDateTime& fetchedAtUtc)
+    {
+        if (!fetchedAtUtc.isValid()) {
+            hasStaleSnapshot = true;
+            return;
+        }
+        const qint64 ageMs = fetchedAtUtc.msecsTo(now);
+        if (ageMs < 0) {
+            return;
+        }
+        if (ageMs >= kCryptoRefreshIntervalMs) {
+            hasStaleSnapshot = true;
+            return;
+        }
+        nextDelayMs = std::min(
+            nextDelayMs,
+            kCryptoRefreshIntervalMs - ageMs);
+    };
+
+    considerTimestamp(usdtPriceFetchedAtUtc_);
+    for (const CryptoWallet& wallet : std::as_const(cryptoWallets_)) {
+        considerTimestamp(wallet.balanceFetchedAtUtc());
+    }
+
+    if (hasStaleSnapshot) {
+        if (lastCryptoRefreshAttemptUtc_.isValid()) {
+            const qint64 attemptAgeMs =
+                lastCryptoRefreshAttemptUtc_.msecsTo(now);
+            if (attemptAgeMs >= 0 &&
+                attemptAgeMs < kCryptoRefreshIntervalMs) {
+                scheduleNextCryptoRefresh(
+                    kCryptoRefreshIntervalMs - attemptAgeMs);
+                return;
+            }
+        }
+        QTimer::singleShot(
+            0,
+            this,
+            &FinanceController::refreshCryptoWallets);
+    } else {
+        scheduleNextCryptoRefresh(nextDelayMs);
+    }
+}
+
+void FinanceController::scheduleNextCryptoRefresh(const qint64 delayMs)
+{
+    if (cryptoWallets_.isEmpty()) {
+        cryptoRefreshTimer_.stop();
+        return;
+    }
+    const qint64 boundedDelay = std::clamp<qint64>(
+        delayMs, 1, std::numeric_limits<int>::max());
+    cryptoRefreshTimer_.start(static_cast<int>(boundedDelay));
+}
+
+void FinanceController::startCryptoBalanceRequest(const CryptoWallet& wallet)
+{
+    if (!cryptoProvider_.requestBalance(wallet.id(), wallet.address())) {
+        return;
+    }
+    refreshingCryptoWalletIds_.insert(wallet.id());
+    ++pendingCryptoRequests_;
+    if (!cryptoRefreshing_) {
+        cryptoRefreshing_ = true;
+        emit cryptoRefreshingChanged();
+    }
+    emit cryptoWalletsChanged();
+}
+
+void FinanceController::startCryptoPriceRequest()
+{
+    if (!cryptoProvider_.requestPrice()) {
+        return;
+    }
+    ++pendingCryptoRequests_;
+    if (!cryptoRefreshing_) {
+        cryptoRefreshing_ = true;
+        emit cryptoRefreshingChanged();
+    }
+}
+
+void FinanceController::finishCryptoRequest()
+{
+    if (pendingCryptoRequests_ > 0) {
+        --pendingCryptoRequests_;
+    }
+    if (pendingCryptoRequests_ == 0 && cryptoRefreshing_) {
+        cryptoRefreshing_ = false;
+        emit cryptoRefreshingChanged();
+    }
+}
+
+void FinanceController::setCryptoLastError(const QString& error)
+{
+    if (cryptoLastError_ == error) {
+        return;
+    }
+    cryptoLastError_ = error;
+    emit cryptoLastErrorChanged();
 }
 
 QVector<Transaction> FinanceController::dateFilteredTransactions() const
