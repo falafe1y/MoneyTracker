@@ -871,23 +871,41 @@ void FinanceController::setSelectedCryptoWalletId(const QString& walletId)
 QVariantList FinanceController::cryptoTransactions() const
 {
     QVariantList result;
-    const auto wallet = std::find_if(
-        cryptoWallets_.cbegin(),
-        cryptoWallets_.cend(),
-        [this](const CryptoWallet& candidate)
-        {
-            return candidate.id() == selectedCryptoWalletId_;
-        });
-    if (wallet == cryptoWallets_.cend()) {
-        return result;
-    }
-
+    QVector<const CryptoTransaction*> visibleTransactions;
+    visibleTransactions.reserve(cryptoTransactions_.size());
     for (const CryptoTransaction& transaction : cryptoTransactions_) {
-        if (transaction.walletId() != selectedCryptoWalletId_) {
+        if (!selectedCryptoWalletId_.isEmpty() &&
+            transaction.walletId() != selectedCryptoWalletId_) {
             continue;
         }
+        visibleTransactions.append(&transaction);
+    }
+    std::sort(
+        visibleTransactions.begin(),
+        visibleTransactions.end(),
+        [](const CryptoTransaction* left, const CryptoTransaction* right)
+        {
+            return left->occurredAtUtc() > right->occurredAtUtc();
+        });
+
+    result.reserve(visibleTransactions.size());
+    for (const CryptoTransaction* transactionPointer : visibleTransactions) {
+        const CryptoTransaction& transaction = *transactionPointer;
+        const auto wallet = std::find_if(
+            cryptoWallets_.cbegin(),
+            cryptoWallets_.cend(),
+            [&transaction](const CryptoWallet& candidate)
+            {
+                return candidate.id() == transaction.walletId();
+            });
+        if (wallet == cryptoWallets_.cend()) {
+            continue;
+        }
+
         const bool outgoing = transaction.fromAddress() == wallet->address();
         QVariantMap item;
+        item[QStringLiteral("walletId")] = transaction.walletId();
+        item[QStringLiteral("walletAddress")] = wallet->address();
         item[QStringLiteral("transactionId")] = transaction.transactionId();
         item[QStringLiteral("direction")] = outgoing
             ? QStringLiteral("out")

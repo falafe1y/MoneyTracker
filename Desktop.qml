@@ -165,6 +165,14 @@ ApplicationWindow {
              : "";
     }
 
+    function overviewAccountSelected(row) {
+        if (!row)
+            return false;
+        if (financeController.selectedAsset === "crypto")
+            return financeController.selectedCryptoWalletId === (row.id || "");
+        return financeController.selectedAccountId === (row.id || "");
+    }
+
     function cryptoWalletStatus(row) {
         if (!row || !row.isCrypto)
             return "";
@@ -908,17 +916,25 @@ ApplicationWindow {
                                 width: 245
                                 height: 64
                                 radius: 13
-                                color: financeController.selectedAccountId === modelData.id ? root.accent : root.panel
+                                color: root.overviewAccountSelected(modelData)
+                                     ? root.accent
+                                     : root.panel
                                 border.width: 1
-                                border.color: financeController.selectedAccountId === modelData.id ? root.accent : root.line
+                                border.color: root.overviewAccountSelected(modelData)
+                                            ? root.accent
+                                            : root.line
                                 MouseArea {
                                     id: overviewAccountMouseArea
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     onClicked: function (mouse) {
-                                        if (mouse.button === Qt.LeftButton && !modelData.isCrypto)
-                                            financeController.selectedAccountId = modelData.id;
+                                        if (mouse.button !== Qt.LeftButton)
+                                            return;
+                                        if (financeController.selectedAsset === "crypto")
+                                            financeController.selectedCryptoWalletId = modelData.id || "";
+                                        else
+                                            financeController.selectedAccountId = modelData.id || "";
                                     }
                                     onPressed: function (mouse) {
                                         if (mouse.button === Qt.RightButton && modelData.id)
@@ -935,7 +951,9 @@ ApplicationWindow {
                                     anchors.margins: 13
                                     Text {
                                         text: "▣"
-                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
+                                        color: root.overviewAccountSelected(modelData)
+                                             ? root.white
+                                             : root.accent
                                         font.pixelSize: 20
                                     }
                                     ColumnLayout {
@@ -944,22 +962,28 @@ ApplicationWindow {
                                         Text {
                                             Layout.fillWidth: true
                                             text: modelData.name
-                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
+                                            color: root.overviewAccountSelected(modelData)
+                                                 ? root.white
+                                                 : root.accent
                                             font.pixelSize: 14
                                             font.weight: Font.DemiBold
                                             elide: Text.ElideRight
                                         }
                                         Text {
                                             text: root.accountCompactAmount(modelData)
-                                            color: financeController.selectedAccountId === modelData.id ? root.paleText : root.muted
+                                            color: root.overviewAccountSelected(modelData)
+                                                 ? root.paleText
+                                                 : root.muted
                                             font.pixelSize: 12
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
                                         }
                                     }
                                     Text {
-                                        text: financeController.selectedAccountId === modelData.id ? "✓" : "›"
-                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
+                                        text: root.overviewAccountSelected(modelData) ? "✓" : "›"
+                                        color: root.overviewAccountSelected(modelData)
+                                             ? root.white
+                                             : root.accent
                                         font.pixelSize: 18
                                     }
                                 }
@@ -1125,10 +1149,16 @@ ApplicationWindow {
                     }
                 }
                 TransactionBlock {
+                    visible: financeController.selectedAsset !== "crypto"
                     Layout.fillWidth: true
                     expandToContent: true
                     title: qsTr("История операций")
                     rows: root.visibleTransactions()
+                }
+                DashboardCryptoHistoryBlock {
+                    visible: financeController.selectedAsset === "crypto"
+                    Layout.fillWidth: true
+                    expandToContent: true
                 }
                 Item {
                     Layout.preferredHeight: 8
@@ -1144,6 +1174,185 @@ ApplicationWindow {
     // On Overview expandToContent=true: the transaction history grows with its rows,
     // so the OUTER overview ScrollView owns vertical scrolling.
     // On Operations expandToContent=false: the block fills the page and keeps its own ListView.
+    component DashboardCryptoHistoryBlock: Panel {
+        id: dashboardCryptoHistory
+
+        property var rows: financeController.cryptoTransactions
+        property bool expandToContent: false
+
+        readonly property int dateColumnWidth: 125
+        readonly property int directionColumnWidth: 105
+        readonly property int hashColumnWidth: 175
+        readonly property int amountColumnWidth: 135
+
+        implicitHeight: expandToContent
+                      ? 84 + Math.max(58, rows.length * 42)
+                      : 230
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 1
+            spacing: 0
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.topMargin: 12
+                Layout.bottomMargin: 12
+
+                Text {
+                    text: qsTr("История USDT")
+                    color: root.accent
+                    font.pixelSize: 15
+                    font.weight: Font.DemiBold
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: qsTr("Последние операции: %1")
+                        .arg(dashboardCryptoHistory.rows.length)
+                    color: root.muted
+                    font.pixelSize: 12
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 34
+                color: root.tableHeader
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 18
+
+                    Text {
+                        text: qsTr("Дата")
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.preferredWidth: dashboardCryptoHistory.dateColumnWidth
+                    }
+                    Text {
+                        text: qsTr("Направление")
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
+                    }
+                    Text {
+                        text: qsTr("Адрес")
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.fillWidth: true
+                    }
+                    Text {
+                        text: qsTr("Хеш")
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.preferredWidth: dashboardCryptoHistory.hashColumnWidth
+                    }
+                    Text {
+                        text: qsTr("Сумма")
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.preferredWidth: dashboardCryptoHistory.amountColumnWidth
+                        horizontalAlignment: Text.AlignRight
+                    }
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.max(
+                    58,
+                    dashboardCryptoHistory.rows.length * 42
+                )
+
+                Column {
+                    anchors.fill: parent
+
+                    Repeater {
+                        model: dashboardCryptoHistory.rows
+
+                        delegate: Rectangle {
+                            required property int index
+                            required property var modelData
+                            width: parent.width
+                            height: 42
+                            color: index % 2 ? root.tableRowAlt : root.panel
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 18
+                                anchors.rightMargin: 18
+
+                                Text {
+                                    text: Qt.formatDateTime(
+                                        modelData.occurredAt,
+                                        "dd.MM.yyyy HH:mm"
+                                    )
+                                    color: root.muted
+                                    font.pixelSize: 11
+                                    Layout.preferredWidth: dashboardCryptoHistory.dateColumnWidth
+                                }
+                                Text {
+                                    text: modelData.direction === "in"
+                                          ? qsTr("Получено")
+                                          : qsTr("Отправлено")
+                                    color: modelData.direction === "in"
+                                         ? root.income
+                                         : root.red
+                                    font.pixelSize: 12
+                                    font.weight: Font.Medium
+                                    Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
+                                }
+                                Text {
+                                    text: modelData.counterparty
+                                    color: root.muted
+                                    font.pixelSize: 11
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideMiddle
+                                }
+                                Text {
+                                    text: modelData.transactionId
+                                    color: root.muted
+                                    font.pixelSize: 11
+                                    Layout.preferredWidth: dashboardCryptoHistory.hashColumnWidth
+                                    elide: Text.ElideMiddle
+                                }
+                                Text {
+                                    readonly property string localizedAmount:
+                                        financeController.uiLanguage === "en"
+                                        ? modelData.amountText
+                                        : modelData.amountText.replace(".", ",")
+                                    text: (modelData.direction === "in" ? "+" : "−")
+                                          + localizedAmount + " USDT"
+                                    color: modelData.direction === "in"
+                                         ? root.income
+                                         : root.red
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    Layout.preferredWidth: dashboardCryptoHistory.amountColumnWidth
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Label {
+                    anchors.centerIn: parent
+                    visible: dashboardCryptoHistory.rows.length === 0
+                    text: financeController.cryptoWallets.length === 0
+                          ? qsTr("Сначала добавьте криптокошелёк")
+                          : financeController.cryptoRefreshing
+                            ? qsTr("Загружаем историю переводов…")
+                            : qsTr("У этого кошелька пока нет переводов USDT")
+                    color: root.muted
+                }
+            }
+        }
+    }
+
     component TransactionBlock: Panel {
         id: transactionBlock
 
