@@ -2974,7 +2974,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: deleteAccountDialog.accountData
                       && deleteAccountDialog.accountData.isCrypto
-                      ? qsTr("Публичный адрес и сохранённый снимок баланса будут удалены. Средства в блокчейне это не затронет.")
+                      ? qsTr("Публичный адрес и сохранённые данные баланса и истории будут удалены. Средства в блокчейне это не затронет.")
                       : deleteAccountDialog.accountData
                       && deleteAccountDialog.accountData.transactionCount > 0
                       ? qsTr("Счёт и все связанные операции будут удалены. Связанные переводы удалятся целиком. Это действие нельзя отменить.")

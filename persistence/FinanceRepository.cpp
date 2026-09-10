@@ -274,7 +274,8 @@ QVector<CryptoWallet> FinanceRepository::loadCryptoWallets()
     QVector<CryptoWallet> result;
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
-            "SELECT id, address, balance_atomic, balance_fetched_at "
+            "SELECT id, address, balance_atomic, balance_fetched_at, "
+            "       history_fetched_at "
             "FROM crypto_wallets WHERE is_archived = 0 "
             "ORDER BY created_at, address"))) {
         setLastError(query.lastError().text());
@@ -290,7 +291,39 @@ QVector<CryptoWallet> FinanceRepository::loadCryptoWallets()
             fetchedAt.isNull()
                 ? QDateTime()
                 : QDateTime::fromMSecsSinceEpoch(
-                      fetchedAt.toLongLong(), Qt::UTC)));
+                      fetchedAt.toLongLong(), Qt::UTC),
+            query.value(4).isNull()
+                ? QDateTime()
+                : QDateTime::fromMSecsSinceEpoch(
+                      query.value(4).toLongLong(), Qt::UTC)));
+    }
+    return result;
+}
+
+QVector<CryptoTransaction> FinanceRepository::loadCryptoTransactions()
+{
+    QVector<CryptoTransaction> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT ct.wallet_id, ct.transaction_id, ct.from_address, "
+            "       ct.to_address, ct.amount_atomic, ct.occurred_at "
+            "FROM crypto_transactions ct "
+            "JOIN crypto_wallets cw ON cw.id = ct.wallet_id "
+            "WHERE cw.is_archived = 0 "
+            "ORDER BY ct.occurred_at DESC, ct.transaction_id"))) {
+        setLastError(query.lastError().text());
+        return result;
+    }
+
+    while (query.next()) {
+        result.append(CryptoTransaction(
+            query.value(0).toString(),
+            query.value(1).toString(),
+            query.value(2).toString(),
+            query.value(3).toString(),
+            query.value(4).toLongLong(),
+            QDateTime::fromMSecsSinceEpoch(
+                query.value(5).toLongLong(), Qt::UTC)));
     }
     return result;
 }
@@ -792,6 +825,81 @@ bool FinanceRepository::deleteCryptoWallet(const QString& id)
     return true;
 }
 
+bool FinanceRepository::replaceCryptoTransactions(
+    const QString& walletId,
+    const QVector<CryptoTransaction>& transactions,
+    const QDateTime& fetchedAtUtc
+    )
+{
+    if (walletId.isEmpty() || !fetchedAtUtc.isValid()) {
+        setLastError(QStringLiteral("Invalid crypto transaction snapshot"));
+        return false;
+    }
+    for (const CryptoTransaction& transaction : transactions) {
+        if (transaction.walletId() != walletId ||
+            transaction.transactionId().isEmpty() ||
+            transaction.fromAddress().isEmpty() ||
+            transaction.toAddress().isEmpty() ||
+            transaction.amountAtomic() <= 0 ||
+            !transaction.occurredAtUtc().isValid()) {
+            setLastError(QStringLiteral("Invalid crypto transaction"));
+            return false;
+        }
+    }
+
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery deletion(database_);
+    deletion.prepare(QStringLiteral(
+        "DELETE FROM crypto_transactions WHERE wallet_id = ?"));
+    deletion.addBindValue(walletId);
+    if (!deletion.exec()) {
+        setLastError(deletion.lastError().text());
+        database_.rollback();
+        return false;
+    }
+
+    QSqlQuery insertion(database_);
+    insertion.prepare(QStringLiteral(
+        "INSERT INTO crypto_transactions("
+        "wallet_id, transaction_id, from_address, to_address, "
+        "amount_atomic, occurred_at) VALUES (?, ?, ?, ?, ?, ?)"));
+    for (const CryptoTransaction& transaction : transactions) {
+        insertion.bindValue(0, transaction.walletId());
+        insertion.bindValue(1, transaction.transactionId());
+        insertion.bindValue(2, transaction.fromAddress());
+        insertion.bindValue(3, transaction.toAddress());
+        insertion.bindValue(4, transaction.amountAtomic());
+        insertion.bindValue(
+            5,
+            transaction.occurredAtUtc().toUTC().toMSecsSinceEpoch());
+        if (!insertion.exec()) {
+            setLastError(insertion.lastError().text());
+            database_.rollback();
+            return false;
+        }
+    }
+
+    QSqlQuery wallet(database_);
+    wallet.prepare(QStringLiteral(
+        "UPDATE crypto_wallets SET history_fetched_at = ? "
+        "WHERE id = ? AND is_archived = 0"));
+    wallet.addBindValue(fetchedAtUtc.toUTC().toMSecsSinceEpoch());
+    wallet.addBindValue(walletId);
+    if (!wallet.exec() || wallet.numRowsAffected() != 1 ||
+        !database_.commit()) {
+        setLastError(wallet.lastError().isValid()
+                         ? wallet.lastError().text()
+                         : database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::saveUsdtPrice(
     const qint64 priceUsdMicros,
     const QDateTime& fetchedAtUtc
@@ -1087,12 +1195,21 @@ bool FinanceRepository::initializeSchema()
                        "balance_atomic INTEGER NOT NULL DEFAULT 0 "
                        "CHECK(balance_atomic >= 0), "
                        "balance_fetched_at INTEGER, "
+                       "history_fetched_at INTEGER, "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_prices ("
                        "symbol TEXT PRIMARY KEY CHECK(symbol = 'USDT'), "
                        "price_usd_micros INTEGER NOT NULL CHECK(price_usd_micros > 0), "
                        "fetched_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_transactions ("
+                       "wallet_id TEXT NOT NULL REFERENCES crypto_wallets(id), "
+                       "transaction_id TEXT NOT NULL, "
+                       "from_address TEXT NOT NULL, "
+                       "to_address TEXT NOT NULL, "
+                       "amount_atomic INTEGER NOT NULL CHECK(amount_atomic > 0), "
+                       "occurred_at INTEGER NOT NULL, "
+                       "PRIMARY KEY(wallet_id, transaction_id))"),
         QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
                        "idx_crypto_wallets_active_address "
                        "ON crypto_wallets(address) "
@@ -1102,7 +1219,10 @@ bool FinanceRepository::initializeSchema()
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_account_date "
                        "ON transactions(account_id, occurred_at DESC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_category "
-                       "ON transactions(category_id)")
+                       "ON transactions(category_id)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS "
+                       "idx_crypto_transactions_wallet_date "
+                       "ON crypto_transactions(wallet_id, occurred_at DESC)")
     };
 
     for (const QString& statement : statements) {
@@ -1136,8 +1256,22 @@ bool FinanceRepository::migrateLegacySchema()
             name == QStringLiteral("credit_limit_minor");
     }
 
+    QSqlQuery cryptoColumns(database_);
+    if (!cryptoColumns.exec(QStringLiteral(
+            "PRAGMA table_info(crypto_wallets)"))) {
+        setLastError(cryptoColumns.lastError().text());
+        return false;
+    }
+    bool hasCryptoHistoryFetchedAt = false;
+    while (cryptoColumns.next()) {
+        hasCryptoHistoryFetchedAt = hasCryptoHistoryFetchedAt ||
+            cryptoColumns.value(1).toString() ==
+                QStringLiteral("history_fetched_at");
+    }
+
     const bool needsAssetTypeRename = hasLegacyGroupType && !hasAssetType;
-    if (!needsAssetTypeRename && hasCreditLimit) {
+    if (!needsAssetTypeRename && hasCreditLimit &&
+        hasCryptoHistoryFetchedAt) {
         return true;
     }
     if (!database_.transaction()) {
@@ -1178,6 +1312,15 @@ bool FinanceRepository::migrateLegacySchema()
             database_.rollback();
             return false;
         }
+    }
+
+    if (!hasCryptoHistoryFetchedAt &&
+        !migration.exec(QStringLiteral(
+            "ALTER TABLE crypto_wallets ADD COLUMN "
+            "history_fetched_at INTEGER"))) {
+        setLastError(migration.lastError().text());
+        database_.rollback();
+        return false;
     }
 
     if (!database_.commit()) {

@@ -115,6 +115,42 @@ bool TronUsdtProvider::requestPrice()
     return true;
 }
 
+bool TronUsdtProvider::requestTransactions(
+    const QString& walletId,
+    const QString& address
+    )
+{
+    const QString normalizedAddress = address.trimmed();
+    if (walletId.isEmpty() || !isValidTronAddress(normalizedAddress) ||
+        activeTransactionRequests_.contains(walletId)) {
+        return false;
+    }
+
+    QUrl url(QStringLiteral(
+        "https://api.trongrid.io/v1/accounts/%1/transactions/trc20")
+        .arg(normalizedAddress));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("only_confirmed"), QStringLiteral("true"));
+    query.addQueryItem(QStringLiteral("limit"), QStringLiteral("50"));
+    query.addQueryItem(
+        QStringLiteral("order_by"),
+        QStringLiteral("block_timestamp,desc"));
+    query.addQueryItem(QStringLiteral("contract_address"), kUsdtContract);
+    url.setQuery(query);
+
+    activeTransactionRequests_.insert(walletId);
+    QNetworkReply* reply = networkAccessManager_.get(makeRequest(url));
+    QObject::connect(
+        reply,
+        &QNetworkReply::finished,
+        this,
+        [this, reply, walletId]()
+        {
+            finishTransactionRequest(reply, walletId);
+        });
+    return true;
+}
+
 void TronUsdtProvider::finishBalanceRequest(
     QNetworkReply* reply,
     const QString& walletId
@@ -155,6 +191,33 @@ void TronUsdtProvider::finishPriceRequest(QNetworkReply* reply)
             error = reply->errorString();
         }
         emit requestFailed(QString(), error);
+    }
+
+    reply->deleteLater();
+    emit requestFinished();
+}
+
+void TronUsdtProvider::finishTransactionRequest(
+    QNetworkReply* reply,
+    const QString& walletId
+    )
+{
+    activeTransactionRequests_.remove(walletId);
+    const QByteArray response = reply->readAll();
+    QVector<CryptoTransaction> transactions;
+    QString error;
+    if (successfulResponse(reply, response) &&
+        parseTronUsdtTransactionsResponse(
+            response, walletId, transactions, &error)) {
+        emit transactionsUpdated(
+            walletId,
+            transactions,
+            QDateTime::currentDateTimeUtc());
+    } else {
+        if (error.isEmpty()) {
+            error = reply->errorString();
+        }
+        emit requestFailed(walletId, error);
     }
 
     reply->deleteLater();

@@ -4,6 +4,7 @@
 #include "../core/Category.h"
 #include "../core/Account.h"
 #include "../core/CryptoWallet.h"
+#include "../core/CryptoTransaction.h"
 
 #include <QSqlDatabase>
 #include <QDateTime>
@@ -40,6 +41,7 @@ public:
     QVector<Category> loadCategories();
     QVector<Account> loadAccounts();
     QVector<CryptoWallet> loadCryptoWallets();
+    QVector<CryptoTransaction> loadCryptoTransactions();
     CryptoPriceSnapshot loadUsdtPrice() const;
     QDateTime loadCryptoRefreshAttemptUtc() const;
     QSet<QString> loadArchivedCategoryIds();
@@ -72,6 +74,11 @@ public:
         const QDateTime& fetchedAtUtc
         );
     bool deleteCryptoWallet(const QString& id);
+    bool replaceCryptoTransactions(
+        const QString& walletId,
+        const QVector<CryptoTransaction>& transactions,
+        const QDateTime& fetchedAtUtc
+        );
     bool saveUsdtPrice(
         qint64 priceUsdMicros,
         const QDateTime& fetchedAtUtc

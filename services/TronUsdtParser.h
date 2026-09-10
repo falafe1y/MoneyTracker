@@ -1,7 +1,10 @@
 #pragma once
 
+#include "../core/CryptoTransaction.h"
+
 #include <QByteArray>
 #include <QString>
+#include <QVector>
 #include <QtGlobal>
 
 bool decodeTronAddress(
@@ -23,5 +26,12 @@ bool parseTronUsdtBalanceResponse(
 bool parseCoinGeckoUsdtPriceResponse(
     const QByteArray& response,
     qint64& priceUsdMicros,
+    QString* error = nullptr
+    );
+
+bool parseTronUsdtTransactionsResponse(
+    const QByteArray& response,
+    const QString& walletId,
+    QVector<CryptoTransaction>& transactions,
     QString* error = nullptr
     );

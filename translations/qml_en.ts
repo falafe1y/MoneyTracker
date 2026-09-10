@@ -157,6 +157,7 @@
     <message><source>Обновлено: %1</source><translation>Updated: %1</translation></message>
     <message><source>Добавьте публичный адрес TRON-кошелька</source><translation>Add a public TRON wallet address</translation></message>
     <message><source>Обновляем баланс USDT и его цену…</source><translation>Updating the USDT balance and price…</translation></message>
+    <message><source>Обновляем баланс, цену и историю USDT…</source><translation>Updating the USDT balance, price, and history…</translation></message>
     <message><source>Не удалось обновить криптоданные: %1</source><translation>Could not update crypto data: %1</translation></message>
     <message><source>Повторить</source><translation>Retry</translation></message>
     <message><source>Добавить криптовалюту</source><translation>Add cryptocurrency</translation></message>
@@ -165,7 +166,18 @@
     <message><source>Не удалось добавить кошелёк</source><translation>Could not add wallet</translation></message>
     <message><source>Удалить криптовалюту?</source><translation>Delete cryptocurrency?</translation></message>
     <message><source>Публичный адрес и сохранённый снимок баланса будут удалены. Средства в блокчейне это не затронет.</source><translation>The public address and cached balance snapshot will be deleted. Funds on the blockchain will not be affected.</translation></message>
+    <message><source>Публичный адрес и сохранённые данные баланса и истории будут удалены. Средства в блокчейне это не затронет.</source><translation>The public address and cached balance and history data will be deleted. Funds on the blockchain will not be affected.</translation></message>
     <message><source>Не удалось удалить криптовалюту</source><translation>Could not delete cryptocurrency</translation></message>
+    <message><source>История USDT</source><translation>USDT history</translation></message>
+    <message><source>Последние операции: %1</source><translation>Recent transactions: %1</translation></message>
+    <message><source>Направление</source><translation>Direction</translation></message>
+    <message><source>Адрес</source><translation>Address</translation></message>
+    <message><source>Хеш</source><translation>Hash</translation></message>
+    <message><source>Получено</source><translation>Received</translation></message>
+    <message><source>Отправлено</source><translation>Sent</translation></message>
+    <message><source>Сначала добавьте криптокошелёк</source><translation>Add a crypto wallet first</translation></message>
+    <message><source>Загружаем историю переводов…</source><translation>Loading transfer history…</translation></message>
+    <message><source>У этого кошелька пока нет переводов USDT</source><translation>This wallet has no USDT transfers yet</translation></message>
   </context>
   <context>
     <name>FinanceController</name>

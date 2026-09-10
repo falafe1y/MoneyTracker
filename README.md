@@ -43,11 +43,13 @@ are stored. Private keys and seed phrases are never requested or stored.
 
 Balances are read directly from the official USDT contract through TronGrid's
 read-only `triggerconstantcontract` endpoint. The USDT/USD quote is read from
-CoinGecko. Successful snapshots are stored in SQLite; a failed request keeps
-the previous balance and price. Refreshes run every six hours while the app is
-open, and once on startup only when the saved data is stale. The network code
-is isolated in `TronUsdtProvider`, so these requests can later be routed
-through an application server without changing the database or QML UI.
+CoinGecko. The latest 50 confirmed USDT transfers are loaded through TronGrid's
+TRC-20 account-history endpoint. Successful balance, price, and history
+snapshots are stored in SQLite; a failed request keeps the previous data.
+Refreshes run every six hours while the app is open, and once on startup only
+when the saved data is stale. The network code is isolated in
+`TronUsdtProvider`, so these requests can later be routed through an application
+server without changing the database or QML UI.
 
 ## Storage
 

@@ -13,12 +13,14 @@ public:
         QString id,
         QString address,
         qint64 balanceAtomic = 0,
-        QDateTime balanceFetchedAtUtc = {}
+        QDateTime balanceFetchedAtUtc = {},
+        QDateTime historyFetchedAtUtc = {}
         )
         : id_(std::move(id))
         , address_(std::move(address))
         , balanceAtomic_(balanceAtomic)
         , balanceFetchedAtUtc_(std::move(balanceFetchedAtUtc))
+        , historyFetchedAtUtc_(std::move(historyFetchedAtUtc))
     {
     }
 
@@ -28,6 +30,10 @@ public:
     const QDateTime& balanceFetchedAtUtc() const noexcept
     {
         return balanceFetchedAtUtc_;
+    }
+    const QDateTime& historyFetchedAtUtc() const noexcept
+    {
+        return historyFetchedAtUtc_;
     }
 
     void setBalance(
@@ -39,9 +45,15 @@ public:
         balanceFetchedAtUtc_ = fetchedAtUtc.toUTC();
     }
 
+    void setHistoryFetchedAt(const QDateTime& fetchedAtUtc)
+    {
+        historyFetchedAtUtc_ = fetchedAtUtc.toUTC();
+    }
+
 private:
     QString id_;
     QString address_;
     qint64 balanceAtomic_ = 0;
     QDateTime balanceFetchedAtUtc_;
+    QDateTime historyFetchedAtUtc_;
 };

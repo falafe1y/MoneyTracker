@@ -52,6 +52,24 @@ void FinanceRepositoryTest::storesCryptoWalletAndPriceSnapshots()
                  qPrintable(repository.lastError()));
         QVERIFY2(repository.saveCryptoRefreshAttemptUtc(priceFetchedAt),
                  qPrintable(repository.lastError()));
+        const QVector<CryptoTransaction> transactions{
+            CryptoTransaction(
+                wallet.id(),
+                QStringLiteral("transaction-in"),
+                QStringLiteral("TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM"),
+                wallet.address(),
+                120'650'000,
+                balanceFetchedAt.addDays(-1)),
+            CryptoTransaction(
+                wallet.id(),
+                QStringLiteral("transaction-out"),
+                wallet.address(),
+                QStringLiteral("TUoHaVjx7n5xz8LwPRDckgFrDWhMhuSuJM"),
+                11'518'000,
+                balanceFetchedAt.addDays(-2))};
+        QVERIFY2(repository.replaceCryptoTransactions(
+                     wallet.id(), transactions, priceFetchedAt),
+                 qPrintable(repository.lastError()));
     }
 
     {
@@ -62,6 +80,15 @@ void FinanceRepositoryTest::storesCryptoWalletAndPriceSnapshots()
         QCOMPARE(wallets.constFirst().id(), QStringLiteral("tron-wallet"));
         QCOMPARE(wallets.constFirst().balanceAtomic(), qint64(12'345'678));
         QCOMPARE(wallets.constFirst().balanceFetchedAtUtc(), balanceFetchedAt);
+        QCOMPARE(wallets.constFirst().historyFetchedAtUtc(), priceFetchedAt);
+
+        const QVector<CryptoTransaction> transactions =
+            repository.loadCryptoTransactions();
+        QCOMPARE(transactions.size(), 2);
+        QCOMPARE(
+            transactions.constFirst().transactionId(),
+            QStringLiteral("transaction-in"));
+        QCOMPARE(transactions.constFirst().amountAtomic(), qint64(120'650'000));
 
         const FinanceRepository::CryptoPriceSnapshot price =
             repository.loadUsdtPrice();
@@ -72,6 +99,7 @@ void FinanceRepositoryTest::storesCryptoWalletAndPriceSnapshots()
         QVERIFY2(repository.deleteCryptoWallet(QStringLiteral("tron-wallet")),
                  qPrintable(repository.lastError()));
         QVERIFY(repository.loadCryptoWallets().isEmpty());
+        QVERIFY(repository.loadCryptoTransactions().isEmpty());
 
         const CryptoWallet replacement(
             QStringLiteral("tron-wallet-replacement"),

@@ -9,6 +9,7 @@
 
 #include <QDateTime>
 #include <QDate>
+#include <QHash>
 #include <QObject>
 #include <QVariantList>
 #include <QVariantMap>
@@ -142,6 +143,19 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QString selectedCryptoWalletId
+            READ selectedCryptoWalletId
+                WRITE setSelectedCryptoWalletId
+                    NOTIFY selectedCryptoWalletIdChanged
+        )
+
+    Q_PROPERTY(
+        QVariantList cryptoTransactions
+            READ cryptoTransactions
+                NOTIFY cryptoTransactionsChanged
+        )
+
+    Q_PROPERTY(
         QString selectedAccountId
             READ selectedAccountId
                 WRITE setSelectedAccountId
@@ -200,6 +214,9 @@ public:
     QVariantList cryptoWallets() const;
     bool cryptoRefreshing() const;
     QString cryptoLastError() const;
+    QString selectedCryptoWalletId() const;
+    void setSelectedCryptoWalletId(const QString& walletId);
+    QVariantList cryptoTransactions() const;
 
     QString selectedAsset() const;
     void setSelectedAsset(const QString& asset);
@@ -326,6 +343,8 @@ signals:
     void cryptoWalletsChanged();
     void cryptoRefreshingChanged();
     void cryptoLastErrorChanged();
+    void selectedCryptoWalletIdChanged();
+    void cryptoTransactionsChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -356,7 +375,10 @@ private:
     void scheduleInitialCryptoRefresh();
     void scheduleNextCryptoRefresh(qint64 delayMs);
     void startCryptoBalanceRequest(const CryptoWallet& wallet);
+    void startCryptoTransactionRequest(const CryptoWallet& wallet);
     void startCryptoPriceRequest();
+    void beginCryptoWalletRequest(const QString& walletId);
+    void finishCryptoWalletRequest(const QString& walletId);
     void finishCryptoRequest();
     void setCryptoLastError(const QString& error);
     QVector<Transaction> dateFilteredTransactions() const;
@@ -379,6 +401,7 @@ private:
     QVector<Category> categories_;
     QVector<Account> accounts_;
     QVector<CryptoWallet> cryptoWallets_;
+    QVector<CryptoTransaction> cryptoTransactions_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
 
@@ -389,6 +412,7 @@ private:
     double manualEurToRubRate_ = 106.363636364;
     AssetType selectedAsset_ = AssetType::Fiat;
     QString selectedAccountId_;
+    QString selectedCryptoWalletId_;
     QDate dateFilterFrom_;
     QDate dateFilterTo_;
 
@@ -397,6 +421,7 @@ private:
     QDateTime lastCryptoRefreshAttemptUtc_;
     QTimer cryptoRefreshTimer_;
     QSet<QString> refreshingCryptoWalletIds_;
+    QHash<QString, int> pendingCryptoWalletRequests_;
     int pendingCryptoRequests_ = 0;
     bool cryptoRefreshing_ = false;
     QString cryptoLastError_;

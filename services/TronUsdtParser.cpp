@@ -15,6 +15,8 @@ namespace
 
 constexpr char kBase58Alphabet[] =
     "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const QString kUsdtContract =
+    QStringLiteral("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t");
 
 void setError(QString* error, QString message)
 {
@@ -190,4 +192,80 @@ bool parseCoinGeckoUsdtPriceResponse(
 
     priceUsdMicros = static_cast<qint64>(std::llround(scaled));
     return priceUsdMicros > 0;
+}
+
+bool parseTronUsdtTransactionsResponse(
+    const QByteArray& response,
+    const QString& walletId,
+    QVector<CryptoTransaction>& transactions,
+    QString* error
+    )
+{
+    transactions.clear();
+    if (walletId.trimmed().isEmpty()) {
+        setError(error, QStringLiteral("Crypto wallet id is empty"));
+        return false;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(response, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        setError(error, QStringLiteral("Invalid transaction JSON returned by TRON"));
+        return false;
+    }
+
+    const QJsonObject root = document.object();
+    if (!root.value(QStringLiteral("success")).toBool(false) ||
+        !root.value(QStringLiteral("data")).isArray()) {
+        setError(error, QStringLiteral("TRON rejected the transaction request"));
+        return false;
+    }
+
+    const QJsonArray data = root.value(QStringLiteral("data")).toArray();
+    transactions.reserve(data.size());
+    for (const QJsonValue& value : data) {
+        if (!value.isObject()) {
+            setError(error, QStringLiteral("TRON returned an invalid transaction"));
+            transactions.clear();
+            return false;
+        }
+
+        const QJsonObject item = value.toObject();
+        const QString transactionId = item.value(
+            QStringLiteral("transaction_id")).toString().trimmed();
+        const QString fromAddress = item.value(
+            QStringLiteral("from")).toString().trimmed();
+        const QString toAddress = item.value(
+            QStringLiteral("to")).toString().trimmed();
+        const QString amountText = item.value(
+            QStringLiteral("value")).toString().trimmed();
+        const QJsonObject token = item.value(
+            QStringLiteral("token_info")).toObject();
+
+        bool amountOk = false;
+        const qint64 amountAtomic = amountText.toLongLong(&amountOk);
+        const qint64 timestamp = static_cast<qint64>(item.value(
+            QStringLiteral("block_timestamp")).toDouble(0.0));
+        const QDateTime occurredAtUtc = QDateTime::fromMSecsSinceEpoch(
+            timestamp, Qt::UTC);
+
+        if (transactionId.isEmpty() || !isValidTronAddress(fromAddress) ||
+            !isValidTronAddress(toAddress) || !amountOk || amountAtomic <= 0 ||
+            timestamp <= 0 || !occurredAtUtc.isValid() ||
+            token.value(QStringLiteral("address")).toString() != kUsdtContract ||
+            token.value(QStringLiteral("decimals")).toInt(-1) != 6) {
+            setError(error, QStringLiteral("TRON returned invalid USDT transaction fields"));
+            transactions.clear();
+            return false;
+        }
+
+        transactions.append(CryptoTransaction(
+            walletId,
+            transactionId,
+            fromAddress,
+            toAddress,
+            amountAtomic,
+            occurredAtUtc));
+    }
+    return true;
 }

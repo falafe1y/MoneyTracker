@@ -1551,7 +1551,7 @@ ApplicationWindow {
                 Text {
                     Layout.fillWidth: true
                     text: financeController.cryptoRefreshing
-                          ? qsTr("Обновляем баланс USDT и его цену…")
+                          ? qsTr("Обновляем баланс, цену и историю USDT…")
                           : qsTr("Не удалось обновить криптоданные: %1")
                                 .arg(financeController.cryptoLastError)
                     color: financeController.cryptoRefreshing ? root.muted : root.red
@@ -1566,7 +1566,13 @@ ApplicationWindow {
             }
             GridView {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.fillHeight: financeController.selectedAsset !== "crypto"
+                Layout.preferredHeight: financeController.selectedAsset === "crypto"
+                                      ? 188
+                                      : -1
+                Layout.minimumHeight: financeController.selectedAsset === "crypto"
+                                    ? 188
+                                    : 0
                 cellWidth: 320
                 cellHeight: financeController.selectedAsset === "crypto" ? 174 : 150
                 clip: true
@@ -1577,35 +1583,49 @@ ApplicationWindow {
                        ? financeController.cryptoWallets
                        : financeController.accounts
                 delegate: Panel {
+                    id: accountCard
                     required property var modelData
+                    readonly property bool selectedCrypto:
+                        modelData.isCrypto === true
+                        && financeController.selectedCryptoWalletId === modelData.id
                     width: 300
                     height: modelData.isCrypto ? 156 : 132
+                    color: selectedCrypto ? root.accent : root.panel
+                    border.color: selectedCrypto ? root.accent : root.line
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 18
                         RowLayout {
                             Text {
                                 text: "▣"
-                                color: root.accent
+                                color: accountCard.selectedCrypto
+                                     ? root.white
+                                     : root.accent
                                 font.pixelSize: 24
                             }
                             Text {
                                 text: modelData.name
-                                color: root.accent
+                                color: accountCard.selectedCrypto
+                                     ? root.white
+                                     : root.accent
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
                             }
                         }
                         Text {
                             text: root.accountPrimaryAmount(modelData)
-                            color: root.accent
+                            color: accountCard.selectedCrypto
+                                 ? root.white
+                                 : root.accent
                             font.pixelSize: modelData.isCreditCard ? 20 : 25
                             font.weight: Font.Bold
                         }
                         Text {
                             visible: modelData.isCreditCard
                             text: root.accountAvailableCredit(modelData)
-                            color: root.navSelected
+                            color: accountCard.selectedCrypto
+                                 ? root.paleText
+                                 : root.navSelected
                             font.pixelSize: 12
                         }
                         Text {
@@ -1613,7 +1633,9 @@ ApplicationWindow {
                             text: modelData.isCrypto
                                   ? modelData.network + " · " + modelData.address
                                   : modelData.currency + " · " + root.accountTypeLabel(modelData.type)
-                            color: root.muted
+                            color: accountCard.selectedCrypto
+                                 ? root.paleText
+                                 : root.muted
                             font.pixelSize: 12
                             elide: Text.ElideMiddle
                         }
@@ -1621,7 +1643,11 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             visible: modelData.isCrypto
                             text: root.cryptoWalletStatus(modelData)
-                            color: modelData.refreshing ? root.navSelected : root.muted
+                            color: accountCard.selectedCrypto
+                                 ? root.paleText
+                                 : modelData.refreshing
+                                   ? root.navSelected
+                                   : root.muted
                             font.pixelSize: 11
                             elide: Text.ElideRight
                         }
@@ -1629,7 +1655,16 @@ ApplicationWindow {
                     MouseArea {
                         id: accountsPageMouseArea
                         anchors.fill: parent
-                        acceptedButtons: Qt.RightButton
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: modelData.isCrypto
+                                   ? Qt.PointingHandCursor
+                                   : Qt.ArrowCursor
+                        onClicked: function (mouse) {
+                            if (mouse.button === Qt.LeftButton
+                                && modelData.isCrypto) {
+                                financeController.selectedCryptoWalletId = modelData.id;
+                            }
+                        }
                         onPressed: function (mouse) {
                             if (mouse.button === Qt.RightButton)
                                 root.openAccountContextMenu(
@@ -1648,6 +1683,177 @@ ApplicationWindow {
                           ? qsTr("Добавьте публичный адрес TRON-кошелька")
                           : qsTr("У этого актива пока нет счетов")
                     color: root.muted
+                }
+            }
+            Panel {
+                id: cryptoHistoryPanel
+                visible: financeController.selectedAsset === "crypto"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 230
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    spacing: 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 16
+                        Layout.rightMargin: 16
+                        Layout.topMargin: 12
+                        Layout.bottomMargin: 12
+
+                        Text {
+                            text: qsTr("История USDT")
+                            color: root.accent
+                            font.pixelSize: 15
+                            font.weight: Font.DemiBold
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: qsTr("Последние операции: %1")
+                                .arg(financeController.cryptoTransactions.length)
+                            color: root.muted
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 34
+                        color: root.tableHeader
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 18
+                            anchors.rightMargin: 18
+
+                            Text {
+                                text: qsTr("Дата")
+                                color: root.muted
+                                font.pixelSize: 11
+                                Layout.preferredWidth: 125
+                            }
+                            Text {
+                                text: qsTr("Направление")
+                                color: root.muted
+                                font.pixelSize: 11
+                                Layout.preferredWidth: 105
+                            }
+                            Text {
+                                text: qsTr("Адрес")
+                                color: root.muted
+                                font.pixelSize: 11
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: qsTr("Хеш")
+                                color: root.muted
+                                font.pixelSize: 11
+                                Layout.preferredWidth: 175
+                            }
+                            Text {
+                                text: qsTr("Сумма")
+                                color: root.muted
+                                font.pixelSize: 11
+                                Layout.preferredWidth: 135
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+
+                        ListView {
+                            anchors.fill: parent
+                            clip: true
+                            model: financeController.cryptoTransactions
+                            ScrollBar.horizontal: ScrollBar {
+                                policy: ScrollBar.AlwaysOff
+                            }
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AlwaysOff
+                            }
+
+                            delegate: Rectangle {
+                                required property int index
+                                required property var modelData
+                                width: ListView.view.width
+                                height: 42
+                                color: index % 2 ? root.tableRowAlt : root.panel
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 18
+                                    anchors.rightMargin: 18
+
+                                    Text {
+                                        text: Qt.formatDateTime(
+                                            modelData.occurredAt,
+                                            "dd.MM.yyyy HH:mm"
+                                        )
+                                        color: root.muted
+                                        font.pixelSize: 11
+                                        Layout.preferredWidth: 125
+                                    }
+                                    Text {
+                                        text: modelData.direction === "in"
+                                              ? qsTr("Получено")
+                                              : qsTr("Отправлено")
+                                        color: modelData.direction === "in"
+                                             ? root.income
+                                             : root.red
+                                        font.pixelSize: 12
+                                        font.weight: Font.Medium
+                                        Layout.preferredWidth: 105
+                                    }
+                                    Text {
+                                        text: modelData.counterparty
+                                        color: root.muted
+                                        font.pixelSize: 11
+                                        Layout.fillWidth: true
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Text {
+                                        text: modelData.transactionId
+                                        color: root.muted
+                                        font.pixelSize: 11
+                                        Layout.preferredWidth: 175
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Text {
+                                        readonly property string localizedAmount:
+                                            financeController.uiLanguage === "en"
+                                            ? modelData.amountText
+                                            : modelData.amountText.replace(".", ",")
+                                        text: (modelData.direction === "in" ? "+" : "−")
+                                              + localizedAmount + " USDT"
+                                        color: modelData.direction === "in"
+                                             ? root.income
+                                             : root.red
+                                        font.pixelSize: 12
+                                        font.weight: Font.DemiBold
+                                        Layout.preferredWidth: 135
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                }
+                            }
+                        }
+
+                        Label {
+                            anchors.centerIn: parent
+                            visible: financeController.cryptoTransactions.length === 0
+                            text: financeController.cryptoWallets.length === 0
+                                  ? qsTr("Сначала добавьте криптокошелёк")
+                                  : financeController.cryptoRefreshing
+                                    ? qsTr("Загружаем историю переводов…")
+                                    : qsTr("У этого кошелька пока нет переводов USDT")
+                            color: root.muted
+                        }
+                    }
                 }
             }
         }
@@ -2685,7 +2891,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: deleteAccountDialog.accountData
                       && deleteAccountDialog.accountData.isCrypto
-                      ? qsTr("Публичный адрес и сохранённый снимок баланса будут удалены. Средства в блокчейне это не затронет.")
+                      ? qsTr("Публичный адрес и сохранённые данные баланса и истории будут удалены. Средства в блокчейне это не затронет.")
                       : deleteAccountDialog.accountData
                       && deleteAccountDialog.accountData.transactionCount > 0
                       ? qsTr("Счёт и все связанные операции будут удалены. Связанные переводы удалятся целиком. Это действие нельзя отменить.")
