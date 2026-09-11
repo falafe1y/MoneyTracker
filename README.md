@@ -35,21 +35,37 @@ asset and creates new accounts with the selected asset type.
 
 The default transaction currency and application currency are RUB.
 
-## TRON USDT wallets
+## Crypto wallets
 
-The Crypto asset can track a public TRON Mainnet address and its USDT TRC-20
-balance. Public addresses are validated locally with Base58Check before they
-are stored. Private keys and seed phrases are never requested or stored.
+The Crypto asset can track public addresses and balances for USDT on TRON
+(TRC-20), native BTC on Bitcoin Mainnet, and native ETH on Ethereum Mainnet.
+TRON and
+Bitcoin addresses are validated locally with their checksum formats; Ethereum
+addresses are validated as 20-byte hexadecimal Mainnet addresses. Private keys
+and seed phrases are never requested or stored.
 
 Balances are read directly from the official USDT contract through TronGrid's
 read-only `triggerconstantcontract` endpoint. The USDT/USD quote is read from
-CoinGecko. The latest 50 confirmed USDT transfers are loaded through TronGrid's
-TRC-20 account-history endpoint. Successful balance, price, and history
-snapshots are stored in SQLite; a failed request keeps the previous data.
-Refreshes run every six hours while the app is open, and once on startup only
-when the saved data is stale. The network code is isolated in
-`TronUsdtProvider`, so these requests can later be routed through an application
-server without changing the database or QML UI.
+CoinGecko together with the BTC/USD and ETH/USD quotes in one request. Bitcoin
+balance and the most recent page of confirmed history (up to 25 transactions)
+come from mempool.space. Ethereum balance and the latest 50 confirmed normal
+transactions carrying native ETH come from Blockscout. Successful
+balance, price, and history snapshots are stored in SQLite; a failed request
+keeps the previous data. Refreshes run every six hours while the app is open,
+and once on startup only when the saved data is stale.
+
+ETH is stored at eight decimal places instead of raw wei so all supported
+balances fit safely in the application's 64-bit integer money model. This loses
+only fractions smaller than `0.00000001 ETH`.
+
+The network code is isolated in `CryptoProvider`, so requests can later be
+routed through an application server without changing the database or QML UI.
+For local MVP use, the provider can use the currently available keyless
+Blockscout endpoint and CoinGecko's IP-based access. For production, set
+`LEDGERA_BLOCKSCOUT_API_KEY` and `LEDGERA_TRONGRID_API_KEY`. CoinGecko Demo and
+Pro keys are supported separately through `LEDGERA_COINGECKO_DEMO_API_KEY` and
+`LEDGERA_COINGECKO_PRO_API_KEY`, so each key is sent to the correct host. Never
+commit these secrets to the repository.
 
 ## Storage
 

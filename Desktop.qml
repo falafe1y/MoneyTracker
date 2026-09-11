@@ -126,6 +126,14 @@ ApplicationWindow {
         return 0;
     }
 
+    function selectedCryptoSymbol() {
+        const rows = financeController.cryptoWallets;
+        for (let i = 0; i < rows.length; ++i)
+            if (rows[i].id === financeController.selectedCryptoWalletId)
+                return rows[i].symbol;
+        return "";
+    }
+
     function accountTypeLabel(type) {
         if (type === "cash") return qsTr("Наличные");
         if (type === "debit_card") return qsTr("Дебетовая карта");
@@ -184,8 +192,10 @@ ApplicationWindow {
             Qt.formatDateTime(row.updatedAt, "dd.MM.yyyy HH:mm")
         );
         return row.priceHasSnapshot
-             ? updated + " · 1 USDT = "
-               + Number(row.priceUsd).toLocaleString(root.uiLocale(), "f", 4) + " $"
+             ? updated + " · 1 " + row.symbol + " = "
+               + Number(row.priceUsd).toLocaleString(
+                     root.uiLocale(), "f", row.symbol === "USDT" ? 4 : 2
+                 ) + " $"
              : updated;
     }
 
@@ -1202,7 +1212,9 @@ ApplicationWindow {
                 Layout.bottomMargin: 12
 
                 Text {
-                    text: qsTr("История USDT")
+                    text: qsTr("История %1").arg(
+                        root.selectedCryptoSymbol() || qsTr("криптовалюты")
+                    )
                     color: root.accent
                     font.pixelSize: 15
                     font.weight: Font.DemiBold
@@ -1325,7 +1337,7 @@ ApplicationWindow {
                                         ? modelData.amountText
                                         : modelData.amountText.replace(".", ",")
                                     text: (modelData.direction === "in" ? "+" : "−")
-                                          + localizedAmount + " USDT"
+                                          + localizedAmount + " " + modelData.symbol
                                     color: modelData.direction === "in"
                                          ? root.income
                                          : root.red
@@ -1346,7 +1358,8 @@ ApplicationWindow {
                           ? qsTr("Сначала добавьте криптокошелёк")
                           : financeController.cryptoRefreshing
                             ? qsTr("Загружаем историю переводов…")
-                            : qsTr("У этого кошелька пока нет переводов USDT")
+                            : qsTr("У этого кошелька пока нет переводов %1")
+                                  .arg(root.selectedCryptoSymbol())
                     color: root.muted
                 }
             }
@@ -1760,7 +1773,7 @@ ApplicationWindow {
                 Text {
                     Layout.fillWidth: true
                     text: financeController.cryptoRefreshing
-                          ? qsTr("Обновляем баланс, цену и историю USDT…")
+                          ? qsTr("Обновляем балансы, цены и историю криптовалют…")
                           : qsTr("Не удалось обновить криптоданные: %1")
                                 .arg(financeController.cryptoLastError)
                     color: financeController.cryptoRefreshing ? root.muted : root.red
@@ -1889,7 +1902,7 @@ ApplicationWindow {
                     anchors.centerIn: parent
                     visible: parent.count === 0
                     text: financeController.selectedAsset === "crypto"
-                          ? qsTr("Добавьте публичный адрес TRON-кошелька")
+                          ? qsTr("Добавьте публичный адрес криптокошелька")
                           : qsTr("У этого актива пока нет счетов")
                     color: root.muted
                 }
@@ -1914,7 +1927,9 @@ ApplicationWindow {
                         Layout.bottomMargin: 12
 
                         Text {
-                            text: qsTr("История USDT")
+                            text: qsTr("История %1").arg(
+                                root.selectedCryptoSymbol() || qsTr("криптовалюты")
+                            )
                             color: root.accent
                             font.pixelSize: 15
                             font.weight: Font.DemiBold
@@ -2039,7 +2054,7 @@ ApplicationWindow {
                                             ? modelData.amountText
                                             : modelData.amountText.replace(".", ",")
                                         text: (modelData.direction === "in" ? "+" : "−")
-                                              + localizedAmount + " USDT"
+                                              + localizedAmount + " " + modelData.symbol
                                         color: modelData.direction === "in"
                                              ? root.income
                                              : root.red
@@ -2059,7 +2074,8 @@ ApplicationWindow {
                                   ? qsTr("Сначала добавьте криптокошелёк")
                                   : financeController.cryptoRefreshing
                                     ? qsTr("Загружаем историю переводов…")
-                                    : qsTr("У этого кошелька пока нет переводов USDT")
+                                    : qsTr("У этого кошелька пока нет переводов %1")
+                                          .arg(root.selectedCryptoSymbol())
                             color: root.muted
                         }
                     }
@@ -2685,6 +2701,7 @@ ApplicationWindow {
         padding: 24
 
         function openForNewWallet() {
+            cryptoTypeBox.currentIndex = 0;
             cryptoAddressField.clear();
             cryptoWalletError.text = "";
             open();
@@ -2693,6 +2710,7 @@ ApplicationWindow {
 
         function submit() {
             const result = financeController.addCryptoWallet(
+                cryptoTypeBox.model[cryptoTypeBox.currentIndex].value,
                 cryptoAddressField.text
             );
             if (result.ok)
@@ -2717,17 +2735,30 @@ ApplicationWindow {
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
-            Text {
-                text: "USDT · TRC-20"
-                color: root.navSelected
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
+            AppComboBox {
+                id: cryptoTypeBox
+                Layout.fillWidth: true
+                model: [
+                    { label: "USDT · TRC-20", value: "USDT" },
+                    { label: "BTC · Bitcoin", value: "BTC" },
+                    { label: "ETH · Ethereum", value: "ETH" }
+                ]
+                textRole: "label"
+                onActivated: {
+                    cryptoAddressField.clear();
+                    cryptoWalletError.text = "";
+                    cryptoAddressField.forceActiveFocus();
+                }
             }
             AppTextField {
                 id: cryptoAddressField
                 Layout.fillWidth: true
-                placeholderText: qsTr("Публичный адрес TRON (T…)")
-                maximumLength: 64
+                placeholderText: cryptoTypeBox.currentIndex === 0
+                    ? qsTr("Публичный адрес TRON (T…)")
+                    : cryptoTypeBox.currentIndex === 1
+                        ? qsTr("Публичный адрес Bitcoin (1…, 3… или bc1…)")
+                        : qsTr("Публичный адрес Ethereum (0x…)")
+                maximumLength: 90
                 onAccepted: cryptoWalletDialog.submit()
             }
             Text {

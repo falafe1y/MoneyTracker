@@ -5,7 +5,7 @@
 #include "../services/BalanceCalculator.h"
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
-#include "../services/TronUsdtProvider.h"
+#include "../services/CryptoProvider.h"
 
 #include <QDateTime>
 #include <QDate>
@@ -251,7 +251,10 @@ public:
 
     Q_INVOKABLE bool deleteAccount(const QString& id);
 
-    Q_INVOKABLE QVariantMap addCryptoWallet(const QString& address);
+    Q_INVOKABLE QVariantMap addCryptoWallet(
+        const QString& symbol,
+        const QString& address
+        );
     Q_INVOKABLE bool deleteCryptoWallet(const QString& id);
     Q_INVOKABLE void refreshCryptoWallets();
 
@@ -395,7 +398,7 @@ private:
     CbrCurrencyRateProvider rateProvider_;
     CurrencyConverter currencyConverter_;
     BalanceCalculator balanceCalculator_;
-    TronUsdtProvider cryptoProvider_;
+    CryptoProvider cryptoProvider_;
 
     QVector<Transaction> transactions_;
     QVector<Category> categories_;
@@ -416,8 +419,8 @@ private:
     QDate dateFilterFrom_;
     QDate dateFilterTo_;
 
-    qint64 usdtPriceUsdMicros_ = 1'000'000;
-    QDateTime usdtPriceFetchedAtUtc_;
+    QHash<QString, qint64> cryptoPricesUsdMicros_;
+    QHash<QString, QDateTime> cryptoPricesFetchedAtUtc_;
     QDateTime lastCryptoRefreshAttemptUtc_;
     QTimer cryptoRefreshTimer_;
     QSet<QString> refreshingCryptoWalletIds_;

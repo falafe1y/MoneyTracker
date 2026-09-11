@@ -155,6 +155,13 @@
     <message><source>Обновление баланса…</source><translation>Updating balance…</translation></message>
     <message><source>Баланс ещё не обновлён</source><translation>Balance has not been updated yet</translation></message>
     <message><source>Обновлено: %1</source><translation>Updated: %1</translation></message>
+    <message><source>Добавьте публичный адрес криптокошелька</source><translation>Add a public crypto wallet address</translation></message>
+    <message><source>Обновляем балансы, цены и историю криптовалют…</source><translation>Updating cryptocurrency balances, prices, and history…</translation></message>
+    <message><source>Публичный адрес Bitcoin (1…, 3… или bc1…)</source><translation>Public Bitcoin address (1…, 3…, or bc1…)</translation></message>
+    <message><source>Публичный адрес Ethereum (0x…)</source><translation>Public Ethereum address (0x…)</translation></message>
+    <message><source>История %1</source><translation>%1 history</translation></message>
+    <message><source>криптовалюты</source><translation>cryptocurrency</translation></message>
+    <message><source>У этого кошелька пока нет переводов %1</source><translation>This wallet has no %1 transfers yet</translation></message>
     <message><source>Добавьте публичный адрес TRON-кошелька</source><translation>Add a public TRON wallet address</translation></message>
     <message><source>Обновляем баланс USDT и его цену…</source><translation>Updating the USDT balance and price…</translation></message>
     <message><source>Обновляем баланс, цену и историю USDT…</source><translation>Updating the USDT balance, price, and history…</translation></message>
@@ -210,6 +217,10 @@
     <message><source>Ошибка в строке %1: повторяющийся идентификатор</source><translation>Error on row %1: duplicate identifier</translation></message>
     <message><source>Ошибка в строке %1: категория не найдена</source><translation>Error on row %1: category not found</translation></message>
     <message><source>Введите корректный публичный адрес TRON, начинающийся с T</source><translation>Enter a valid public TRON address starting with T</translation></message>
+    <message><source>Введите корректный адрес Bitcoin Mainnet</source><translation>Enter a valid Bitcoin Mainnet address</translation></message>
+    <message><source>Введите корректный адрес Ethereum Mainnet, начинающийся с 0x</source><translation>Enter a valid Ethereum Mainnet address starting with 0x</translation></message>
+    <message><source>Выберите поддерживаемую криптовалюту</source><translation>Select a supported cryptocurrency</translation></message>
+    <message><source>Создание контракта</source><translation>Contract creation</translation></message>
     <message><source>Этот кошелёк уже добавлен</source><translation>This wallet has already been added</translation></message>
     <message><source>Не удалось сохранить криптокошелёк</source><translation>Could not save the crypto wallet</translation></message>
     <message><source>Сначала выберите актив «Крипта»</source><translation>Select the Crypto asset first</translation></message>

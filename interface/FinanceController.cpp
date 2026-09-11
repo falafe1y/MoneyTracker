@@ -2,6 +2,7 @@
 
 #include "../services/DateSliceCalculator.h"
 #include "../services/CsvCodec.h"
+#include "../services/CryptoParser.h"
 #include "../services/TransactionDateFilter.h"
 #include "../services/TronUsdtParser.h"
 
@@ -52,16 +53,78 @@ void addAccountFinancialRoles(
     item["availableCreditMinor"] = account.availableCreditMinor(balanceMinor);
 }
 
-QString formatUsdtAmount(const qint64 balanceAtomic)
+struct CryptoSpec
 {
-    const qint64 whole = balanceAtomic / 1'000'000;
-    const qint64 fraction = balanceAtomic % 1'000'000;
+    QString symbol;
+    QString network;
+    int decimals = 0;
+};
+
+bool cryptoSpec(const QString& requestedSymbol, CryptoSpec& spec)
+{
+    const QString symbol = requestedSymbol.trimmed().toUpper();
+    if (symbol == QStringLiteral("USDT")) {
+        spec = {symbol, QStringLiteral("TRON"), 6};
+        return true;
+    }
+    if (symbol == QStringLiteral("BTC")) {
+        spec = {symbol, QStringLiteral("BITCOIN"), 8};
+        return true;
+    }
+    if (symbol == QStringLiteral("ETH")) {
+        spec = {symbol, QStringLiteral("ETHEREUM"), 8};
+        return true;
+    }
+    return false;
+}
+
+bool validCryptoAddress(const CryptoSpec& spec, const QString& address)
+{
+    if (spec.network == QStringLiteral("TRON")) {
+        return isValidTronAddress(address);
+    }
+    if (spec.network == QStringLiteral("BITCOIN")) {
+        return isValidBitcoinAddress(address);
+    }
+    return isValidEthereumAddress(address);
+}
+
+QString normalizedCryptoAddress(const CryptoSpec& spec, const QString& address)
+{
+    if (spec.network == QStringLiteral("ETHEREUM")) {
+        return normalizeEthereumAddress(address);
+    }
+    if (spec.network == QStringLiteral("BITCOIN")) {
+        return normalizeBitcoinAddress(address);
+    }
+    return address.trimmed();
+}
+
+QString cryptoNetworkLabel(const CryptoWallet& wallet)
+{
+    if (wallet.network() == QStringLiteral("TRON")) {
+        return QStringLiteral("TRC-20");
+    }
+    if (wallet.network() == QStringLiteral("BITCOIN")) {
+        return QStringLiteral("Bitcoin");
+    }
+    return QStringLiteral("Ethereum");
+}
+
+QString formatCryptoAmount(const qint64 balanceAtomic, const int decimals)
+{
+    qint64 scale = 1;
+    for (int index = 0; index < decimals; ++index) {
+        scale *= 10;
+    }
+    const qint64 whole = balanceAtomic / scale;
+    const qint64 fraction = balanceAtomic % scale;
     if (fraction == 0) {
         return QString::number(whole);
     }
 
     QString fractionText = QStringLiteral("%1").arg(
-        fraction, 6, 10, QLatin1Char('0'));
+        fraction, decimals, 10, QLatin1Char('0'));
     while (fractionText.endsWith(QLatin1Char('0'))) {
         fractionText.chop(1);
     }
@@ -88,7 +151,7 @@ FinanceController::FinanceController(QObject* parent)
 
     QObject::connect(
         &cryptoProvider_,
-        &TronUsdtProvider::balanceUpdated,
+        &CryptoProvider::balanceUpdated,
         this,
         [this](
             const QString& walletId,
@@ -115,7 +178,7 @@ FinanceController::FinanceController(QObject* parent)
         });
     QObject::connect(
         &cryptoProvider_,
-        &TronUsdtProvider::transactionsUpdated,
+        &CryptoProvider::transactionsUpdated,
         this,
         [this](
             const QString& walletId,
@@ -152,23 +215,28 @@ FinanceController::FinanceController(QObject* parent)
         });
     QObject::connect(
         &cryptoProvider_,
-        &TronUsdtProvider::priceUpdated,
+        &CryptoProvider::priceUpdated,
         this,
-        [this](const qint64 priceUsdMicros, const QDateTime& fetchedAtUtc)
+        [this](
+            const QString& symbol,
+            const qint64 priceUsdMicros,
+            const QDateTime& fetchedAtUtc
+            )
         {
-            if (!repository_.saveUsdtPrice(priceUsdMicros, fetchedAtUtc)) {
-                qWarning() << "Failed to save USDT price:"
+            if (!repository_.saveCryptoPrice(
+                    symbol, priceUsdMicros, fetchedAtUtc)) {
+                qWarning() << "Failed to save crypto price:"
                            << repository_.lastError();
                 return;
             }
-            usdtPriceUsdMicros_ = priceUsdMicros;
-            usdtPriceFetchedAtUtc_ = fetchedAtUtc.toUTC();
+            cryptoPricesUsdMicros_[symbol] = priceUsdMicros;
+            cryptoPricesFetchedAtUtc_[symbol] = fetchedAtUtc.toUTC();
             emit cryptoWalletsChanged();
             emit balanceChanged();
         });
     QObject::connect(
         &cryptoProvider_,
-        &TronUsdtProvider::requestFailed,
+        &CryptoProvider::requestFailed,
         this,
         [this](const QString& walletId, const QString& message)
         {
@@ -180,7 +248,7 @@ FinanceController::FinanceController(QObject* parent)
         });
     QObject::connect(
         &cryptoProvider_,
-        &TronUsdtProvider::requestFinished,
+        &CryptoProvider::requestFinished,
         this,
         &FinanceController::finishCryptoRequest);
 
@@ -218,10 +286,21 @@ FinanceController::FinanceController(QObject* parent)
     if (!cryptoWallets_.isEmpty()) {
         selectedCryptoWalletId_ = cryptoWallets_.constFirst().id();
     }
-    const FinanceRepository::CryptoPriceSnapshot usdtPrice =
-        repository_.loadUsdtPrice();
-    usdtPriceUsdMicros_ = usdtPrice.priceUsdMicros;
-    usdtPriceFetchedAtUtc_ = usdtPrice.fetchedAtUtc;
+    for (const QString& symbol : {QStringLiteral("USDT"),
+                                  QStringLiteral("BTC"),
+                                  QStringLiteral("ETH")}) {
+        const FinanceRepository::CryptoPriceSnapshot price =
+            repository_.loadCryptoPrice(symbol);
+        if (price.priceUsdMicros > 0) {
+            cryptoPricesUsdMicros_.insert(symbol, price.priceUsdMicros);
+        }
+        if (price.fetchedAtUtc.isValid()) {
+            cryptoPricesFetchedAtUtc_.insert(symbol, price.fetchedAtUtc);
+        }
+    }
+    if (!cryptoPricesUsdMicros_.contains(QStringLiteral("USDT"))) {
+        cryptoPricesUsdMicros_.insert(QStringLiteral("USDT"), 1'000'000);
+    }
     lastCryptoRefreshAttemptUtc_ = repository_.loadCryptoRefreshAttemptUtc();
     archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
     summary_ = repository_.loadSummary();
@@ -803,17 +882,17 @@ QVariantList FinanceController::cryptoWallets() const
     for (const CryptoWallet& wallet : cryptoWallets_) {
         QVariantMap item;
         item[QStringLiteral("id")] = wallet.id();
-        item[QStringLiteral("name")] = QStringLiteral("USDT");
+        item[QStringLiteral("name")] = wallet.symbol();
         item[QStringLiteral("type")] = QStringLiteral("crypto_wallet");
         item[QStringLiteral("asset")] = QStringLiteral("crypto");
         item[QStringLiteral("isCrypto")] = true;
         item[QStringLiteral("isCreditCard")] = false;
-        item[QStringLiteral("symbol")] = QStringLiteral("USDT");
-        item[QStringLiteral("network")] = QStringLiteral("TRC-20");
+        item[QStringLiteral("symbol")] = wallet.symbol();
+        item[QStringLiteral("network")] = cryptoNetworkLabel(wallet);
         item[QStringLiteral("address")] = wallet.address();
         item[QStringLiteral("balanceAtomic")] = wallet.balanceAtomic();
-        item[QStringLiteral("balanceText")] = formatUsdtAmount(
-            wallet.balanceAtomic());
+        item[QStringLiteral("balanceText")] = formatCryptoAmount(
+            wallet.balanceAtomic(), wallet.decimals());
         item[QStringLiteral("valueMinor")] = cryptoWalletValueMinor(wallet);
         item[QStringLiteral("balanceMinor")] = item[QStringLiteral("valueMinor")];
         item[QStringLiteral("currency")] = currencyCode(appCurrency_);
@@ -823,9 +902,10 @@ QVariantList FinanceController::cryptoWallets() const
         item[QStringLiteral("refreshing")] =
             refreshingCryptoWalletIds_.contains(wallet.id());
         item[QStringLiteral("priceUsd")] =
-            static_cast<double>(usdtPriceUsdMicros_) / 1'000'000.0;
+            static_cast<double>(cryptoPricesUsdMicros_.value(wallet.symbol())) /
+            1'000'000.0;
         item[QStringLiteral("priceHasSnapshot")] =
-            usdtPriceFetchedAtUtc_.isValid();
+            cryptoPricesFetchedAtUtc_.value(wallet.symbol()).isValid();
         result.append(item);
     }
     return result;
@@ -910,12 +990,17 @@ QVariantList FinanceController::cryptoTransactions() const
         item[QStringLiteral("direction")] = outgoing
             ? QStringLiteral("out")
             : QStringLiteral("in");
-        item[QStringLiteral("counterparty")] = outgoing
+        QString counterparty = outgoing
             ? transaction.toAddress()
             : transaction.fromAddress();
+        if (counterparty == QStringLiteral("contract creation")) {
+            counterparty = tr("Создание контракта");
+        }
+        item[QStringLiteral("counterparty")] = counterparty;
         item[QStringLiteral("amountAtomic")] = transaction.amountAtomic();
-        item[QStringLiteral("amountText")] = formatUsdtAmount(
-            transaction.amountAtomic());
+        item[QStringLiteral("amountText")] = formatCryptoAmount(
+            transaction.amountAtomic(), wallet->decimals());
+        item[QStringLiteral("symbol")] = wallet->symbol();
         item[QStringLiteral("occurredAt")] = transaction.occurredAtUtc();
         result.append(item);
     }
@@ -1224,23 +1309,36 @@ bool FinanceController::deleteAccount(const QString& id)
     return true;
 }
 
-QVariantMap FinanceController::addCryptoWallet(const QString& address)
+QVariantMap FinanceController::addCryptoWallet(
+    const QString& symbol,
+    const QString& address
+    )
 {
     QVariantMap result{{QStringLiteral("ok"), false}};
-    const QString normalizedAddress = address.trimmed();
+    CryptoSpec spec;
     if (selectedAsset_ != AssetType::Crypto) {
         result[QStringLiteral("error")] = tr(
             "Сначала выберите актив «Крипта»");
         return result;
     }
-    if (!isValidTronAddress(normalizedAddress)) {
+    if (!cryptoSpec(symbol, spec)) {
         result[QStringLiteral("error")] = tr(
-            "Введите корректный публичный адрес TRON, начинающийся с T");
+            "Выберите поддерживаемую криптовалюту");
+        return result;
+    }
+    const QString normalizedAddress = normalizedCryptoAddress(spec, address);
+    if (!validCryptoAddress(spec, normalizedAddress)) {
+        result[QStringLiteral("error")] = spec.symbol == QStringLiteral("USDT")
+            ? tr("Введите корректный публичный адрес TRON, начинающийся с T")
+            : spec.symbol == QStringLiteral("BTC")
+                ? tr("Введите корректный адрес Bitcoin Mainnet")
+                : tr("Введите корректный адрес Ethereum Mainnet, начинающийся с 0x");
         return result;
     }
 
     for (const CryptoWallet& wallet : cryptoWallets_) {
-        if (wallet.address() == normalizedAddress) {
+        if (wallet.network() == spec.network &&
+            wallet.address() == normalizedAddress) {
             result[QStringLiteral("error")] = tr(
                 "Этот кошелёк уже добавлен");
             return result;
@@ -1249,7 +1347,10 @@ QVariantMap FinanceController::addCryptoWallet(const QString& address)
 
     const CryptoWallet wallet(
         QUuid::createUuid().toString(QUuid::WithoutBraces),
-        normalizedAddress);
+        normalizedAddress,
+        spec.network,
+        spec.symbol,
+        spec.decimals);
     if (!repository_.insertCryptoWallet(wallet)) {
         qWarning() << "Failed to save crypto wallet:"
                    << repository_.lastError();
@@ -1275,8 +1376,10 @@ QVariantMap FinanceController::addCryptoWallet(const QString& address)
     startCryptoBalanceRequest(cryptoWallets_.constLast());
     startCryptoTransactionRequest(cryptoWallets_.constLast());
 
-    const qint64 priceAgeMs = usdtPriceFetchedAtUtc_.isValid()
-        ? usdtPriceFetchedAtUtc_.msecsTo(QDateTime::currentDateTimeUtc())
+    const QDateTime priceFetchedAtUtc =
+        cryptoPricesFetchedAtUtc_.value(spec.symbol);
+    const qint64 priceAgeMs = priceFetchedAtUtc.isValid()
+        ? priceFetchedAtUtc.msecsTo(QDateTime::currentDateTimeUtc())
         : kCryptoRefreshIntervalMs;
     if (priceAgeMs < 0 || priceAgeMs >= kCryptoRefreshIntervalMs) {
         startCryptoPriceRequest();
@@ -1969,13 +2072,23 @@ qint64 FinanceController::cryptoWalletValueMinor(
     const CryptoWallet& wallet
     ) const
 {
-    // USDT and its USD quote both use six fractional digits. Convert their
-    // product to USD cents with integer arithmetic before applying the app's
-    // existing fiat converter.
+    const qint64 priceUsdMicros = cryptoPricesUsdMicros_.value(
+        wallet.symbol());
+    if (priceUsdMicros <= 0 || wallet.balanceAtomic() <= 0 ||
+        wallet.decimals() < 0 || wallet.decimals() > 18) {
+        return 0;
+    }
+
+    // Prices use 6 decimal places and fiat money uses 2. The wallet-specific
+    // scale keeps USDT at 6 places and BTC/ETH at 8 while all multiplication
+    // remains integer-only.
     using Int128 = __int128_t;
-    constexpr Int128 divisor = static_cast<Int128>(10'000'000'000LL);
+    Int128 divisor = 10'000;
+    for (int index = 0; index < wallet.decimals(); ++index) {
+        divisor *= 10;
+    }
     const Int128 product = static_cast<Int128>(wallet.balanceAtomic()) *
-        static_cast<Int128>(usdtPriceUsdMicros_);
+        static_cast<Int128>(priceUsdMicros);
     const Int128 roundedUsdMinor = (product + divisor / 2) / divisor;
     const Int128 maximum = std::numeric_limits<qint64>::max();
     const qint64 usdMinor = roundedUsdMinor > maximum
@@ -2026,8 +2139,8 @@ void FinanceController::scheduleInitialCryptoRefresh()
             kCryptoRefreshIntervalMs - ageMs);
     };
 
-    considerTimestamp(usdtPriceFetchedAtUtc_);
     for (const CryptoWallet& wallet : std::as_const(cryptoWallets_)) {
+        considerTimestamp(cryptoPricesFetchedAtUtc_.value(wallet.symbol()));
         considerTimestamp(wallet.balanceFetchedAtUtc());
         considerTimestamp(wallet.historyFetchedAtUtc());
     }
@@ -2065,7 +2178,7 @@ void FinanceController::scheduleNextCryptoRefresh(const qint64 delayMs)
 
 void FinanceController::startCryptoBalanceRequest(const CryptoWallet& wallet)
 {
-    if (!cryptoProvider_.requestBalance(wallet.id(), wallet.address())) {
+    if (!cryptoProvider_.requestBalance(wallet)) {
         return;
     }
     beginCryptoWalletRequest(wallet.id());
@@ -2081,7 +2194,7 @@ void FinanceController::startCryptoTransactionRequest(
     const CryptoWallet& wallet
     )
 {
-    if (!cryptoProvider_.requestTransactions(wallet.id(), wallet.address())) {
+    if (!cryptoProvider_.requestTransactions(wallet)) {
         return;
     }
     beginCryptoWalletRequest(wallet.id());
@@ -2095,7 +2208,7 @@ void FinanceController::startCryptoTransactionRequest(
 
 void FinanceController::startCryptoPriceRequest()
 {
-    if (!cryptoProvider_.requestPrice()) {
+    if (!cryptoProvider_.requestPrices()) {
         return;
     }
     ++pendingCryptoRequests_;

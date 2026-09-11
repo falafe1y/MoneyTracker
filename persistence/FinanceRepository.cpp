@@ -274,28 +274,31 @@ QVector<CryptoWallet> FinanceRepository::loadCryptoWallets()
     QVector<CryptoWallet> result;
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
-            "SELECT id, address, balance_atomic, balance_fetched_at, "
-            "       history_fetched_at "
+            "SELECT id, address, network, symbol, decimals, balance_atomic, "
+            "       balance_fetched_at, history_fetched_at "
             "FROM crypto_wallets WHERE is_archived = 0 "
-            "ORDER BY created_at, address"))) {
+            "ORDER BY created_at, symbol, address"))) {
         setLastError(query.lastError().text());
         return result;
     }
 
     while (query.next()) {
-        const QVariant fetchedAt = query.value(3);
+        const QVariant fetchedAt = query.value(6);
         result.append(CryptoWallet(
             query.value(0).toString(),
             query.value(1).toString(),
-            query.value(2).toLongLong(),
+            query.value(2).toString(),
+            query.value(3).toString(),
+            query.value(4).toInt(),
+            query.value(5).toLongLong(),
             fetchedAt.isNull()
                 ? QDateTime()
                 : QDateTime::fromMSecsSinceEpoch(
                       fetchedAt.toLongLong(), Qt::UTC),
-            query.value(4).isNull()
+            query.value(7).isNull()
                 ? QDateTime()
                 : QDateTime::fromMSecsSinceEpoch(
-                      query.value(4).toLongLong(), Qt::UTC)));
+                      query.value(7).toLongLong(), Qt::UTC)));
     }
     return result;
 }
@@ -328,13 +331,16 @@ QVector<CryptoTransaction> FinanceRepository::loadCryptoTransactions()
     return result;
 }
 
-FinanceRepository::CryptoPriceSnapshot FinanceRepository::loadUsdtPrice() const
+FinanceRepository::CryptoPriceSnapshot FinanceRepository::loadCryptoPrice(
+    const QString& symbol
+    ) const
 {
     CryptoPriceSnapshot result;
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "SELECT price_usd_micros, fetched_at "
-        "FROM crypto_prices WHERE symbol = 'USDT'"));
+        "FROM crypto_prices WHERE symbol = ?"));
+    query.addBindValue(symbol.trimmed().toUpper());
     if (query.exec() && query.next()) {
         const qint64 price = query.value(0).toLongLong();
         if (price > 0) {
@@ -760,11 +766,14 @@ bool FinanceRepository::insertCryptoWallet(const CryptoWallet& wallet)
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "INSERT INTO crypto_wallets("
-        "id, address, network, symbol, balance_atomic, balance_fetched_at, "
-        "is_archived, created_at) "
-        "VALUES (?, ?, 'TRON', 'USDT', ?, ?, 0, ?)"));
+        "id, address, network, symbol, decimals, balance_atomic, "
+        "balance_fetched_at, is_archived, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)"));
     query.addBindValue(wallet.id());
     query.addBindValue(wallet.address());
+    query.addBindValue(wallet.network());
+    query.addBindValue(wallet.symbol());
+    query.addBindValue(wallet.decimals());
     query.addBindValue(wallet.balanceAtomic());
     if (wallet.balanceFetchedAtUtc().isValid()) {
         query.addBindValue(
@@ -900,23 +909,29 @@ bool FinanceRepository::replaceCryptoTransactions(
     return true;
 }
 
-bool FinanceRepository::saveUsdtPrice(
+bool FinanceRepository::saveCryptoPrice(
+    const QString& symbol,
     const qint64 priceUsdMicros,
     const QDateTime& fetchedAtUtc
     )
 {
-    if (priceUsdMicros <= 0 || !fetchedAtUtc.isValid()) {
-        setLastError(QStringLiteral("Invalid USDT price snapshot"));
+    const QString normalizedSymbol = symbol.trimmed().toUpper();
+    if ((normalizedSymbol != QStringLiteral("USDT") &&
+         normalizedSymbol != QStringLiteral("BTC") &&
+         normalizedSymbol != QStringLiteral("ETH")) ||
+        priceUsdMicros <= 0 || !fetchedAtUtc.isValid()) {
+        setLastError(QStringLiteral("Invalid crypto price snapshot"));
         return false;
     }
 
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "INSERT INTO crypto_prices(symbol, price_usd_micros, fetched_at) "
-        "VALUES('USDT', ?, ?) "
+        "VALUES(?, ?, ?) "
         "ON CONFLICT(symbol) DO UPDATE SET "
         "price_usd_micros = excluded.price_usd_micros, "
         "fetched_at = excluded.fetched_at"));
+    query.addBindValue(normalizedSymbol);
     query.addBindValue(priceUsdMicros);
     query.addBindValue(fetchedAtUtc.toUTC().toMSecsSinceEpoch());
     if (!query.exec()) {
@@ -1190,16 +1205,20 @@ bool FinanceRepository::initializeSchema()
                        "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_wallets ("
                        "id TEXT PRIMARY KEY, address TEXT NOT NULL, "
-                       "network TEXT NOT NULL CHECK(network = 'TRON'), "
-                       "symbol TEXT NOT NULL CHECK(symbol = 'USDT'), "
+                       "network TEXT NOT NULL, symbol TEXT NOT NULL, "
+                       "decimals INTEGER NOT NULL, "
                        "balance_atomic INTEGER NOT NULL DEFAULT 0 "
                        "CHECK(balance_atomic >= 0), "
                        "balance_fetched_at INTEGER, "
                        "history_fetched_at INTEGER, "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
-                       "created_at INTEGER NOT NULL)"),
+                       "created_at INTEGER NOT NULL, "
+                       "CHECK((network = 'TRON' AND symbol = 'USDT' AND decimals = 6) OR "
+                       "      (network = 'BITCOIN' AND symbol = 'BTC' AND decimals = 8) OR "
+                       "      (network = 'ETHEREUM' AND symbol = 'ETH' AND decimals = 8)))"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_prices ("
-                       "symbol TEXT PRIMARY KEY CHECK(symbol = 'USDT'), "
+                       "symbol TEXT PRIMARY KEY "
+                       "CHECK(symbol IN ('USDT','BTC','ETH')), "
                        "price_usd_micros INTEGER NOT NULL CHECK(price_usd_micros > 0), "
                        "fetched_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_transactions ("
@@ -1212,7 +1231,7 @@ bool FinanceRepository::initializeSchema()
                        "PRIMARY KEY(wallet_id, transaction_id))"),
         QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
                        "idx_crypto_wallets_active_address "
-                       "ON crypto_wallets(address) "
+                       "ON crypto_wallets(network, address) "
                        "WHERE is_archived = 0"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_occurred_at "
                        "ON transactions(occurred_at DESC)"),
@@ -1263,15 +1282,18 @@ bool FinanceRepository::migrateLegacySchema()
         return false;
     }
     bool hasCryptoHistoryFetchedAt = false;
+    bool hasCryptoDecimals = false;
     while (cryptoColumns.next()) {
         hasCryptoHistoryFetchedAt = hasCryptoHistoryFetchedAt ||
             cryptoColumns.value(1).toString() ==
                 QStringLiteral("history_fetched_at");
+        hasCryptoDecimals = hasCryptoDecimals ||
+            cryptoColumns.value(1).toString() == QStringLiteral("decimals");
     }
 
     const bool needsAssetTypeRename = hasLegacyGroupType && !hasAssetType;
     if (!needsAssetTypeRename && hasCreditLimit &&
-        hasCryptoHistoryFetchedAt) {
+        hasCryptoHistoryFetchedAt && hasCryptoDecimals) {
         return true;
     }
     if (!database_.transaction()) {
@@ -1321,6 +1343,65 @@ bool FinanceRepository::migrateLegacySchema()
         setLastError(migration.lastError().text());
         database_.rollback();
         return false;
+    }
+
+    if (!hasCryptoDecimals) {
+        const QStringList cryptoMigrationStatements{
+            QStringLiteral(
+                "CREATE TABLE crypto_wallets_v2 ("
+                "id TEXT PRIMARY KEY, address TEXT NOT NULL, "
+                "network TEXT NOT NULL, symbol TEXT NOT NULL, "
+                "decimals INTEGER NOT NULL, "
+                "balance_atomic INTEGER NOT NULL DEFAULT 0 CHECK(balance_atomic >= 0), "
+                "balance_fetched_at INTEGER, history_fetched_at INTEGER, "
+                "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
+                "created_at INTEGER NOT NULL, "
+                "CHECK((network = 'TRON' AND symbol = 'USDT' AND decimals = 6) OR "
+                "      (network = 'BITCOIN' AND symbol = 'BTC' AND decimals = 8) OR "
+                "      (network = 'ETHEREUM' AND symbol = 'ETH' AND decimals = 8)))"),
+            QStringLiteral(
+                "INSERT INTO crypto_wallets_v2("
+                "id,address,network,symbol,decimals,balance_atomic,"
+                "balance_fetched_at,history_fetched_at,is_archived,created_at) "
+                "SELECT id,address,network,symbol,6,balance_atomic,"
+                "balance_fetched_at,history_fetched_at,is_archived,created_at "
+                "FROM crypto_wallets"),
+            QStringLiteral(
+                "CREATE TABLE crypto_transactions_v2 ("
+                "wallet_id TEXT NOT NULL REFERENCES crypto_wallets_v2(id), "
+                "transaction_id TEXT NOT NULL, from_address TEXT NOT NULL, "
+                "to_address TEXT NOT NULL, amount_atomic INTEGER NOT NULL "
+                "CHECK(amount_atomic > 0), occurred_at INTEGER NOT NULL, "
+                "PRIMARY KEY(wallet_id, transaction_id))"),
+            QStringLiteral(
+                "INSERT INTO crypto_transactions_v2 "
+                "SELECT * FROM crypto_transactions"),
+            QStringLiteral(
+                "CREATE TABLE crypto_prices_v2 ("
+                "symbol TEXT PRIMARY KEY CHECK(symbol IN ('USDT','BTC','ETH')), "
+                "price_usd_micros INTEGER NOT NULL CHECK(price_usd_micros > 0), "
+                "fetched_at INTEGER NOT NULL)"),
+            QStringLiteral(
+                "INSERT INTO crypto_prices_v2 SELECT * FROM crypto_prices"),
+            QStringLiteral("DROP TABLE crypto_transactions"),
+            QStringLiteral("DROP TABLE crypto_wallets"),
+            QStringLiteral("DROP TABLE crypto_prices"),
+            QStringLiteral("ALTER TABLE crypto_wallets_v2 RENAME TO crypto_wallets"),
+            QStringLiteral("ALTER TABLE crypto_prices_v2 RENAME TO crypto_prices"),
+            QStringLiteral("ALTER TABLE crypto_transactions_v2 RENAME TO crypto_transactions"),
+            QStringLiteral(
+                "CREATE UNIQUE INDEX idx_crypto_wallets_active_address "
+                "ON crypto_wallets(network, address) WHERE is_archived = 0"),
+            QStringLiteral(
+                "CREATE INDEX idx_crypto_transactions_wallet_date "
+                "ON crypto_transactions(wallet_id, occurred_at DESC)")};
+        for (const QString& statement : cryptoMigrationStatements) {
+            if (!migration.exec(statement)) {
+                setLastError(migration.lastError().text());
+                database_.rollback();
+                return false;
+            }
+        }
     }
 
     if (!database_.commit()) {

@@ -25,7 +25,7 @@ public:
 
     struct CryptoPriceSnapshot
     {
-        qint64 priceUsdMicros = 1'000'000;
+        qint64 priceUsdMicros = 0;
         QDateTime fetchedAtUtc;
     };
 
@@ -42,7 +42,7 @@ public:
     QVector<Account> loadAccounts();
     QVector<CryptoWallet> loadCryptoWallets();
     QVector<CryptoTransaction> loadCryptoTransactions();
-    CryptoPriceSnapshot loadUsdtPrice() const;
+    CryptoPriceSnapshot loadCryptoPrice(const QString& symbol) const;
     QDateTime loadCryptoRefreshAttemptUtc() const;
     QSet<QString> loadArchivedCategoryIds();
     Summary loadSummary();
@@ -79,7 +79,8 @@ public:
         const QVector<CryptoTransaction>& transactions,
         const QDateTime& fetchedAtUtc
         );
-    bool saveUsdtPrice(
+    bool saveCryptoPrice(
+        const QString& symbol,
         qint64 priceUsdMicros,
         const QDateTime& fetchedAtUtc
         );
