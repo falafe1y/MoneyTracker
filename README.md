@@ -78,6 +78,24 @@ currency in SQLite and kept in memory. New transactions are committed to the
 database synchronously before the in-memory state and QML interface are
 updated.
 
+## Investments
+
+The investment domain is split into three independent records:
+
+`InvestmentInstrument -> InvestmentPosition -> InvestmentQuote`
+
+An instrument describes a stock, ETF, bond, fund, or other security and owns
+its ticker, optional ISIN, name, and quote currency. A position links one
+instrument to an investment account and stores the quantity and average
+purchase price. A quote stores the latest known market price and its UTC
+timestamp.
+
+Fractional quantities and prices are stored as signed 64-bit integers scaled by
+1,000,000. SQLite prevents duplicate active positions for the same
+account/instrument pair and duplicate active non-empty ISIN values. Instruments
+with active positions cannot be archived, and deleting an investment account
+archives its positions in the same database transaction.
+
 ## Currency rates
 
 The application requests the official daily RUB exchange rates from the Bank

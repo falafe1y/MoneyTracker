@@ -33,6 +33,9 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/Transaction.h
         SOURCES core/CryptoWallet.h
         SOURCES core/CryptoTransaction.h
+        SOURCES core/InvestmentInstrument.h
+        SOURCES core/InvestmentPosition.h
+        SOURCES core/InvestmentQuote.h
         SOURCES services/CurrencyConverter.h
         SOURCES services/CurrencyConverter.cpp
         SOURCES services/BalanceCalculator.h
@@ -185,6 +188,40 @@ target_link_libraries(FinanceRepositoryTest
 add_test(
     NAME FinanceRepositoryTest
     COMMAND FinanceRepositoryTest
+)
+
+add_executable(InvestmentModelTest
+    tests/InvestmentModelTest.cpp
+    core/Currency.cpp
+)
+
+target_link_libraries(InvestmentModelTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME InvestmentModelTest
+    COMMAND InvestmentModelTest
+)
+
+add_executable(InvestmentRepositoryTest
+    tests/InvestmentRepositoryTest.cpp
+    core/Currency.cpp
+    persistence/FinanceRepository.cpp
+)
+
+target_link_libraries(InvestmentRepositoryTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Sql
+        Qt6::Test
+)
+
+add_test(
+    NAME InvestmentRepositoryTest
+    COMMAND InvestmentRepositoryTest
 )
 
 add_executable(CsvCodecTest

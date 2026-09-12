@@ -5,6 +5,9 @@
 #include "../core/Account.h"
 #include "../core/CryptoWallet.h"
 #include "../core/CryptoTransaction.h"
+#include "../core/InvestmentInstrument.h"
+#include "../core/InvestmentPosition.h"
+#include "../core/InvestmentQuote.h"
 
 #include <QSqlDatabase>
 #include <QDateTime>
@@ -42,6 +45,9 @@ public:
     QVector<Account> loadAccounts();
     QVector<CryptoWallet> loadCryptoWallets();
     QVector<CryptoTransaction> loadCryptoTransactions();
+    QVector<InvestmentInstrument> loadInvestmentInstruments();
+    QVector<InvestmentPosition> loadInvestmentPositions();
+    QVector<InvestmentQuote> loadInvestmentQuotes();
     CryptoPriceSnapshot loadCryptoPrice(const QString& symbol) const;
     QDateTime loadCryptoRefreshAttemptUtc() const;
     QSet<QString> loadArchivedCategoryIds();
@@ -85,6 +91,13 @@ public:
         const QDateTime& fetchedAtUtc
         );
     bool saveCryptoRefreshAttemptUtc(const QDateTime& attemptedAtUtc);
+    bool insertInvestmentInstrument(const InvestmentInstrument& instrument);
+    bool updateInvestmentInstrument(const InvestmentInstrument& instrument);
+    bool archiveInvestmentInstrument(const QString& id);
+    bool insertInvestmentPosition(const InvestmentPosition& position);
+    bool updateInvestmentPosition(const InvestmentPosition& position);
+    bool archiveInvestmentPosition(const QString& id);
+    bool saveInvestmentQuote(const InvestmentQuote& quote);
     bool updateCategoryName(const QString& id, const QString& name);
     bool archiveCategory(const QString& id);
     QString loadAppCurrency() const;
