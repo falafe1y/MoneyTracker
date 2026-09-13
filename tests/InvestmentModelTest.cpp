@@ -10,6 +10,7 @@ class InvestmentModelTest : public QObject
 
 private slots:
     void preservesInstrumentData();
+    void normalizesMissingMarketRoutingFields();
     void preservesFractionalPositionPrecision();
     void preservesQuoteData();
 };
@@ -30,6 +31,19 @@ void InvestmentModelTest::preservesInstrumentData()
     QCOMPARE(instrument.name(), QStringLiteral("Apple Inc."));
     QCOMPARE(instrument.type(), InvestmentInstrumentType::Stock);
     QCOMPARE(instrument.currency(), Currency::USD);
+}
+
+void InvestmentModelTest::normalizesMissingMarketRoutingFields()
+{
+    const InvestmentInstrument instrument(
+        QStringLiteral("manual"), QStringLiteral("TEST"), QString(),
+        QStringLiteral("Тест"), InvestmentInstrumentType::Other,
+        Currency::RUB);
+
+    QVERIFY(!instrument.marketCode().isNull());
+    QVERIFY(instrument.marketCode().isEmpty());
+    QVERIFY(!instrument.primaryBoardId().isNull());
+    QVERIFY(instrument.primaryBoardId().isEmpty());
 }
 
 void InvestmentModelTest::preservesFractionalPositionPrecision()

@@ -6,6 +6,7 @@
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
 #include "../services/CryptoProvider.h"
+#include "../services/MoexInvestmentProvider.h"
 
 #include <QDateTime>
 #include <QDate>
@@ -156,6 +157,54 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QVariantList investmentAccounts
+            READ investmentAccounts
+                NOTIFY accountsChanged
+        )
+
+    Q_PROPERTY(
+        QVariantList investmentPositions
+            READ investmentPositions
+                NOTIFY investmentPositionsChanged
+        )
+
+    Q_PROPERTY(
+        QVariantList investmentSearchResults
+            READ investmentSearchResults
+                NOTIFY investmentSearchResultsChanged
+        )
+
+    Q_PROPERTY(
+        bool investmentSearchBusy
+            READ investmentSearchBusy
+                NOTIFY investmentSearchStateChanged
+        )
+
+    Q_PROPERTY(
+        bool investmentQuoteBusy
+            READ investmentQuoteBusy
+                NOTIFY investmentSearchStateChanged
+        )
+
+    Q_PROPERTY(
+        bool investmentRefreshing
+            READ investmentRefreshing
+                NOTIFY investmentRefreshingChanged
+        )
+
+    Q_PROPERTY(
+        QString investmentLastError
+            READ investmentLastError
+                NOTIFY investmentSearchStateChanged
+        )
+
+    Q_PROPERTY(
+        int selectedInvestmentSearchIndex
+            READ selectedInvestmentSearchIndex
+                NOTIFY investmentSearchStateChanged
+        )
+
+    Q_PROPERTY(
         QString selectedAccountId
             READ selectedAccountId
                 WRITE setSelectedAccountId
@@ -217,6 +266,14 @@ public:
     QString selectedCryptoWalletId() const;
     void setSelectedCryptoWalletId(const QString& walletId);
     QVariantList cryptoTransactions() const;
+    QVariantList investmentAccounts() const;
+    QVariantList investmentPositions() const;
+    QVariantList investmentSearchResults() const;
+    bool investmentSearchBusy() const;
+    bool investmentQuoteBusy() const;
+    bool investmentRefreshing() const;
+    QString investmentLastError() const;
+    int selectedInvestmentSearchIndex() const;
 
     QString selectedAsset() const;
     void setSelectedAsset(const QString& asset);
@@ -257,6 +314,16 @@ public:
         );
     Q_INVOKABLE bool deleteCryptoWallet(const QString& id);
     Q_INVOKABLE void refreshCryptoWallets();
+    Q_INVOKABLE void searchInvestmentInstruments(const QString& query);
+    Q_INVOKABLE void selectInvestmentSearchResult(int index);
+    Q_INVOKABLE QVariantMap addInvestmentPosition(
+        const QString& accountId,
+        int searchResultIndex,
+        const QString& quantity,
+        const QString& averagePrice
+        );
+    Q_INVOKABLE bool deleteInvestmentPosition(const QString& id);
+    Q_INVOKABLE void refreshInvestmentQuotes();
 
     Q_INVOKABLE bool addCategory(
         const QString& name,
@@ -348,6 +415,10 @@ signals:
     void cryptoLastErrorChanged();
     void selectedCryptoWalletIdChanged();
     void cryptoTransactionsChanged();
+    void investmentPositionsChanged();
+    void investmentSearchResultsChanged();
+    void investmentSearchStateChanged();
+    void investmentRefreshingChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -384,6 +455,8 @@ private:
     void finishCryptoWalletRequest(const QString& walletId);
     void finishCryptoRequest();
     void setCryptoLastError(const QString& error);
+    void finishInvestmentQuoteRequest(const QString& instrumentId);
+    void setInvestmentLastError(const QString& error);
     QVector<Transaction> dateFilteredTransactions() const;
     FinanceRepository::Summary dateFilteredSummary() const;
     QString accountDisplayName(const Account& account) const;
@@ -399,12 +472,17 @@ private:
     CurrencyConverter currencyConverter_;
     BalanceCalculator balanceCalculator_;
     CryptoProvider cryptoProvider_;
+    MoexInvestmentProvider investmentProvider_;
 
     QVector<Transaction> transactions_;
     QVector<Category> categories_;
     QVector<Account> accounts_;
     QVector<CryptoWallet> cryptoWallets_;
     QVector<CryptoTransaction> cryptoTransactions_;
+    QVector<InvestmentInstrument> investmentInstruments_;
+    QVector<InvestmentPosition> investmentPositions_;
+    QVector<InvestmentQuote> investmentQuotes_;
+    QVector<InvestmentMarketInstrument> investmentSearchResults_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
 
@@ -428,6 +506,14 @@ private:
     int pendingCryptoRequests_ = 0;
     bool cryptoRefreshing_ = false;
     QString cryptoLastError_;
+
+    QSet<QString> refreshingInvestmentIds_;
+    QString requestedSearchQuoteId_;
+    int selectedInvestmentSearchIndex_ = -1;
+    bool investmentSearchBusy_ = false;
+    bool investmentQuoteBusy_ = false;
+    bool investmentRefreshing_ = false;
+    QString investmentLastError_;
 
     static constexpr qint64 kCryptoRefreshIntervalMs =
         6LL * 60LL * 60LL * 1000LL;

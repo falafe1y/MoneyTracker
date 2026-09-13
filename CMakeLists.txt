@@ -22,6 +22,8 @@ qt_add_qml_module(appMoneyTracker
     QML_FILES
         Desktop.qml
         Mobile.qml
+        InvestmentPositionDialog.qml
+        InvestmentPositionsPanel.qml
         # BankComboBox.qml
         # CategoryPicker.qml
         SOURCES core/Account.h
@@ -36,6 +38,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/InvestmentInstrument.h
         SOURCES core/InvestmentPosition.h
         SOURCES core/InvestmentQuote.h
+        SOURCES core/InvestmentMarketInstrument.h
         SOURCES services/CurrencyConverter.h
         SOURCES services/CurrencyConverter.cpp
         SOURCES services/BalanceCalculator.h
@@ -57,6 +60,10 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CryptoParser.cpp
         SOURCES services/CryptoProvider.h
         SOURCES services/CryptoProvider.cpp
+        SOURCES services/MoexInvestmentParser.h
+        SOURCES services/MoexInvestmentParser.cpp
+        SOURCES services/MoexInvestmentProvider.h
+        SOURCES services/MoexInvestmentProvider.cpp
         SOURCES interface/FinanceController.h
         SOURCES interface/FinanceController.cpp
         SOURCES persistence/FinanceRepository.h
@@ -222,6 +229,22 @@ target_link_libraries(InvestmentRepositoryTest
 add_test(
     NAME InvestmentRepositoryTest
     COMMAND InvestmentRepositoryTest
+)
+
+add_executable(MoexInvestmentParserTest
+    tests/MoexInvestmentParserTest.cpp
+    services/MoexInvestmentParser.cpp
+)
+
+target_link_libraries(MoexInvestmentParserTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME MoexInvestmentParserTest
+    COMMAND MoexInvestmentParserTest
 )
 
 add_executable(CsvCodecTest

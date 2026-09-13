@@ -185,6 +185,35 @@
     <message><source>Сначала добавьте криптокошелёк</source><translation>Add a crypto wallet first</translation></message>
     <message><source>Загружаем историю переводов…</source><translation>Loading transfer history…</translation></message>
     <message><source>У этого кошелька пока нет переводов USDT</source><translation>This wallet has no USDT transfers yet</translation></message>
+    <message><source>+ Добавить позицию</source><translation>+ Add position</translation></message>
+  </context>
+  <context>
+    <name>InvestmentPositionDialog</name>
+    <message><source>Добавить инвестиционную позицию</source><translation>Add investment position</translation></message>
+    <message><source>Инвестиционный счёт</source><translation>Investment account</translation></message>
+    <message><source>Тикер или ISIN</source><translation>Ticker or ISIN</translation></message>
+    <message><source>Например, SBER или RU0009029540</source><translation>For example, SBER or RU0009029540</translation></message>
+    <message><source>Ищем…</source><translation>Searching…</translation></message>
+    <message><source>Найти</source><translation>Search</translation></message>
+    <message><source>Получаем цену…</source><translation>Loading price…</translation></message>
+    <message><source>Выбрать</source><translation>Select</translation></message>
+    <message><source>Введите тикер или ISIN для поиска на Мосбирже</source><translation>Enter a ticker or ISIN to search Moscow Exchange</translation></message>
+    <message><source>Количество</source><translation>Quantity</translation></message>
+    <message><source>Средняя цена (необязательно)</source><translation>Average price (optional)</translation></message>
+    <message><source>Отмена</source><translation>Cancel</translation></message>
+    <message><source>Добавить</source><translation>Add</translation></message>
+    <message><source>Не удалось добавить позицию</source><translation>Could not add position</translation></message>
+  </context>
+  <context>
+    <name>InvestmentPositionsPanel</name>
+    <message><source>Позиции</source><translation>Positions</translation></message>
+    <message><source>Обновляем…</source><translation>Updating…</translation></message>
+    <message><source>Обновить цены</source><translation>Update prices</translation></message>
+    <message><source>Количество: %1</source><translation>Quantity: %1</translation></message>
+    <message><source>Цена недоступна</source><translation>Price unavailable</translation></message>
+    <message><source>%1 %2 за единицу</source><translation>%1 %2 per unit</translation></message>
+    <message><source>Удалить позицию</source><translation>Delete position</translation></message>
+    <message><source>Позиций пока нет</source><translation>No positions yet</translation></message>
   </context>
   <context>
     <name>FinanceController</name>
@@ -224,5 +253,21 @@
     <message><source>Этот кошелёк уже добавлен</source><translation>This wallet has already been added</translation></message>
     <message><source>Не удалось сохранить криптокошелёк</source><translation>Could not save the crypto wallet</translation></message>
     <message><source>Сначала выберите актив «Крипта»</source><translation>Select the Crypto asset first</translation></message>
+    <message><source>Акция</source><translation>Share</translation></message>
+    <message><source>Фонд</source><translation>Fund</translation></message>
+    <message><source>Облигация</source><translation>Bond</translation></message>
+    <message><source>Другой инструмент</source><translation>Other instrument</translation></message>
+    <message><source>По запросу не найдено акций или фондов</source><translation>No shares or funds found</translation></message>
+    <message><source>Введите хотя бы два символа тикера или ISIN</source><translation>Enter at least two ticker or ISIN characters</translation></message>
+    <message><source>Сначала выберите актив «Инвестиции»</source><translation>Select the Investments asset first</translation></message>
+    <message><source>Выберите акцию или фонд</source><translation>Select a share or fund</translation></message>
+    <message><source>Выберите инвестиционный счёт</source><translation>Select an investment account</translation></message>
+    <message><source>Сначала получите рыночную цену инструмента</source><translation>Load the instrument market price first</translation></message>
+    <message><source>Валюта счёта должна совпадать с валютой инструмента (%1)</source><translation>The account currency must match the instrument currency (%1)</translation></message>
+    <message><source>Введите количество больше нуля (до 6 знаков после запятой)</source><translation>Enter a quantity greater than zero (up to 6 decimal places)</translation></message>
+    <message><source>Введите корректную среднюю цену</source><translation>Enter a valid average price</translation></message>
+    <message><source>Этот инструмент уже добавлен на выбранный счёт</source><translation>This instrument is already in the selected account</translation></message>
+    <message><source>Не удалось сохранить инструмент</source><translation>Could not save the instrument</translation></message>
+    <message><source>Не удалось сохранить позицию</source><translation>Could not save the position</translation></message>
   </context>
 </TS>

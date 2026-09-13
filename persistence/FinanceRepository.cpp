@@ -336,7 +336,8 @@ QVector<InvestmentInstrument> FinanceRepository::loadInvestmentInstruments()
     QVector<InvestmentInstrument> result;
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
-            "SELECT id, symbol, isin, name, type, currency "
+            "SELECT id, symbol, isin, name, type, currency, "
+            "       market_code, primary_board_id "
             "FROM investment_instruments WHERE is_archived = 0 "
             "ORDER BY name COLLATE NOCASE, symbol COLLATE NOCASE"))) {
         setLastError(query.lastError().text());
@@ -350,7 +351,9 @@ QVector<InvestmentInstrument> FinanceRepository::loadInvestmentInstruments()
             query.value(2).toString(),
             query.value(3).toString(),
             static_cast<InvestmentInstrumentType>(query.value(4).toInt()),
-            currencyFromCode(query.value(5).toString())));
+            currencyFromCode(query.value(5).toString()),
+            query.value(6).toString(),
+            query.value(7).toString()));
     }
     return result;
 }
@@ -1060,6 +1063,9 @@ bool FinanceRepository::insertInvestmentInstrument(
     const QString symbol = instrument.symbol().trimmed().toUpper();
     const QString isin = instrument.isin().trimmed().toUpper();
     const QString name = instrument.name().trimmed();
+    const QString marketCode = instrument.marketCode().trimmed().toUpper();
+    const QString primaryBoardId =
+        instrument.primaryBoardId().trimmed().toUpper();
     const int type = static_cast<int>(instrument.type());
     if (id.isEmpty() || symbol.isEmpty() || name.isEmpty() ||
         type < static_cast<int>(InvestmentInstrumentType::Stock) ||
@@ -1071,14 +1077,17 @@ bool FinanceRepository::insertInvestmentInstrument(
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "INSERT INTO investment_instruments("
-        "id, symbol, isin, name, type, currency, is_archived, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, 0, ?)"));
+        "id, symbol, isin, name, type, currency, market_code, "
+        "primary_board_id, is_archived, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)"));
     query.addBindValue(id);
     query.addBindValue(symbol);
     query.addBindValue(isin);
     query.addBindValue(name);
     query.addBindValue(type);
     query.addBindValue(currencyCode(instrument.currency()));
+    query.addBindValue(marketCode);
+    query.addBindValue(primaryBoardId);
     query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
     if (!query.exec()) {
         setLastError(query.lastError().text());
@@ -1094,6 +1103,9 @@ bool FinanceRepository::updateInvestmentInstrument(
     const QString symbol = instrument.symbol().trimmed().toUpper();
     const QString isin = instrument.isin().trimmed().toUpper();
     const QString name = instrument.name().trimmed();
+    const QString marketCode = instrument.marketCode().trimmed().toUpper();
+    const QString primaryBoardId =
+        instrument.primaryBoardId().trimmed().toUpper();
     const int type = static_cast<int>(instrument.type());
     if (instrument.id().trimmed().isEmpty() || symbol.isEmpty() ||
         name.isEmpty() ||
@@ -1106,7 +1118,8 @@ bool FinanceRepository::updateInvestmentInstrument(
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "UPDATE investment_instruments "
-        "SET symbol = ?, isin = ?, name = ?, type = ?, currency = ? "
+        "SET symbol = ?, isin = ?, name = ?, type = ?, currency = ?, "
+        "    market_code = ?, primary_board_id = ? "
         "WHERE id = ? AND is_archived = 0 "
         "  AND (currency = ? OR ("
         "      NOT EXISTS (SELECT 1 FROM investment_positions "
@@ -1118,6 +1131,8 @@ bool FinanceRepository::updateInvestmentInstrument(
     query.addBindValue(name);
     query.addBindValue(type);
     query.addBindValue(currencyCode(instrument.currency()));
+    query.addBindValue(marketCode);
+    query.addBindValue(primaryBoardId);
     query.addBindValue(instrument.id());
     query.addBindValue(currencyCode(instrument.currency()));
     query.addBindValue(instrument.id());
@@ -1562,6 +1577,8 @@ bool FinanceRepository::initializeSchema()
                        "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
                        "type INTEGER NOT NULL CHECK(type IN (0,1,2,3,4)), "
                        "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "market_code TEXT NOT NULL DEFAULT '', "
+                       "primary_board_id TEXT NOT NULL DEFAULT '', "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS investment_positions ("
@@ -1637,6 +1654,7 @@ bool FinanceRepository::migrateLegacySchema()
         hasCreditLimit = hasCreditLimit ||
             name == QStringLiteral("credit_limit_minor");
     }
+    columns.finish();
 
     QSqlQuery cryptoColumns(database_);
     if (!cryptoColumns.exec(QStringLiteral(
@@ -1653,10 +1671,45 @@ bool FinanceRepository::migrateLegacySchema()
         hasCryptoDecimals = hasCryptoDecimals ||
             cryptoColumns.value(1).toString() == QStringLiteral("decimals");
     }
+    cryptoColumns.finish();
+
+    QSqlQuery investmentColumns(database_);
+    if (!investmentColumns.exec(QStringLiteral(
+            "PRAGMA table_info(investment_instruments)"))) {
+        setLastError(investmentColumns.lastError().text());
+        return false;
+    }
+    bool hasInvestmentMarketCode = false;
+    bool hasInvestmentPrimaryBoardId = false;
+    while (investmentColumns.next()) {
+        const QString name = investmentColumns.value(1).toString();
+        hasInvestmentMarketCode = hasInvestmentMarketCode ||
+            name == QStringLiteral("market_code");
+        hasInvestmentPrimaryBoardId = hasInvestmentPrimaryBoardId ||
+            name == QStringLiteral("primary_board_id");
+    }
+    investmentColumns.finish();
+
+    QSqlQuery accountSchema(database_);
+    if (!accountSchema.exec(QStringLiteral(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'accounts'")) ||
+        !accountSchema.next()) {
+        setLastError(accountSchema.lastError().isValid()
+            ? accountSchema.lastError().text()
+            : QStringLiteral("Accounts table schema was not found"));
+        return false;
+    }
+    const QString accountTableSql = accountSchema.value(0).toString();
+    accountSchema.finish();
+    const bool needsAccountTypeExpansion =
+        !accountTableSql.contains(QStringLiteral(",5,6,7"));
 
     const bool needsAssetTypeRename = hasLegacyGroupType && !hasAssetType;
     if (!needsAssetTypeRename && hasCreditLimit &&
-        hasCryptoHistoryFetchedAt && hasCryptoDecimals) {
+        hasCryptoHistoryFetchedAt && hasCryptoDecimals &&
+        hasInvestmentMarketCode && hasInvestmentPrimaryBoardId &&
+        !needsAccountTypeExpansion) {
         return true;
     }
     if (!database_.transaction()) {
@@ -1665,6 +1718,22 @@ bool FinanceRepository::migrateLegacySchema()
     }
 
     QSqlQuery migration(database_);
+    if (!hasInvestmentMarketCode &&
+        !migration.exec(QStringLiteral(
+            "ALTER TABLE investment_instruments ADD COLUMN "
+            "market_code TEXT NOT NULL DEFAULT ''"))) {
+        setLastError(migration.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    if (!hasInvestmentPrimaryBoardId &&
+        !migration.exec(QStringLiteral(
+            "ALTER TABLE investment_instruments ADD COLUMN "
+            "primary_board_id TEXT NOT NULL DEFAULT ''"))) {
+        setLastError(migration.lastError().text());
+        database_.rollback();
+        return false;
+    }
     if (needsAssetTypeRename &&
         !migration.exec(QStringLiteral(
             "ALTER TABLE accounts RENAME COLUMN group_type TO asset_type"))) {
@@ -1771,6 +1840,73 @@ bool FinanceRepository::migrateLegacySchema()
         setLastError(database_.lastError().text());
         database_.rollback();
         return false;
+    }
+
+    if (needsAccountTypeExpansion) {
+        QSqlQuery foreignKeys(database_);
+        if (!foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = OFF"))) {
+            setLastError(foreignKeys.lastError().text());
+            return false;
+        }
+        if (!database_.transaction()) {
+            setLastError(database_.lastError().text());
+            foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+            return false;
+        }
+
+        const QStringList accountMigrationStatements{
+            QStringLiteral(
+                "CREATE TABLE accounts_v2 ("
+                "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+                "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
+                "account_type INTEGER NOT NULL "
+                "CHECK(account_type IN (0,1,2,3,4,5,6,7)), "
+                "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
+                "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(credit_limit_minor >= 0), "
+                "is_archived INTEGER NOT NULL DEFAULT 0 "
+                "CHECK(is_archived IN (0,1)), created_at INTEGER NOT NULL)"),
+            QStringLiteral(
+                "INSERT INTO accounts_v2("
+                "id,name,asset_type,account_type,currency,"
+                "initial_balance_minor,credit_limit_minor,is_archived,created_at) "
+                "SELECT id,name,asset_type,account_type,currency,"
+                "initial_balance_minor,credit_limit_minor,is_archived,created_at "
+                "FROM accounts"),
+            QStringLiteral("DROP TABLE accounts"),
+            QStringLiteral("ALTER TABLE accounts_v2 RENAME TO accounts")};
+
+        QSqlQuery accountMigration(database_);
+        for (const QString& statement : accountMigrationStatements) {
+            if (!accountMigration.exec(statement)) {
+                setLastError(accountMigration.lastError().text());
+                database_.rollback();
+                foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+                return false;
+            }
+        }
+        if (!database_.commit()) {
+            setLastError(database_.lastError().text());
+            database_.rollback();
+            foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+            return false;
+        }
+        if (!foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"))) {
+            setLastError(foreignKeys.lastError().text());
+            return false;
+        }
+
+        QSqlQuery foreignKeyCheck(database_);
+        if (!foreignKeyCheck.exec(QStringLiteral("PRAGMA foreign_key_check"))) {
+            setLastError(foreignKeyCheck.lastError().text());
+            return false;
+        }
+        if (foreignKeyCheck.next()) {
+            setLastError(QStringLiteral(
+                "Foreign key violation after accounts migration"));
+            return false;
+        }
     }
     return true;
 }

@@ -1,7 +1,11 @@
 #include "../persistence/FinanceRepository.h"
 
 #include <QTemporaryDir>
+#include <QSqlQuery>
+#include <QUuid>
 #include <QtTest>
+
+#include <algorithm>
 
 class InvestmentRepositoryTest : public QObject
 {
@@ -11,6 +15,8 @@ private slots:
     void storesUpdatesAndArchivesInvestmentModel();
     void rejectsInvalidInvestmentRelationsAndValues();
     void archivesPositionsWithInvestmentAccount();
+    void migratesMoexRoutingColumns();
+    void migratesLegacyInvestmentAccountTypes();
 };
 
 void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
@@ -36,7 +42,8 @@ void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
         const InvestmentInstrument instrument(
             QStringLiteral("aapl"), QStringLiteral(" aapl "),
             QStringLiteral(" us0378331005 "), QStringLiteral(" Apple Inc. "),
-            InvestmentInstrumentType::Stock, Currency::USD);
+            InvestmentInstrumentType::Stock, Currency::USD,
+            QStringLiteral(" moex "), QStringLiteral(" tqbr "));
         QVERIFY2(repository.insertInvestmentInstrument(instrument),
                  qPrintable(repository.lastError()));
 
@@ -52,7 +59,8 @@ void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
         const InvestmentInstrument updatedInstrument(
             QStringLiteral("aapl"), QStringLiteral("AAPL"),
             QStringLiteral("US0378331005"), QStringLiteral("Apple"),
-            InvestmentInstrumentType::Stock, Currency::USD);
+            InvestmentInstrumentType::Stock, Currency::USD,
+            QStringLiteral("MOEX"), QStringLiteral("TQTF"));
         QVERIFY2(repository.updateInvestmentInstrument(updatedInstrument),
                  qPrintable(repository.lastError()));
         const InvestmentPosition updatedPosition(
@@ -85,6 +93,8 @@ void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
         QCOMPARE(instruments.constFirst().type(),
                  InvestmentInstrumentType::Stock);
         QCOMPARE(instruments.constFirst().currency(), Currency::USD);
+        QCOMPARE(instruments.constFirst().marketCode(), QStringLiteral("MOEX"));
+        QCOMPARE(instruments.constFirst().primaryBoardId(), QStringLiteral("TQTF"));
 
         const QVector<InvestmentPosition> positions =
             repository.loadInvestmentPositions();
@@ -193,6 +203,106 @@ void InvestmentRepositoryTest::archivesPositionsWithInvestmentAccount()
              qPrintable(repository.lastError()));
     QVERIFY(repository.loadInvestmentPositions().isEmpty());
     QVERIFY2(repository.archiveInvestmentInstrument(instrument.id()),
+             qPrintable(repository.lastError()));
+}
+
+void InvestmentRepositoryTest::migratesMoexRoutingColumns()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("investment-routing-migration.sqlite3"));
+    const QString connectionName = QUuid::createUuid().toString(
+        QUuid::WithoutBraces);
+    {
+        QSqlDatabase database = QSqlDatabase::addDatabase(
+            QStringLiteral("QSQLITE"), connectionName);
+        database.setDatabaseName(databasePath);
+        QVERIFY(database.open());
+        QSqlQuery query(database);
+        QVERIFY(query.exec(QStringLiteral(
+            "CREATE TABLE investment_instruments ("
+            "id TEXT PRIMARY KEY, symbol TEXT NOT NULL, isin TEXT NOT NULL, "
+            "name TEXT NOT NULL, type INTEGER NOT NULL, currency TEXT NOT NULL, "
+            "is_archived INTEGER NOT NULL, created_at INTEGER NOT NULL)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "INSERT INTO investment_instruments VALUES ("
+            "'moex:SBER','SBER','RU0009029540','Сбербанк',0,'RUB',0,1)")));
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(connectionName);
+
+    FinanceRepository repository(databasePath);
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+    QVector<InvestmentInstrument> instruments =
+        repository.loadInvestmentInstruments();
+    QCOMPARE(instruments.size(), 1);
+    QCOMPARE(instruments.constFirst().marketCode(), QString());
+    QCOMPARE(instruments.constFirst().primaryBoardId(), QString());
+
+    const InvestmentInstrument migrated(
+        QStringLiteral("moex:SBER"), QStringLiteral("SBER"),
+        QStringLiteral("RU0009029540"), QStringLiteral("Сбербанк"),
+        InvestmentInstrumentType::Stock, Currency::RUB,
+        QStringLiteral("MOEX"), QStringLiteral("TQBR"));
+    QVERIFY2(repository.updateInvestmentInstrument(migrated),
+             qPrintable(repository.lastError()));
+    instruments = repository.loadInvestmentInstruments();
+    QCOMPARE(instruments.constFirst().marketCode(), QStringLiteral("MOEX"));
+    QCOMPARE(instruments.constFirst().primaryBoardId(), QStringLiteral("TQBR"));
+}
+
+void InvestmentRepositoryTest::migratesLegacyInvestmentAccountTypes()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("investment-account-type-migration.sqlite3"));
+    const QString connectionName = QUuid::createUuid().toString(
+        QUuid::WithoutBraces);
+    {
+        QSqlDatabase database = QSqlDatabase::addDatabase(
+            QStringLiteral("QSQLITE"), connectionName);
+        database.setDatabaseName(databasePath);
+        QVERIFY(database.open());
+        QSqlQuery query(database);
+        QVERIFY(query.exec(QStringLiteral(
+            "CREATE TABLE accounts ("
+            "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+            "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
+            "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,3,4)), "
+            "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+            "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
+            "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
+            "CHECK(credit_limit_minor >= 0), "
+            "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
+            "created_at INTEGER NOT NULL)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "INSERT INTO accounts VALUES ("
+            "'legacy','Старый счёт',0,4,'RUB',12500,0,0,1)")));
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(connectionName);
+
+    FinanceRepository repository(databasePath);
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+    const QVector<Account> existingAccounts = repository.loadAccounts();
+    QVERIFY(std::any_of(
+        existingAccounts.cbegin(), existingAccounts.cend(),
+        [](const Account& account) {
+            return account.id() == QStringLiteral("legacy") &&
+                account.initialBalanceMinor() == 12'500;
+        }));
+
+    const Account brokerage(
+        QStringLiteral("brokerage"), QStringLiteral("Брокер"),
+        AssetType::Investment, AccountType::Brokerage, Currency::RUB);
+    QVERIFY2(repository.insertAccount(brokerage),
+             qPrintable(repository.lastError()));
+    const Account deposit(
+        QStringLiteral("deposit"), QStringLiteral("Вклад"),
+        AssetType::Investment, AccountType::Deposit, Currency::RUB);
+    QVERIFY2(repository.insertAccount(deposit),
              qPrintable(repository.lastError()));
 }
 

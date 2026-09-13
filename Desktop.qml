@@ -1753,15 +1753,24 @@ ApplicationWindow {
                 SoftButton {
                     text: financeController.selectedAsset === "crypto"
                           ? qsTr("+ Добавить криптовалюту")
-                          : qsTr("+ Добавить счёт")
+                          : financeController.selectedAsset === "investment"
+                            ? qsTr("+ Добавить позицию")
+                            : qsTr("+ Добавить счёт")
                     highlighted: true
-                    implicitWidth: financeController.selectedAsset === "crypto" ? 220 : 150
+                    implicitWidth: financeController.selectedAsset === "crypto" ? 220 : 170
                     onClicked: {
                         if (financeController.selectedAsset === "crypto")
                             cryptoWalletDialog.openForNewWallet();
+                        else if (financeController.selectedAsset === "investment")
+                            investmentPositionDialog.openForNewPosition();
                         else
                             accountDialog.openForSelectedAsset();
                     }
+                }
+                SoftButton {
+                    visible: financeController.selectedAsset === "investment"
+                    text: qsTr("+ Добавить счёт")
+                    onClicked: accountDialog.openForSelectedAsset()
                 }
             }
             RowLayout {
@@ -1788,11 +1797,11 @@ ApplicationWindow {
             }
             GridView {
                 Layout.fillWidth: true
-                Layout.fillHeight: financeController.selectedAsset !== "crypto"
-                Layout.preferredHeight: financeController.selectedAsset === "crypto"
+                Layout.fillHeight: financeController.selectedAsset === "fiat"
+                Layout.preferredHeight: financeController.selectedAsset !== "fiat"
                                       ? 188
                                       : -1
-                Layout.minimumHeight: financeController.selectedAsset === "crypto"
+                Layout.minimumHeight: financeController.selectedAsset !== "fiat"
                                     ? 188
                                     : 0
                 cellWidth: 320
@@ -1906,6 +1915,18 @@ ApplicationWindow {
                           : qsTr("У этого актива пока нет счетов")
                     color: root.muted
                 }
+            }
+            InvestmentPositionsPanel {
+                visible: financeController.selectedAsset === "investment"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 250
+                controller: financeController
+                panelColor: root.panel
+                textColor: root.accent
+                mutedColor: root.muted
+                lineColor: root.line
+                errorColor: root.red
             }
             Panel {
                 id: cryptoHistoryPanel
@@ -2691,6 +2712,17 @@ ApplicationWindow {
                     .arg(result.imported).arg(result.skipped)
                 : qsTr("Не удалось импортировать CSV: %1").arg(result.error);
         }
+    }
+
+    InvestmentPositionDialog {
+        id: investmentPositionDialog
+        controller: financeController
+        panelColor: root.panel
+        textColor: root.accent
+        mutedColor: root.muted
+        lineColor: root.line
+        accentColor: root.accent
+        errorColor: root.red
     }
 
     Dialog {

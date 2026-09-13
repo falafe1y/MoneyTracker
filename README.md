@@ -96,6 +96,13 @@ account/instrument pair and duplicate active non-empty ISIN values. Instruments
 with active positions cannot be archived, and deleting an investment account
 archives its positions in the same database transaction.
 
+The first market-data integration covers Russian shares and exchange-traded
+funds listed on Moscow Exchange. Search accepts a ticker or ISIN and uses the
+official keyless MOEX ISS API. The selected instrument's primary trading board
+is stored with the instrument so its market price can be refreshed after an app
+restart. Quotes are refreshed on demand and when stale by six hours; a failed
+request leaves the last saved quote visible.
+
 ## Currency rates
 
 The application requests the official daily RUB exchange rates from the Bank

@@ -1815,14 +1815,24 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     text: financeController.selectedAsset === "crypto"
                           ? qsTr("+ Добавить криптовалюту")
-                          : qsTr("+ Добавить счёт")
+                          : financeController.selectedAsset === "investment"
+                            ? qsTr("+ Добавить позицию")
+                            : qsTr("+ Добавить счёт")
                     highlighted: true
                     onClicked: {
                         if (financeController.selectedAsset === "crypto")
                             cryptoWalletDialog.openForNewWallet();
+                        else if (financeController.selectedAsset === "investment")
+                            investmentPositionDialog.openForNewPosition();
                         else
                             accountDialog.openForSelectedAsset();
                     }
+                }
+                SoftButton {
+                    Layout.fillWidth: true
+                    visible: financeController.selectedAsset === "investment"
+                    text: qsTr("+ Добавить счёт")
+                    onClicked: accountDialog.openForSelectedAsset()
                 }
             }
 
@@ -1852,7 +1862,11 @@ ApplicationWindow {
 
             ListView {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.fillHeight: financeController.selectedAsset !== "investment"
+                Layout.preferredHeight: financeController.selectedAsset === "investment"
+                                      ? Math.min(contentHeight, 300) : -1
+                Layout.minimumHeight: financeController.selectedAsset === "investment"
+                                    ? Math.min(Math.max(contentHeight, 148), 300) : 0
                 clip: true
                 spacing: 10
                 // Scrollbars intentionally hidden application-wide.
@@ -1980,6 +1994,18 @@ ApplicationWindow {
                           : qsTr("У этого актива пока нет счетов")
                     color: root.muted
                 }
+            }
+            InvestmentPositionsPanel {
+                visible: financeController.selectedAsset === "investment"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.minimumHeight: 260
+                controller: financeController
+                panelColor: root.panel
+                textColor: root.accent
+                mutedColor: root.muted
+                lineColor: root.line
+                errorColor: root.red
             }
         }
     }
@@ -2539,6 +2565,17 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    InvestmentPositionDialog {
+        id: investmentPositionDialog
+        controller: financeController
+        panelColor: root.panel
+        textColor: root.accent
+        mutedColor: root.muted
+        lineColor: root.line
+        accentColor: root.accent
+        errorColor: root.red
     }
 
     Dialog {
