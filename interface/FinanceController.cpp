@@ -373,6 +373,8 @@ FinanceController::FinanceController(QObject* parent)
                 } else {
                     investmentQuotes_ = repository_.loadInvestmentQuotes();
                     emit investmentPositionsChanged();
+                    emit accountsChanged();
+                    emit balanceChanged();
                 }
                 break;
             }
@@ -468,14 +470,18 @@ FinanceController::FinanceController(QObject* parent)
 
 qint64 FinanceController::balanceMinorUnits() const
 {
-    const qint64 fiatAndManualAssets = convertedTotal(
-        dateFilteredSummary().balance);
-    const qint64 crypto = cryptoWalletsTotalMinor();
-    if (crypto > 0 && fiatAndManualAssets >
-            std::numeric_limits<qint64>::max() - crypto) {
+    using Int128 = __int128_t;
+    const Int128 total =
+        static_cast<Int128>(assetBalanceMinor(AssetType::Fiat)) +
+        static_cast<Int128>(assetBalanceMinor(AssetType::Crypto)) +
+        static_cast<Int128>(assetBalanceMinor(AssetType::Investment));
+    if (total > std::numeric_limits<qint64>::max()) {
         return std::numeric_limits<qint64>::max();
     }
-    return fiatAndManualAssets + crypto;
+    if (total < std::numeric_limits<qint64>::min()) {
+        return std::numeric_limits<qint64>::min();
+    }
+    return static_cast<qint64>(total);
 }
 
 QString FinanceController::balanceCurrency() const
@@ -1182,6 +1188,10 @@ QVariantList FinanceController::investmentPositions() const
 {
     QVariantList result;
     for (const InvestmentPosition& position : investmentPositions_) {
+        if (!selectedAccountId_.isEmpty() &&
+            position.accountId() != selectedAccountId_) {
+            continue;
+        }
         const auto instrument = std::find_if(
             investmentInstruments_.cbegin(), investmentInstruments_.cend(),
             [&position](const InvestmentInstrument& candidate) {
@@ -1344,6 +1354,9 @@ void FinanceController::setSelectedAccountId(const QString& accountId)
 
     selectedAccountId_ = accountId;
     emit selectedAccountIdChanged();
+    if (selectedAsset_ == AssetType::Investment) {
+        emit investmentPositionsChanged();
+    }
 }
 
 bool FinanceController::dateFilterActive() const
@@ -1889,6 +1902,8 @@ QVariantMap FinanceController::addInvestmentPosition(
     investmentPositions_ = repository_.loadInvestmentPositions();
     investmentQuotes_ = repository_.loadInvestmentQuotes();
     emit investmentPositionsChanged();
+    emit accountsChanged();
+    emit balanceChanged();
     result[QStringLiteral("ok")] = true;
     return result;
 }
@@ -1902,6 +1917,8 @@ bool FinanceController::deleteInvestmentPosition(const QString& id)
     }
     investmentPositions_ = repository_.loadInvestmentPositions();
     emit investmentPositionsChanged();
+    emit accountsChanged();
+    emit balanceChanged();
     return true;
 }
 
@@ -2520,7 +2537,45 @@ qint64 FinanceController::accountBalanceMinor(const Account& account) const
             ? transaction.money().minorUnits()
             : -transaction.money().minorUnits();
     }
+    if (account.assetType() == AssetType::Investment) {
+        const qint64 positionValue = investmentAccountValueMinor(account.id());
+        if (positionValue > 0 &&
+            balance > std::numeric_limits<qint64>::max() - positionValue) {
+            return std::numeric_limits<qint64>::max();
+        }
+        balance += positionValue;
+    }
     return balance;
+}
+
+qint64 FinanceController::investmentAccountValueMinor(
+    const QString& accountId
+    ) const
+{
+    using Int128 = __int128_t;
+    Int128 totalMinor = 0;
+    constexpr Int128 divisor = 10'000'000'000LL;
+
+    for (const InvestmentPosition& position : investmentPositions_) {
+        if (position.accountId() != accountId) {
+            continue;
+        }
+        const auto quote = std::find_if(
+            investmentQuotes_.cbegin(), investmentQuotes_.cend(),
+            [&position](const InvestmentQuote& candidate) {
+                return candidate.instrumentId() == position.instrumentId();
+            });
+        if (quote == investmentQuotes_.cend() || quote->priceMicros() <= 0) {
+            continue;
+        }
+        const Int128 product = static_cast<Int128>(position.quantityMicros()) *
+            static_cast<Int128>(quote->priceMicros());
+        totalMinor += (product + divisor / 2) / divisor;
+        if (totalMinor >= std::numeric_limits<qint64>::max()) {
+            return std::numeric_limits<qint64>::max();
+        }
+    }
+    return static_cast<qint64>(totalMinor);
 }
 
 int FinanceController::accountTransactionCount(const QString& accountId) const

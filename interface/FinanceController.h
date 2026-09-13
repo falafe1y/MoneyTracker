@@ -442,6 +442,7 @@ private:
         );
 
     qint64 accountBalanceMinor(const Account& account) const;
+    qint64 investmentAccountValueMinor(const QString& accountId) const;
     int accountTransactionCount(const QString& accountId) const;
     qint64 assetBalanceMinor(AssetType asset) const;
     qint64 cryptoWalletValueMinor(const CryptoWallet& wallet) const;

@@ -13,6 +13,7 @@ Dialog {
     property color errorColor: "#B94F48"
     property int selectedResult: -1
     property string localError: ""
+    property string fixedAccountId: ""
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -22,14 +23,23 @@ Dialog {
     title: qsTr("Добавить инвестиционную позицию")
     standardButtons: Dialog.NoButton
 
-    function openForNewPosition() {
+    function openForNewPosition(accountId) {
+        fixedAccountId = accountId || "";
         selectedResult = -1;
         localError = "";
         searchField.text = "";
         quantityField.text = "";
         averagePriceField.text = "";
-        accountBox.currentIndex = controller && controller.investmentAccounts.length
-                ? 0 : -1;
+        accountBox.currentIndex = -1;
+        if (controller) {
+            const accounts = controller.investmentAccounts;
+            for (let i = 0; i < accounts.length; ++i) {
+                if (!fixedAccountId || accounts[i].id === fixedAccountId) {
+                    accountBox.currentIndex = i;
+                    break;
+                }
+            }
+        }
         open();
     }
 
@@ -53,6 +63,7 @@ Dialog {
             model: dialog.controller ? dialog.controller.investmentAccounts : []
             textRole: "name"
             valueRole: "id"
+            enabled: dialog.fixedAccountId.length === 0
         }
 
         Label {

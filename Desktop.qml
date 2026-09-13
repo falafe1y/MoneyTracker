@@ -882,7 +882,11 @@ ApplicationWindow {
                                 flat: true
                                 text: financeController.selectedAsset === "crypto"
                                       ? qsTr("+  Добавить криптовалюту")
-                                      : qsTr("+  Добавить счёт")
+                                      : financeController.selectedAsset === "investment"
+                                        ? qsTr("+  Добавить позицию")
+                                        : qsTr("+  Добавить счёт")
+                                enabled: financeController.selectedAsset !== "investment"
+                                      || financeController.selectedAccountId.length > 0
 
                                 contentItem: Text {
                                     text: addAccountButton.text
@@ -895,6 +899,10 @@ ApplicationWindow {
                                 onClicked: {
                                     if (financeController.selectedAsset === "crypto")
                                         cryptoWalletDialog.openForNewWallet();
+                                    else if (financeController.selectedAsset === "investment")
+                                        investmentPositionDialog.openForNewPosition(
+                                            financeController.selectedAccountId
+                                        );
                                     else
                                         accountDialog.openForSelectedAsset();
                                 }
@@ -1816,27 +1824,29 @@ ApplicationWindow {
                 delegate: Panel {
                     id: accountCard
                     required property var modelData
-                    readonly property bool selectedCrypto:
-                        modelData.isCrypto === true
-                        && financeController.selectedCryptoWalletId === modelData.id
+                    readonly property bool selected:
+                        (modelData.isCrypto === true
+                         && financeController.selectedCryptoWalletId === modelData.id)
+                        || (financeController.selectedAsset === "investment"
+                            && financeController.selectedAccountId === modelData.id)
                     width: 300
                     height: modelData.isCrypto ? 156 : 132
-                    color: selectedCrypto ? root.accent : root.panel
-                    border.color: selectedCrypto ? root.accent : root.line
+                    color: selected ? root.accent : root.panel
+                    border.color: selected ? root.accent : root.line
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 18
                         RowLayout {
                             Text {
                                 text: "▣"
-                                color: accountCard.selectedCrypto
+                                color: accountCard.selected
                                      ? root.white
                                      : root.accent
                                 font.pixelSize: 24
                             }
                             Text {
                                 text: modelData.name
-                                color: accountCard.selectedCrypto
+                                color: accountCard.selected
                                      ? root.white
                                      : root.accent
                                 font.pixelSize: 17
@@ -1845,7 +1855,7 @@ ApplicationWindow {
                         }
                         Text {
                             text: root.accountPrimaryAmount(modelData)
-                            color: accountCard.selectedCrypto
+                            color: accountCard.selected
                                  ? root.white
                                  : root.accent
                             font.pixelSize: modelData.isCreditCard ? 20 : 25
@@ -1854,7 +1864,7 @@ ApplicationWindow {
                         Text {
                             visible: modelData.isCreditCard
                             text: root.accountAvailableCredit(modelData)
-                            color: accountCard.selectedCrypto
+                            color: accountCard.selected
                                  ? root.paleText
                                  : root.navSelected
                             font.pixelSize: 12
@@ -1864,7 +1874,7 @@ ApplicationWindow {
                             text: modelData.isCrypto
                                   ? modelData.network + " · " + modelData.address
                                   : modelData.currency + " · " + root.accountTypeLabel(modelData.type)
-                            color: accountCard.selectedCrypto
+                            color: accountCard.selected
                                  ? root.paleText
                                  : root.muted
                             font.pixelSize: 12
@@ -1874,7 +1884,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             visible: modelData.isCrypto
                             text: root.cryptoWalletStatus(modelData)
-                            color: accountCard.selectedCrypto
+                            color: accountCard.selected
                                  ? root.paleText
                                  : modelData.refreshing
                                    ? root.navSelected
@@ -1888,13 +1898,18 @@ ApplicationWindow {
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         cursorShape: modelData.isCrypto
+                                   || financeController.selectedAsset === "investment"
                                    ? Qt.PointingHandCursor
                                    : Qt.ArrowCursor
                         onClicked: function (mouse) {
-                            if (mouse.button === Qt.LeftButton
-                                && modelData.isCrypto) {
+                            if (mouse.button !== Qt.LeftButton)
+                                return;
+                            if (modelData.isCrypto)
                                 financeController.selectedCryptoWalletId = modelData.id;
-                            }
+                            else if (financeController.selectedAsset === "investment")
+                                financeController.selectedAccountId =
+                                    financeController.selectedAccountId === modelData.id
+                                    ? "" : modelData.id;
                         }
                         onPressed: function (mouse) {
                             if (mouse.button === Qt.RightButton)
