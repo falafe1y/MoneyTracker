@@ -4,7 +4,11 @@ import QtQuick.Layouts
 
 Rectangle {
     id: panel
+    signal contextMenuRequested(var position, var sourceItem, real x, real y)
+    signal deleteRequested(var position)
+
     property var controller
+    property bool confirmDeletion: false
     property color panelColor: "#FFFFF8"
     property color textColor: "#031528"
     property color mutedColor: "#687483"
@@ -102,7 +106,27 @@ Rectangle {
                         flat: true
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Удалить позицию")
-                        onClicked: panel.controller.deleteInvestmentPosition(modelData.id)
+                        onClicked: {
+                            if (panel.confirmDeletion)
+                                panel.deleteRequested(modelData);
+                            else if (panel.controller)
+                                panel.controller.deleteInvestmentPosition(modelData.id);
+                        }
+                    }
+                }
+
+                MouseArea {
+                    id: positionMenuArea
+                    anchors.fill: parent
+                    acceptedButtons: Qt.RightButton
+                    onPressed: function (mouse) {
+                        if (mouse.button === Qt.RightButton)
+                            panel.contextMenuRequested(
+                                modelData,
+                                positionMenuArea,
+                                mouse.x,
+                                mouse.y
+                            );
                     }
                 }
             }

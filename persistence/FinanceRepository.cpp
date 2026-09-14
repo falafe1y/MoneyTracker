@@ -1260,6 +1260,21 @@ bool FinanceRepository::updateInvestmentPosition(
     return true;
 }
 
+bool FinanceRepository::deleteInvestmentPosition(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "DELETE FROM investment_positions WHERE id = ?"));
+    query.addBindValue(id);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Investment position was not found"));
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::archiveInvestmentPosition(const QString& id)
 {
     QSqlQuery query(database_);

@@ -1929,9 +1929,100 @@ QVariantMap FinanceController::addInvestmentPosition(
     return result;
 }
 
+QVariantMap FinanceController::updateInvestmentPosition(
+    const QString& positionId,
+    const QString& accountId,
+    const QString& quantity,
+    const QString& averagePrice
+    )
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    const auto current = std::find_if(
+        investmentPositions_.cbegin(), investmentPositions_.cend(),
+        [&positionId](const InvestmentPosition& position) {
+            return position.id() == positionId;
+        });
+    if (current == investmentPositions_.cend()) {
+        result[QStringLiteral("error")] = tr("Инвестиционная позиция не найдена");
+        return result;
+    }
+
+    const auto account = std::find_if(
+        accounts_.cbegin(), accounts_.cend(),
+        [&accountId](const Account& candidate) {
+            return candidate.id() == accountId &&
+                candidate.assetType() == AssetType::Investment;
+        });
+    if (account == accounts_.cend()) {
+        result[QStringLiteral("error")] = tr("Выберите инвестиционный счёт");
+        return result;
+    }
+
+    const auto instrument = std::find_if(
+        investmentInstruments_.cbegin(), investmentInstruments_.cend(),
+        [&current](const InvestmentInstrument& candidate) {
+            return candidate.id() == current->instrumentId();
+        });
+    if (instrument == investmentInstruments_.cend()) {
+        result[QStringLiteral("error")] = tr("Инвестиционный инструмент не найден");
+        return result;
+    }
+    if (account->currency() != instrument->currency()) {
+        result[QStringLiteral("error")] = tr(
+            "Валюта счёта должна совпадать с валютой инструмента (%1)")
+                .arg(currencyCode(instrument->currency()));
+        return result;
+    }
+
+    qint64 quantityMicros = 0;
+    if (!parsePositiveMicros(quantity, quantityMicros)) {
+        result[QStringLiteral("error")] = tr(
+            "Введите количество больше нуля (до 6 знаков после запятой)");
+        return result;
+    }
+
+    qint64 averagePriceMicros = current->averagePriceMicros();
+    if (!averagePrice.trimmed().isEmpty() &&
+        !parsePositiveMicros(averagePrice, averagePriceMicros)) {
+        result[QStringLiteral("error")] = tr("Введите корректную среднюю цену");
+        return result;
+    }
+
+    const bool duplicate = std::any_of(
+        investmentPositions_.cbegin(), investmentPositions_.cend(),
+        [&positionId, &accountId, &current](const InvestmentPosition& position) {
+            return position.id() != positionId &&
+                position.accountId() == accountId &&
+                position.instrumentId() == current->instrumentId();
+        });
+    if (duplicate) {
+        result[QStringLiteral("error")] = tr(
+            "Этот инструмент уже добавлен на выбранный счёт");
+        return result;
+    }
+
+    const InvestmentPosition updated(
+        current->id(), accountId, current->instrumentId(), quantityMicros,
+        averagePriceMicros, current->createdAtUtc(),
+        QDateTime::currentDateTimeUtc());
+    if (!repository_.updateInvestmentPosition(updated)) {
+        qWarning() << "Failed to update investment position:"
+                   << repository_.lastError();
+        result[QStringLiteral("error")] = tr("Не удалось обновить позицию");
+        return result;
+    }
+
+    investmentPositions_ = repository_.loadInvestmentPositions();
+    emit investmentPositionsChanged();
+    emit accountsChanged();
+    emit balanceChanged();
+    result[QStringLiteral("ok")] = true;
+    return result;
+}
+
 bool FinanceController::deleteInvestmentPosition(const QString& id)
 {
-    if (!repository_.archiveInvestmentPosition(id)) {
+    if (!repository_.deleteInvestmentPosition(id)) {
         qWarning() << "Failed to delete investment position:"
                    << repository_.lastError();
         return false;

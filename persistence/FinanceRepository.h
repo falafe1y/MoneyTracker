@@ -96,6 +96,7 @@ public:
     bool archiveInvestmentInstrument(const QString& id);
     bool insertInvestmentPosition(const InvestmentPosition& position);
     bool updateInvestmentPosition(const InvestmentPosition& position);
+    bool deleteInvestmentPosition(const QString& id);
     bool archiveInvestmentPosition(const QString& id);
     bool saveInvestmentQuote(const InvestmentQuote& quote);
     bool updateCategoryName(const QString& id, const QString& name);

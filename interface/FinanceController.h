@@ -322,6 +322,12 @@ public:
         const QString& quantity,
         const QString& averagePrice
         );
+    Q_INVOKABLE QVariantMap updateInvestmentPosition(
+        const QString& positionId,
+        const QString& accountId,
+        const QString& quantity,
+        const QString& averagePrice
+        );
     Q_INVOKABLE bool deleteInvestmentPosition(const QString& id);
     Q_INVOKABLE void refreshInvestmentQuotes();
 

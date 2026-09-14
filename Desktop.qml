@@ -316,6 +316,32 @@ ApplicationWindow {
         return result;
     }
 
+    function investmentOperationRow(position) {
+        const description = position.symbol + " · " + position.name
+                          + " · " + qsTr("Количество: %1")
+                                .arg(position.quantityText);
+        return {
+            id: position.id,
+            accountId: position.accountId,
+            accountName: position.accountName,
+            type: "investment_position",
+            amount: position.averageValueMinor,
+            currency: position.currency,
+            categoryName: position.typeName,
+            rawDescription: description,
+            date: new Date(position.createdAt),
+            instrumentId: position.instrumentId,
+            symbol: position.symbol,
+            isin: position.isin,
+            name: position.name,
+            typeName: position.typeName,
+            quantityText: position.quantityText,
+            averagePriceText: position.averagePriceText,
+            hasQuote: position.hasQuote,
+            priceText: position.priceText
+        };
+    }
+
     function visibleInvestmentOperations() {
         const result = [];
         const rows = financeController.investmentPositions;
@@ -325,29 +351,16 @@ ApplicationWindow {
         if (to)
             to.setHours(23, 59, 59, 999);
         for (let i = rows.length - 1; i >= 0; --i) {
-            const position = rows[i];
-            const createdAt = new Date(position.createdAt);
+            const row = root.investmentOperationRow(rows[i]);
             if (financeController.dateFilterActive
-                && (isNaN(createdAt.getTime())
-                    || createdAt < from || createdAt > to))
+                && (isNaN(row.date.getTime())
+                    || row.date < from || row.date > to))
                 continue;
-            const description = position.symbol + " · " + position.name
-                              + " · " + qsTr("Количество: %1")
-                                    .arg(position.quantityText);
-            const text = (description + " " + position.typeName + " "
-                          + position.accountName).toLowerCase();
+            const text = (row.rawDescription + " " + row.categoryName + " "
+                          + row.accountName).toLowerCase();
             if (query && text.indexOf(query) < 0)
                 continue;
-            result.push({
-                id: position.id,
-                accountId: position.accountId,
-                type: "investment_position",
-                amount: position.averageValueMinor,
-                currency: position.currency,
-                categoryName: position.typeName,
-                rawDescription: description,
-                date: createdAt
-            });
+            result.push(row);
         }
         return result;
     }
@@ -1454,7 +1467,7 @@ ApplicationWindow {
                     highlighted: true
                     implicitWidth: 132
                     enabled: !transactionBlock.addInvestmentPositionAction
-                          || financeController.selectedAccountId.length > 0
+                          || financeController.investmentAccounts.length > 0
                     onClicked: {
                         if (transactionBlock.addInvestmentPositionAction)
                             investmentPositionDialog.openForNewPosition(
@@ -1681,7 +1694,6 @@ ApplicationWindow {
                                 id: overviewRowMenuArea
                                 anchors.fill: parent
                                 acceptedButtons: Qt.RightButton
-                                enabled: modelData.type !== "investment_position"
                                 onPressed: function (mouse) {
                                     if (mouse.button === Qt.RightButton)
                                         root.openTransactionContextMenu(
@@ -1777,7 +1789,6 @@ ApplicationWindow {
                             id: operationsRowMenuArea
                             anchors.fill: parent
                             acceptedButtons: Qt.RightButton
-                            enabled: modelData.type !== "investment_position"
                             onPressed: function (mouse) {
                                 if (mouse.button === Qt.RightButton)
                                     root.openTransactionContextMenu(
@@ -1999,11 +2010,25 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.minimumHeight: 250
                 controller: financeController
+                confirmDeletion: true
                 panelColor: root.panel
                 textColor: root.accent
                 mutedColor: root.muted
                 lineColor: root.line
                 errorColor: root.red
+                onContextMenuRequested: function(position, sourceItem, x, y) {
+                    root.openTransactionContextMenu(
+                        root.investmentOperationRow(position),
+                        sourceItem,
+                        x,
+                        y
+                    );
+                }
+                onDeleteRequested: function(position) {
+                    deleteTransactionDialog.openFor(
+                        root.investmentOperationRow(position)
+                    );
+                }
             }
             Panel {
                 id: cryptoHistoryPanel
@@ -3337,8 +3362,13 @@ ApplicationWindow {
             text: qsTr("Редактировать")
             enabled: transactionContextMenu.transactionData !== null
             onTriggered: {
-                if (transactionContextMenu.transactionData)
-                    operationDialog.openForEdit(transactionContextMenu.transactionData);
+                const row = transactionContextMenu.transactionData;
+                if (!row)
+                    return;
+                if (row.type === "investment_position")
+                    investmentPositionDialog.openForEdit(row);
+                else
+                    operationDialog.openForEdit(row);
             }
         }
 
@@ -3399,7 +3429,11 @@ ApplicationWindow {
             spacing: 14
 
             Text {
-                text: qsTr("Удалить операцию?")
+                text: deleteTransactionDialog.transactionData
+                      && deleteTransactionDialog.transactionData.type
+                         === "investment_position"
+                      ? qsTr("Удалить инвестиционную позицию?")
+                      : qsTr("Удалить операцию?")
                 color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
@@ -3410,6 +3444,10 @@ ApplicationWindow {
                 text: deleteTransactionDialog.transactionData
                       && deleteTransactionDialog.transactionData.type === "transfer"
                       ? qsTr("Будут удалены обе части перевода. Баланс и статистика будут пересчитаны.")
+                      : deleteTransactionDialog.transactionData
+                        && deleteTransactionDialog.transactionData.type
+                           === "investment_position"
+                        ? qsTr("Позиция будет удалена из списка и базы данных. Общая стоимость активов будет пересчитана.")
                       : qsTr("Это действие нельзя отменить. Баланс и статистика будут пересчитаны.")
                 color: root.muted
                 font.pixelSize: 13
@@ -3429,7 +3467,8 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         text: deleteTransactionDialog.transactionData
-                              ? (deleteTransactionDialog.transactionData.description
+                              ? (deleteTransactionDialog.transactionData.rawDescription
+                                 || deleteTransactionDialog.transactionData.description
                                  || (deleteTransactionDialog.transactionData.type === "transfer"
                                      ? qsTr("Перевод")
                                      : deleteTransactionDialog.transactionData.type === "income"
@@ -3481,10 +3520,16 @@ ApplicationWindow {
                     destructive: true
                     onClicked: {
                         const row = deleteTransactionDialog.transactionData;
-                        if (row && financeController.deleteTransaction(row.id))
+                        const ok = row && row.type === "investment_position"
+                                 ? financeController.deleteInvestmentPosition(row.id)
+                                 : row && financeController.deleteTransaction(row.id);
+                        if (ok)
                             deleteTransactionDialog.close();
                         else
-                            deleteTransactionError.text = qsTr("Не удалось удалить операцию");
+                            deleteTransactionError.text = row
+                                && row.type === "investment_position"
+                                ? qsTr("Не удалось удалить инвестиционную позицию")
+                                : qsTr("Не удалось удалить операцию");
                     }
                 }
             }

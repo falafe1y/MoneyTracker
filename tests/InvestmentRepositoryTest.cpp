@@ -115,7 +115,7 @@ void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
         QCOMPARE(quotes.constFirst().quotedAtUtc(), updatedQuoteAt);
 
         QVERIFY(!repository.archiveInvestmentInstrument(QStringLiteral("aapl")));
-        QVERIFY2(repository.archiveInvestmentPosition(
+        QVERIFY2(repository.deleteInvestmentPosition(
                      QStringLiteral("aapl-position")),
                  qPrintable(repository.lastError()));
         QVERIFY2(repository.archiveInvestmentInstrument(QStringLiteral("aapl")),

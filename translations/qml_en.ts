@@ -107,6 +107,9 @@
     <message><source>Укажите кредитный лимит</source><translation>Enter the credit limit</translation></message>
     <message><source>Удалить</source><translation>Delete</translation></message>
     <message><source>Удалить операцию?</source><translation>Delete transaction?</translation></message>
+    <message><source>Удалить инвестиционную позицию?</source><translation>Delete investment position?</translation></message>
+    <message><source>Позиция будет удалена из списка и базы данных. Общая стоимость активов будет пересчитана.</source><translation>The position will be removed from the list and database. Total assets will be recalculated.</translation></message>
+    <message><source>Не удалось удалить инвестиционную позицию</source><translation>Failed to delete investment position</translation></message>
     <message><source>Удалить счёт?</source><translation>Delete account?</translation></message>
     <message><source>Этот год</source><translation>This year</translation></message>
     <message><source>Этот месяц</source><translation>This month</translation></message>
@@ -190,6 +193,7 @@
   <context>
     <name>InvestmentPositionDialog</name>
     <message><source>Добавить инвестиционную позицию</source><translation>Add investment position</translation></message>
+    <message><source>Редактирование инвестиционной позиции</source><translation>Edit investment position</translation></message>
     <message><source>Инвестиционный счёт</source><translation>Investment account</translation></message>
     <message><source>Тикер или ISIN</source><translation>Ticker or ISIN</translation></message>
     <message><source>Например, SBER или RU0009029540</source><translation>For example, SBER or RU0009029540</translation></message>
@@ -197,12 +201,15 @@
     <message><source>Найти</source><translation>Search</translation></message>
     <message><source>Получаем цену…</source><translation>Loading price…</translation></message>
     <message><source>Выбрать</source><translation>Select</translation></message>
+    <message><source>Текущая позиция</source><translation>Current position</translation></message>
     <message><source>Введите тикер или ISIN для поиска на Мосбирже</source><translation>Enter a ticker or ISIN to search Moscow Exchange</translation></message>
     <message><source>Количество</source><translation>Quantity</translation></message>
     <message><source>Средняя цена (необязательно)</source><translation>Average price (optional)</translation></message>
     <message><source>Отмена</source><translation>Cancel</translation></message>
     <message><source>Добавить</source><translation>Add</translation></message>
+    <message><source>Сохранить</source><translation>Save</translation></message>
     <message><source>Не удалось добавить позицию</source><translation>Could not add position</translation></message>
+    <message><source>Не удалось обновить позицию</source><translation>Could not update position</translation></message>
   </context>
   <context>
     <name>InvestmentPositionsPanel</name>
@@ -210,6 +217,7 @@
     <message><source>Обновляем…</source><translation>Updating…</translation></message>
     <message><source>Обновить цены</source><translation>Update prices</translation></message>
     <message><source>Количество: %1</source><translation>Quantity: %1</translation></message>
+    <message><source>Позиция</source><translation>Position</translation></message>
     <message><source>Цена недоступна</source><translation>Price unavailable</translation></message>
     <message><source>%1 %2 за единицу</source><translation>%1 %2 per unit</translation></message>
     <message><source>Удалить позицию</source><translation>Delete position</translation></message>
@@ -262,6 +270,8 @@
     <message><source>Сначала выберите актив «Инвестиции»</source><translation>Select the Investments asset first</translation></message>
     <message><source>Выберите акцию или фонд</source><translation>Select a share or fund</translation></message>
     <message><source>Выберите инвестиционный счёт</source><translation>Select an investment account</translation></message>
+    <message><source>Инвестиционная позиция не найдена</source><translation>Investment position was not found</translation></message>
+    <message><source>Инвестиционный инструмент не найден</source><translation>Investment instrument was not found</translation></message>
     <message><source>Сначала получите рыночную цену инструмента</source><translation>Load the instrument market price first</translation></message>
     <message><source>Валюта счёта должна совпадать с валютой инструмента (%1)</source><translation>The account currency must match the instrument currency (%1)</translation></message>
     <message><source>Введите количество больше нуля (до 6 знаков после запятой)</source><translation>Enter a quantity greater than zero (up to 6 decimal places)</translation></message>

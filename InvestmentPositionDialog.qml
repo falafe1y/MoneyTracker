@@ -14,16 +14,22 @@ Dialog {
     property int selectedResult: -1
     property string localError: ""
     property string fixedAccountId: ""
+    property string editingPositionId: ""
+    property var editingInstrument: null
 
     parent: Overlay.overlay
     anchors.centerIn: parent
     width: Math.min(parent ? parent.width - 28 : 620, 620)
     height: Math.min(parent ? parent.height - 28 : 690, 690)
     modal: true
-    title: qsTr("Добавить инвестиционную позицию")
+    title: editingPositionId.length > 0
+         ? qsTr("Редактирование инвестиционной позиции")
+         : qsTr("Добавить инвестиционную позицию")
     standardButtons: Dialog.NoButton
 
     function openForNewPosition(accountId) {
+        editingPositionId = "";
+        editingInstrument = null;
         fixedAccountId = accountId || "";
         selectedResult = -1;
         localError = "";
@@ -41,6 +47,36 @@ Dialog {
             }
         }
         open();
+    }
+
+    function openForEdit(position) {
+        if (!position)
+            return;
+        editingPositionId = position.id || "";
+        editingInstrument = position;
+        fixedAccountId = "";
+        selectedResult = 0;
+        localError = "";
+        searchField.text = position.symbol || position.isin || "";
+        quantityField.text = position.quantityText || "";
+        averagePriceField.text = position.averagePriceText || "";
+        accountBox.currentIndex = -1;
+        if (controller) {
+            const accounts = controller.investmentAccounts;
+            for (let i = 0; i < accounts.length; ++i) {
+                if (accounts[i].id === position.accountId) {
+                    accountBox.currentIndex = i;
+                    break;
+                }
+            }
+        }
+        open();
+    }
+
+    onClosed: {
+        editingPositionId = "";
+        editingInstrument = null;
+        fixedAccountId = "";
     }
 
     background: Rectangle {
@@ -77,10 +113,12 @@ Dialog {
                 id: searchField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Например, SBER или RU0009029540")
+                enabled: dialog.editingPositionId.length === 0
                 onAccepted: searchButton.clicked()
             }
             Button {
                 id: searchButton
+                visible: dialog.editingPositionId.length === 0
                 text: dialog.controller && dialog.controller.investmentSearchBusy
                       ? qsTr("Ищем…") : qsTr("Найти")
                 enabled: dialog.controller
@@ -107,7 +145,9 @@ Dialog {
                 anchors.margins: 4
                 clip: true
                 spacing: 4
-                model: dialog.controller ? dialog.controller.investmentSearchResults : []
+                model: dialog.editingPositionId.length > 0
+                     ? [dialog.editingInstrument]
+                     : dialog.controller ? dialog.controller.investmentSearchResults : []
                 delegate: Rectangle {
                     required property var modelData
                     required property int index
@@ -146,7 +186,9 @@ Dialog {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 110
                         horizontalAlignment: Text.AlignRight
-                        text: modelData.hasPrice
+                        text: dialog.editingPositionId.length > 0
+                              ? qsTr("Текущая позиция")
+                              : modelData.hasPrice
                               ? modelData.priceText + " " + modelData.currency
                               : index === dialog.selectedResult
                                 && dialog.controller.investmentQuoteBusy
@@ -157,6 +199,7 @@ Dialog {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
+                        enabled: dialog.editingPositionId.length === 0
                         onClicked: {
                             dialog.selectedResult = index;
                             dialog.localError = "";
@@ -213,22 +256,33 @@ Dialog {
                 onClicked: dialog.close()
             }
             Button {
-                text: qsTr("Добавить")
+                text: dialog.editingPositionId.length > 0
+                    ? qsTr("Сохранить") : qsTr("Добавить")
                 enabled: dialog.controller
                          && !dialog.controller.investmentQuoteBusy
                          && accountBox.currentIndex >= 0
                          && dialog.selectedResult >= 0
                 onClicked: {
-                    const result = dialog.controller.addInvestmentPosition(
-                        accountBox.currentValue,
-                        dialog.selectedResult,
-                        quantityField.text,
-                        averagePriceField.text
-                    );
+                    const result = dialog.editingPositionId.length > 0
+                        ? dialog.controller.updateInvestmentPosition(
+                              dialog.editingPositionId,
+                              accountBox.currentValue,
+                              quantityField.text,
+                              averagePriceField.text
+                          )
+                        : dialog.controller.addInvestmentPosition(
+                              accountBox.currentValue,
+                              dialog.selectedResult,
+                              quantityField.text,
+                              averagePriceField.text
+                          );
                     if (result.ok)
                         dialog.close();
                     else
-                        dialog.localError = result.error || qsTr("Не удалось добавить позицию");
+                        dialog.localError = result.error
+                            || (dialog.editingPositionId.length > 0
+                                ? qsTr("Не удалось обновить позицию")
+                                : qsTr("Не удалось добавить позицию"));
                 }
             }
         }
