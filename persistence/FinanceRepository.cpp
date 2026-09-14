@@ -8,6 +8,7 @@
 #include <QSqlQuery>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QTimeZone>
 #include <QUuid>
 
 #include <cmath>
@@ -364,7 +365,8 @@ QVector<InvestmentPosition> FinanceRepository::loadInvestmentPositions()
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
             "SELECT p.id, p.account_id, p.instrument_id, "
-            "       p.quantity_micros, p.average_price_micros "
+            "       p.quantity_micros, p.average_price_micros, "
+            "       p.created_at, p.updated_at "
             "FROM investment_positions p "
             "JOIN accounts a ON a.id = p.account_id "
             "JOIN investment_instruments i ON i.id = p.instrument_id "
@@ -381,7 +383,11 @@ QVector<InvestmentPosition> FinanceRepository::loadInvestmentPositions()
             query.value(1).toString(),
             query.value(2).toString(),
             query.value(3).toLongLong(),
-            query.value(4).toLongLong()));
+            query.value(4).toLongLong(),
+            QDateTime::fromMSecsSinceEpoch(
+                query.value(5).toLongLong(), QTimeZone::UTC),
+            QDateTime::fromMSecsSinceEpoch(
+                query.value(6).toLongLong(), QTimeZone::UTC)));
     }
     return result;
 }

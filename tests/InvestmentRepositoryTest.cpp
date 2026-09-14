@@ -105,6 +105,8 @@ void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
         QCOMPARE(positions.constFirst().quantityMicros(), qint64(2'500'001));
         QCOMPARE(positions.constFirst().averagePriceMicros(),
                  qint64(190'750'125));
+        QVERIFY(positions.constFirst().createdAtUtc().isValid());
+        QVERIFY(positions.constFirst().updatedAtUtc().isValid());
 
         const QVector<InvestmentQuote> quotes = repository.loadInvestmentQuotes();
         QCOMPARE(quotes.size(), 1);

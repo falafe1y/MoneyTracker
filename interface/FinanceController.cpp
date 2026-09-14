@@ -39,6 +39,24 @@ QString transferId(const Transaction& transaction)
     return {};
 }
 
+qint64 scaledInvestmentValueMinor(
+    const qint64 quantityMicros,
+    const qint64 priceMicros
+    )
+{
+    if (quantityMicros <= 0 || priceMicros <= 0) {
+        return 0;
+    }
+    using Int128 = __int128_t;
+    constexpr Int128 divisor = 10'000'000'000LL;
+    const Int128 product = static_cast<Int128>(quantityMicros) *
+        static_cast<Int128>(priceMicros);
+    const Int128 roundedMinor = (product + divisor / 2) / divisor;
+    return roundedMinor >= std::numeric_limits<qint64>::max()
+        ? std::numeric_limits<qint64>::max()
+        : static_cast<qint64>(roundedMinor);
+}
+
 void addAccountFinancialRoles(
     QVariantMap& item,
     const Account& account,
@@ -1231,6 +1249,9 @@ QVariantList FinanceController::investmentPositions() const
         item[QStringLiteral("quantityText")] = formatMicros(position.quantityMicros());
         item[QStringLiteral("averagePriceText")] =
             formatMicros(position.averagePriceMicros(), 2);
+        item[QStringLiteral("averageValueMinor")] = scaledInvestmentValueMinor(
+            position.quantityMicros(), position.averagePriceMicros());
+        item[QStringLiteral("createdAt")] = position.createdAtUtc();
         item[QStringLiteral("hasQuote")] = hasQuote;
         item[QStringLiteral("priceText")] = hasQuote
             ? formatMicros(quote->priceMicros(), 2) : QString();
@@ -2554,8 +2575,6 @@ qint64 FinanceController::investmentAccountValueMinor(
 {
     using Int128 = __int128_t;
     Int128 totalMinor = 0;
-    constexpr Int128 divisor = 10'000'000'000LL;
-
     for (const InvestmentPosition& position : investmentPositions_) {
         if (position.accountId() != accountId) {
             continue;
@@ -2568,9 +2587,8 @@ qint64 FinanceController::investmentAccountValueMinor(
         if (quote == investmentQuotes_.cend() || quote->priceMicros() <= 0) {
             continue;
         }
-        const Int128 product = static_cast<Int128>(position.quantityMicros()) *
-            static_cast<Int128>(quote->priceMicros());
-        totalMinor += (product + divisor / 2) / divisor;
+        totalMinor += scaledInvestmentValueMinor(
+            position.quantityMicros(), quote->priceMicros());
         if (totalMinor >= std::numeric_limits<qint64>::max()) {
             return std::numeric_limits<qint64>::max();
         }

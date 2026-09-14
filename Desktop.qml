@@ -220,11 +220,15 @@ ApplicationWindow {
     }
 
     function transactionSignedAmount(row) {
+        if (row.type === "investment_position")
+            return row.amount;
         return row.type === "income" || (row.type === "transfer" && row.direction === "in")
              ? row.amount : -row.amount;
     }
 
     function transactionTypeLabel(row) {
+        if (row.type === "investment_position")
+            return qsTr("Позиция");
         if (row.type === "transfer")
             return qsTr("Перевод");
         return row.type === "income" ? qsTr("Доход") : qsTr("Расход");
@@ -310,6 +314,48 @@ ApplicationWindow {
                 result.push(row);
         }
         return result;
+    }
+
+    function visibleInvestmentOperations() {
+        const result = [];
+        const rows = financeController.investmentPositions;
+        const query = searchText.trim().toLowerCase();
+        const from = root.dateFromIso(financeController.dateFilterFrom);
+        const to = root.dateFromIso(financeController.dateFilterTo);
+        if (to)
+            to.setHours(23, 59, 59, 999);
+        for (let i = rows.length - 1; i >= 0; --i) {
+            const position = rows[i];
+            const createdAt = new Date(position.createdAt);
+            if (financeController.dateFilterActive
+                && (isNaN(createdAt.getTime())
+                    || createdAt < from || createdAt > to))
+                continue;
+            const description = position.symbol + " · " + position.name
+                              + " · " + qsTr("Количество: %1")
+                                    .arg(position.quantityText);
+            const text = (description + " " + position.typeName + " "
+                          + position.accountName).toLowerCase();
+            if (query && text.indexOf(query) < 0)
+                continue;
+            result.push({
+                id: position.id,
+                accountId: position.accountId,
+                type: "investment_position",
+                amount: position.averageValueMinor,
+                currency: position.currency,
+                categoryName: position.typeName,
+                rawDescription: description,
+                date: createdAt
+            });
+        }
+        return result;
+    }
+
+    function dashboardHistoryRows() {
+        return financeController.selectedAsset === "investment"
+             ? visibleInvestmentOperations()
+             : visibleTransactions();
     }
 
     function categoryTotals() {
@@ -882,11 +928,7 @@ ApplicationWindow {
                                 flat: true
                                 text: financeController.selectedAsset === "crypto"
                                       ? qsTr("+  Добавить криптовалюту")
-                                      : financeController.selectedAsset === "investment"
-                                        ? qsTr("+  Добавить позицию")
-                                        : qsTr("+  Добавить счёт")
-                                enabled: financeController.selectedAsset !== "investment"
-                                      || financeController.selectedAccountId.length > 0
+                                      : qsTr("+  Добавить счёт")
 
                                 contentItem: Text {
                                     text: addAccountButton.text
@@ -899,10 +941,6 @@ ApplicationWindow {
                                 onClicked: {
                                     if (financeController.selectedAsset === "crypto")
                                         cryptoWalletDialog.openForNewWallet();
-                                    else if (financeController.selectedAsset === "investment")
-                                        investmentPositionDialog.openForNewPosition(
-                                            financeController.selectedAccountId
-                                        );
                                     else
                                         accountDialog.openForSelectedAsset();
                                 }
@@ -1171,7 +1209,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     expandToContent: true
                     title: qsTr("История операций")
-                    rows: root.visibleTransactions()
+                    rows: root.dashboardHistoryRows()
+                    addInvestmentPositionAction:
+                        financeController.selectedAsset === "investment"
                 }
                 DashboardCryptoHistoryBlock {
                     visible: financeController.selectedAsset === "crypto"
@@ -1380,6 +1420,7 @@ ApplicationWindow {
         property string title: qsTr("История операций")
         property var rows: []
         property bool expandToContent: false
+        property bool addInvestmentPositionAction: false
 
         // 68 px block header + 34 px table header + 38 px per transaction + 2 px frame inset.
         // Keep these values in sync with TransactionTable row/header heights below.
@@ -1412,7 +1453,16 @@ ApplicationWindow {
                     text: qsTr("+  Операция")
                     highlighted: true
                     implicitWidth: 132
-                    onClicked: operationDialog.openForNew()
+                    enabled: !transactionBlock.addInvestmentPositionAction
+                          || financeController.selectedAccountId.length > 0
+                    onClicked: {
+                        if (transactionBlock.addInvestmentPositionAction)
+                            investmentPositionDialog.openForNewPosition(
+                                financeController.selectedAccountId
+                            );
+                        else
+                            operationDialog.openForNew();
+                    }
                 }
             }
 
@@ -1614,7 +1664,12 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
-                                    color: modelData.type === "transfer" ? root.navSelected : modelData.type === "income" ? root.income : root.red
+                                    color: modelData.type === "investment_position"
+                                         ? root.navSelected
+                                         : modelData.type === "transfer"
+                                           ? root.navSelected
+                                           : modelData.type === "income"
+                                             ? root.income : root.red
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: transactionTable.amountColumnWidth
@@ -1626,6 +1681,7 @@ ApplicationWindow {
                                 id: overviewRowMenuArea
                                 anchors.fill: parent
                                 acceptedButtons: Qt.RightButton
+                                enabled: modelData.type !== "investment_position"
                                 onPressed: function (mouse) {
                                     if (mouse.button === Qt.RightButton)
                                         root.openTransactionContextMenu(
@@ -1704,7 +1760,12 @@ ApplicationWindow {
                             }
                             Text {
                                 text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
-                                color: modelData.type === "transfer" ? root.navSelected : modelData.type === "income" ? root.income : root.red
+                                color: modelData.type === "investment_position"
+                                     ? root.navSelected
+                                     : modelData.type === "transfer"
+                                       ? root.navSelected
+                                       : modelData.type === "income"
+                                         ? root.income : root.red
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                                 Layout.preferredWidth: transactionTable.amountColumnWidth
@@ -1716,6 +1777,7 @@ ApplicationWindow {
                             id: operationsRowMenuArea
                             anchors.fill: parent
                             acceptedButtons: Qt.RightButton
+                            enabled: modelData.type !== "investment_position"
                             onPressed: function (mouse) {
                                 if (mouse.button === Qt.RightButton)
                                     root.openTransactionContextMenu(
