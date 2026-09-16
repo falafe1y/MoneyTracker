@@ -49,8 +49,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/DateSliceCalculator.cpp
         SOURCES services/CsvCodec.h
         SOURCES services/CsvCodec.cpp
-        SOURCES services/CapitalSnapshotStore.h
-        SOURCES services/CapitalSnapshotStore.cpp
+        SOURCES services/CapitalHistoryCalculator.h
+        SOURCES services/CapitalHistoryCalculator.cpp
         SOURCES services/CurrencyRateProvider.h
         SOURCES services/CurrencyRateCache.h
         SOURCES services/CurrencyRateCache.cpp
@@ -297,19 +297,19 @@ add_test(
     COMMAND CryptoParserTest
 )
 
-add_executable(CapitalSnapshotStoreTest
-    tests/CapitalSnapshotStoreTest.cpp
-    services/CapitalSnapshotStore.cpp
+add_executable(CapitalHistoryCalculatorTest
+    tests/CapitalHistoryCalculatorTest.cpp
+    services/CapitalHistoryCalculator.cpp
 )
 
-target_link_libraries(CapitalSnapshotStoreTest
+target_link_libraries(CapitalHistoryCalculatorTest
     PRIVATE
         Qt6::Core
         Qt6::Test
 )
 
 add_test(
-    NAME CapitalSnapshotStoreTest
-    COMMAND CapitalSnapshotStoreTest
+    NAME CapitalHistoryCalculatorTest
+    COMMAND CapitalHistoryCalculatorTest
 )
 endif()

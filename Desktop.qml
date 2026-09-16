@@ -1286,7 +1286,7 @@ ApplicationWindow {
                                     anchors.centerIn: parent
                                     width: parent.width - 32
                                     visible: financeController.capitalHistory.length === 0
-                                    text: qsTr("История появится после первого ежедневного снимка")
+                                    text: qsTr("Добавьте операцию — здесь появится история капитала")
                                     color: root.muted
                                     font.pixelSize: 12
                                     horizontalAlignment: Text.AlignHCenter

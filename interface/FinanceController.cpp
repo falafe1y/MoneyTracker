@@ -1,7 +1,7 @@
 #include "FinanceController.h"
 
+#include "../services/CapitalHistoryCalculator.h"
 #include "../services/DateSliceCalculator.h"
-#include "../services/CapitalSnapshotStore.h"
 #include "../services/CsvCodec.h"
 #include "../services/CryptoParser.h"
 #include "../services/TransactionDateFilter.h"
@@ -10,8 +10,6 @@
 #include <QDebug>
 #include <QCoreApplication>
 #include <QLocale>
-#include <QPointer>
-#include <QThreadPool>
 #include <QUuid>
 
 #include <QFileInfo>
@@ -60,12 +58,25 @@ qint64 scaledInvestmentValueMinor(
         : static_cast<qint64>(roundedMinor);
 }
 
-qint64 snapshotTotalMinor(const CapitalSnapshotPoint& point)
+qint64 saturatedCapitalAdd(const qint64 left, const qint64 right)
 {
     using Int128 = __int128_t;
-    const Int128 total = static_cast<Int128>(point.fiatMinor) +
-        static_cast<Int128>(point.cryptoMinor) +
-        static_cast<Int128>(point.investmentMinor);
+    const Int128 total = static_cast<Int128>(left) +
+        static_cast<Int128>(right);
+    if (total > std::numeric_limits<qint64>::max()) {
+        return std::numeric_limits<qint64>::max();
+    }
+    if (total < std::numeric_limits<qint64>::min()) {
+        return std::numeric_limits<qint64>::min();
+    }
+    return static_cast<qint64>(total);
+}
+
+qint64 saturatedCapitalSubtract(const qint64 left, const qint64 right)
+{
+    using Int128 = __int128_t;
+    const Int128 total = static_cast<Int128>(left) -
+        static_cast<Int128>(right);
     if (total > std::numeric_limits<qint64>::max()) {
         return std::numeric_limits<qint64>::max();
     }
@@ -239,6 +250,16 @@ FinanceController::FinanceController(QObject* parent)
     , balanceCalculator_(currencyConverter_)
 {
     QObject::connect(
+        this,
+        &FinanceController::balanceChanged,
+        this,
+        [this]()
+        {
+            rebuildCapitalHistory();
+            emit capitalHistoryChanged();
+        });
+
+    QObject::connect(
         &rateProvider_,
         &CbrCurrencyRateProvider::ratesUpdated,
         this,
@@ -248,7 +269,6 @@ FinanceController::FinanceController(QObject* parent)
             emit transactionsChanged();
             emit currencyRatesChanged();
             emit cryptoWalletsChanged();
-            emit capitalHistoryChanged();
         });
 
     QObject::connect(
@@ -314,6 +334,7 @@ FinanceController::FinanceController(QObject* parent)
             }
             emit cryptoTransactionsChanged();
             emit cryptoWalletsChanged();
+            emit balanceChanged();
         });
     QObject::connect(
         &cryptoProvider_,
@@ -496,10 +517,7 @@ FinanceController::FinanceController(QObject* parent)
     archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
     summary_ = repository_.loadSummary();
 
-    QTimer::singleShot(
-        0,
-        this,
-        &FinanceController::scheduleCapitalSnapshot);
+    rebuildCapitalHistory();
     QTimer::singleShot(
         0,
         this,
@@ -566,7 +584,6 @@ void FinanceController::setAppCurrency(const QString& currency)
     emit transactionsChanged();
     emit currencyRatesChanged();
     emit cryptoWalletsChanged();
-    emit capitalHistoryChanged();
 }
 
 QString FinanceController::uiLanguage() const
@@ -1421,26 +1438,19 @@ QString FinanceController::dateFilterTo() const
 
 QVariantList FinanceController::capitalHistory() const
 {
-    const CapitalHistorySeries series =
-        CapitalSnapshotStore::seriesForRange(
-            capitalSnapshots_, dateFilterFrom_, dateFilterTo_);
     const QString resolution =
-        series.resolution == CapitalHistoryResolution::Month
+        capitalHistorySeries_.resolution == CapitalHistoryResolution::Month
         ? QStringLiteral("month")
-        : series.resolution == CapitalHistoryResolution::Year
+        : capitalHistorySeries_.resolution == CapitalHistoryResolution::Year
           ? QStringLiteral("year")
           : QStringLiteral("day");
 
     QVariantList result;
-    result.reserve(series.points.size());
-    for (const CapitalSnapshotPoint& point : series.points) {
-        const Currency sourceCurrency = currencyFromString(point.currency);
-        const qint64 totalMinor = currencyConverter_.convert(
-            Money(snapshotTotalMinor(point), sourceCurrency),
-            appCurrency_).minorUnits();
+    result.reserve(capitalHistorySeries_.points.size());
+    for (const CapitalHistoryPoint& point : capitalHistorySeries_.points) {
         result.append(QVariantMap{
             {QStringLiteral("date"), point.date.toString(Qt::ISODate)},
-            {QStringLiteral("totalMinor"), totalMinor},
+            {QStringLiteral("totalMinor"), point.totalMinor},
             {QStringLiteral("currency"), currencyCode(appCurrency_)},
             {QStringLiteral("resolution"), resolution}
         });
@@ -1469,7 +1479,6 @@ bool FinanceController::setDateFilter(
     dateFilterFrom_ = newFrom;
     dateFilterTo_ = newTo;
     emit dateFilterChanged();
-    emit capitalHistoryChanged();
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
@@ -1485,7 +1494,6 @@ void FinanceController::clearDateFilter()
     dateFilterFrom_ = {};
     dateFilterTo_ = {};
     emit dateFilterChanged();
-    emit capitalHistoryChanged();
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
@@ -2845,13 +2853,14 @@ qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
     return total;
 }
 
-qint64 FinanceController::cryptoWalletValueMinor(
-    const CryptoWallet& wallet
+qint64 FinanceController::cryptoAmountValueMinor(
+    const CryptoWallet& wallet,
+    const qint64 amountAtomic
     ) const
 {
     const qint64 priceUsdMicros = cryptoPricesUsdMicros_.value(
         wallet.symbol());
-    if (priceUsdMicros <= 0 || wallet.balanceAtomic() <= 0 ||
+    if (priceUsdMicros <= 0 || amountAtomic <= 0 ||
         wallet.decimals() < 0 || wallet.decimals() > 18) {
         return 0;
     }
@@ -2864,7 +2873,7 @@ qint64 FinanceController::cryptoWalletValueMinor(
     for (int index = 0; index < wallet.decimals(); ++index) {
         divisor *= 10;
     }
-    const Int128 product = static_cast<Int128>(wallet.balanceAtomic()) *
+    const Int128 product = static_cast<Int128>(amountAtomic) *
         static_cast<Int128>(priceUsdMicros);
     const Int128 roundedUsdMinor = (product + divisor / 2) / divisor;
     const Int128 maximum = std::numeric_limits<qint64>::max();
@@ -2873,6 +2882,13 @@ qint64 FinanceController::cryptoWalletValueMinor(
         : static_cast<qint64>(roundedUsdMinor);
     return currencyConverter_.convert(
         Money(usdMinor, Currency::USD), appCurrency_).minorUnits();
+}
+
+qint64 FinanceController::cryptoWalletValueMinor(
+    const CryptoWallet& wallet
+    ) const
+{
+    return cryptoAmountValueMinor(wallet, wallet.balanceAtomic());
 }
 
 qint64 FinanceController::cryptoWalletsTotalMinor() const
@@ -2888,52 +2904,122 @@ qint64 FinanceController::cryptoWalletsTotalMinor() const
     return total;
 }
 
-void FinanceController::scheduleCapitalSnapshot()
+void FinanceController::rebuildCapitalHistory()
 {
-    const CapitalSnapshot snapshot{
-        currencyCode(appCurrency_),
-        assetBalanceMinor(AssetType::Fiat),
-        assetBalanceMinor(AssetType::Crypto),
-        assetBalanceMinor(AssetType::Investment)
-    };
-    const QString filePath = CapitalSnapshotStore::defaultFilePath();
-    const QDate currentDate = QDate::currentDate();
-    const QPointer<FinanceController> controller(this);
+    qint64 openingMinor = 0;
+    QVector<CapitalHistoryEvent> events;
+    events.reserve(
+        transactions_.size() +
+        cryptoTransactions_.size() +
+        investmentPositions_.size());
 
-    QThreadPool::globalInstance()->start(
-        [controller, filePath, currentDate, snapshot]()
+    for (const Account& account : std::as_const(accounts_)) {
+        const qint64 initialMinor = currencyConverter_.convert(
+            Money(account.initialBalanceMinor(), account.currency()),
+            appCurrency_).minorUnits();
+        openingMinor = saturatedCapitalAdd(openingMinor, initialMinor);
+    }
+
+    for (const InvestmentPosition& position :
+         std::as_const(investmentPositions_)) {
+        const auto account = std::find_if(
+            accounts_.cbegin(), accounts_.cend(),
+            [&position](const Account& candidate)
+            {
+                return candidate.id() == position.accountId();
+            });
+        const auto quote = std::find_if(
+            investmentQuotes_.cbegin(), investmentQuotes_.cend(),
+            [&position](const InvestmentQuote& candidate)
+            {
+                return candidate.instrumentId() == position.instrumentId();
+            });
+        if (account == accounts_.cend() ||
+            quote == investmentQuotes_.cend()) {
+            continue;
+        }
+
+        const qint64 positionMinor = currencyConverter_.convert(
+            Money(
+                scaledInvestmentValueMinor(
+                    position.quantityMicros(), quote->priceMicros()),
+                account->currency()),
+            appCurrency_).minorUnits();
+        const QDate createdDate = position.createdAtUtc().isValid()
+            ? position.createdAtUtc().toLocalTime().date()
+            : QDate();
+        if (createdDate.isValid()) {
+            events.append({createdDate, positionMinor});
+        } else {
+            openingMinor = saturatedCapitalAdd(
+                openingMinor, positionMinor);
+        }
+    }
+
+    for (const CryptoWallet& wallet : std::as_const(cryptoWallets_)) {
+        qint64 knownDeltaMinor = 0;
+        const auto sameWalletAddress = [&wallet](const QString& address)
         {
-            const CapitalSnapshotStore::SaveResult result =
-                CapitalSnapshotStore::saveIfNeeded(
-                    filePath, currentDate, snapshot);
-            if (result.status == CapitalSnapshotStore::SaveStatus::Failed) {
-                qWarning() << "Failed to save daily capital snapshot:"
-                           << result.error;
+            return wallet.network() == QStringLiteral("ETHEREUM")
+                ? address.compare(
+                      wallet.address(), Qt::CaseInsensitive) == 0
+                : address == wallet.address();
+        };
+        for (const CryptoTransaction& transaction :
+             std::as_const(cryptoTransactions_)) {
+            if (transaction.walletId() != wallet.id()) {
+                continue;
+            }
+            const bool fromWallet = sameWalletAddress(
+                transaction.fromAddress());
+            const bool toWallet = sameWalletAddress(
+                transaction.toAddress());
+            const bool incoming = toWallet && !fromWallet;
+            const bool outgoing = fromWallet && !toWallet;
+            if (!incoming && !outgoing) {
+                continue;
             }
 
-            CapitalSnapshotStore::LoadResult history =
-                CapitalSnapshotStore::load(filePath);
-            if (!controller) {
-                return;
+            const QDate transactionDate =
+                transaction.occurredAtUtc().toLocalTime().date();
+            if (!transactionDate.isValid()) {
+                continue;
             }
-            QMetaObject::invokeMethod(
-                controller.data(),
-                [controller,
-                 snapshots = std::move(history.snapshots),
-                 error = std::move(history.error)]() mutable
-                {
-                    if (!controller) {
-                        return;
-                    }
-                    if (!error.isEmpty()) {
-                        qWarning() << "Failed to load capital history:"
-                                   << error;
-                    }
-                    controller->capitalSnapshots_ = std::move(snapshots);
-                    emit controller->capitalHistoryChanged();
-                },
-                Qt::QueuedConnection);
+
+            qint64 deltaMinor = cryptoAmountValueMinor(
+                wallet, transaction.amountAtomic());
+            if (outgoing) {
+                deltaMinor = -deltaMinor;
+            }
+            knownDeltaMinor = saturatedCapitalAdd(
+                knownDeltaMinor, deltaMinor);
+            events.append({transactionDate, deltaMinor});
+        }
+
+        const qint64 residualOpeningMinor = saturatedCapitalSubtract(
+            cryptoWalletValueMinor(wallet), knownDeltaMinor);
+        openingMinor = saturatedCapitalAdd(
+            openingMinor, residualOpeningMinor);
+    }
+
+    for (const Transaction& transaction : std::as_const(transactions_)) {
+        qint64 deltaMinor = currencyConverter_.convert(
+            transaction.money(), appCurrency_).minorUnits();
+        if (transaction.type() == TransactionType::Expense) {
+            deltaMinor = -deltaMinor;
+        }
+        events.append({
+            transaction.date().toLocalTime().date(),
+            deltaMinor
         });
+    }
+
+    capitalHistorySeries_ = CapitalHistoryCalculator::calculate(
+        openingMinor,
+        events,
+        QDate::currentDate(),
+        dateFilterActive() ? dateFilterFrom_ : QDate(),
+        dateFilterActive() ? dateFilterTo_ : QDate());
 }
 
 void FinanceController::scheduleInitialCryptoRefresh()

@@ -41,7 +41,7 @@
     <message><source>Задолженность: %1</source><translation>Debt: %1</translation></message>
     <message><source>Инвестиции</source><translation>Investments</translation></message>
     <message><source>История капитала</source><translation>Capital history</translation></message>
-    <message><source>История появится после первого ежедневного снимка</source><translation>History will appear after the first daily snapshot</translation></message>
+    <message><source>Добавьте операцию — здесь появится история капитала</source><translation>Add a transaction to see your capital history here</translation></message>
     <message><source>История операций</source><translation>Transaction history</translation></message>
     <message><source>Категории</source><translation>Categories</translation></message>
     <message><source>Категории расходов</source><translation>Expense categories</translation></message>

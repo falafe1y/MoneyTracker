@@ -3,7 +3,7 @@
 #include "../core/Transaction.h"
 #include "../persistence/FinanceRepository.h"
 #include "../services/BalanceCalculator.h"
-#include "../services/CapitalSnapshotStore.h"
+#include "../services/CapitalHistoryCalculator.h"
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
 #include "../services/CryptoProvider.h"
@@ -461,9 +461,13 @@ private:
     qint64 investmentAccountValueMinor(const QString& accountId) const;
     int accountTransactionCount(const QString& accountId) const;
     qint64 assetBalanceMinor(AssetType asset) const;
+    qint64 cryptoAmountValueMinor(
+        const CryptoWallet& wallet,
+        qint64 amountAtomic
+        ) const;
     qint64 cryptoWalletValueMinor(const CryptoWallet& wallet) const;
     qint64 cryptoWalletsTotalMinor() const;
-    void scheduleCapitalSnapshot();
+    void rebuildCapitalHistory();
     void scheduleInitialCryptoRefresh();
     void scheduleNextCryptoRefresh(qint64 delayMs);
     void startCryptoBalanceRequest(const CryptoWallet& wallet);
@@ -501,7 +505,7 @@ private:
     QVector<InvestmentPosition> investmentPositions_;
     QVector<InvestmentQuote> investmentQuotes_;
     QVector<InvestmentMarketInstrument> investmentSearchResults_;
-    QVector<CapitalSnapshotPoint> capitalSnapshots_;
+    CapitalHistorySeries capitalHistorySeries_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
 
