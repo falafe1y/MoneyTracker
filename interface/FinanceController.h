@@ -325,6 +325,7 @@ public:
     Q_INVOKABLE QVariantMap updateInvestmentPosition(
         const QString& positionId,
         const QString& accountId,
+        int searchResultIndex,
         const QString& quantity,
         const QString& averagePrice
         );

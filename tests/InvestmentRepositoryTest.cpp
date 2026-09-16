@@ -13,11 +13,53 @@ class InvestmentRepositoryTest : public QObject
 
 private slots:
     void storesUpdatesAndArchivesInvestmentModel();
+    void updatesPositionInstrument();
     void rejectsInvalidInvestmentRelationsAndValues();
     void archivesPositionsWithInvestmentAccount();
     void migratesMoexRoutingColumns();
     void migratesLegacyInvestmentAccountTypes();
 };
+
+void InvestmentRepositoryTest::updatesPositionInstrument()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    FinanceRepository repository(temporaryDirectory.filePath(
+        QStringLiteral("investment-instrument-update.sqlite3")));
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+    const Account brokerage(
+        QStringLiteral("brokerage"), QStringLiteral("Brokerage"),
+        AssetType::Investment, AccountType::Brokerage, Currency::RUB);
+    const InvestmentInstrument sber(
+        QStringLiteral("sber"), QStringLiteral("SBER"),
+        QStringLiteral("RU0009029540"), QStringLiteral("Сбербанк"),
+        InvestmentInstrumentType::Stock, Currency::RUB);
+    const InvestmentInstrument yandex(
+        QStringLiteral("ydex"), QStringLiteral("YDEX"),
+        QStringLiteral("RU000A107T19"), QStringLiteral("Яндекс"),
+        InvestmentInstrumentType::Stock, Currency::RUB);
+    QVERIFY(repository.insertAccount(brokerage));
+    QVERIFY(repository.insertInvestmentInstrument(sber));
+    QVERIFY(repository.insertInvestmentInstrument(yandex));
+
+    const InvestmentPosition position(
+        QStringLiteral("position"), brokerage.id(), sber.id(),
+        5'000'000, 300'000'000);
+    QVERIFY(repository.insertInvestmentPosition(position));
+    QVERIFY2(repository.updateInvestmentPosition(InvestmentPosition(
+                 position.id(), brokerage.id(), yandex.id(),
+                 7'500'000, 4'200'000'000)),
+             qPrintable(repository.lastError()));
+
+    const QVector<InvestmentPosition> positions =
+        repository.loadInvestmentPositions();
+    QCOMPARE(positions.size(), 1);
+    QCOMPARE(positions.constFirst().instrumentId(), yandex.id());
+    QCOMPARE(positions.constFirst().quantityMicros(), qint64(7'500'000));
+    QCOMPARE(positions.constFirst().averagePriceMicros(),
+             qint64(4'200'000'000));
+}
 
 void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
 {

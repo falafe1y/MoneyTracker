@@ -1932,6 +1932,7 @@ QVariantMap FinanceController::addInvestmentPosition(
 QVariantMap FinanceController::updateInvestmentPosition(
     const QString& positionId,
     const QString& accountId,
+    const int searchResultIndex,
     const QString& quantity,
     const QString& averagePrice
     )
@@ -1958,19 +1959,43 @@ QVariantMap FinanceController::updateInvestmentPosition(
         return result;
     }
 
-    const auto instrument = std::find_if(
+    const auto currentInstrument = std::find_if(
         investmentInstruments_.cbegin(), investmentInstruments_.cend(),
         [&current](const InvestmentInstrument& candidate) {
             return candidate.id() == current->instrumentId();
         });
-    if (instrument == investmentInstruments_.cend()) {
+    if (currentInstrument == investmentInstruments_.cend()) {
         result[QStringLiteral("error")] = tr("Инвестиционный инструмент не найден");
         return result;
     }
-    if (account->currency() != instrument->currency()) {
+
+    const InvestmentMarketInstrument* selectedMarketInstrument = nullptr;
+    QString targetInstrumentId = currentInstrument->id();
+    Currency targetCurrency = currentInstrument->currency();
+    if (searchResultIndex >= 0) {
+        if (searchResultIndex >= investmentSearchResults_.size()) {
+            result[QStringLiteral("error")] = tr("Выберите акцию или фонд");
+            return result;
+        }
+        selectedMarketInstrument = &investmentSearchResults_.at(searchResultIndex);
+        if (selectedMarketInstrument->priceMicros() <= 0 ||
+            selectedMarketInstrument->currencyCode().isEmpty()) {
+            result[QStringLiteral("error")] = tr(
+                "Сначала получите рыночную цену инструмента");
+            return result;
+        }
+        targetInstrumentId = selectedMarketInstrument->id();
+        targetCurrency = currencyFromString(
+            selectedMarketInstrument->currencyCode());
+    } else if (searchResultIndex != -1) {
+        result[QStringLiteral("error")] = tr("Выберите акцию или фонд");
+        return result;
+    }
+
+    if (account->currency() != targetCurrency) {
         result[QStringLiteral("error")] = tr(
             "Валюта счёта должна совпадать с валютой инструмента (%1)")
-                .arg(currencyCode(instrument->currency()));
+                .arg(currencyCode(targetCurrency));
         return result;
     }
 
@@ -1981,7 +2006,9 @@ QVariantMap FinanceController::updateInvestmentPosition(
         return result;
     }
 
-    qint64 averagePriceMicros = current->averagePriceMicros();
+    qint64 averagePriceMicros = selectedMarketInstrument
+        ? selectedMarketInstrument->priceMicros()
+        : current->averagePriceMicros();
     if (!averagePrice.trimmed().isEmpty() &&
         !parsePositiveMicros(averagePrice, averagePriceMicros)) {
         result[QStringLiteral("error")] = tr("Введите корректную среднюю цену");
@@ -1990,10 +2017,11 @@ QVariantMap FinanceController::updateInvestmentPosition(
 
     const bool duplicate = std::any_of(
         investmentPositions_.cbegin(), investmentPositions_.cend(),
-        [&positionId, &accountId, &current](const InvestmentPosition& position) {
+        [&positionId, &accountId,
+         &targetInstrumentId](const InvestmentPosition& position) {
             return position.id() != positionId &&
                 position.accountId() == accountId &&
-                position.instrumentId() == current->instrumentId();
+                position.instrumentId() == targetInstrumentId;
         });
     if (duplicate) {
         result[QStringLiteral("error")] = tr(
@@ -2001,18 +2029,58 @@ QVariantMap FinanceController::updateInvestmentPosition(
         return result;
     }
 
+    bool insertedInstrument = false;
+    if (selectedMarketInstrument) {
+        const InvestmentInstrument selectedInstrument(
+            selectedMarketInstrument->id(), selectedMarketInstrument->symbol(),
+            selectedMarketInstrument->isin(), selectedMarketInstrument->name(),
+            selectedMarketInstrument->type(), targetCurrency,
+            QStringLiteral("MOEX"),
+            selectedMarketInstrument->primaryBoardId());
+        const auto existing = std::find_if(
+            investmentInstruments_.cbegin(), investmentInstruments_.cend(),
+            [&selectedInstrument](const InvestmentInstrument& candidate) {
+                return candidate.id() == selectedInstrument.id();
+            });
+        insertedInstrument = existing == investmentInstruments_.cend();
+        if ((insertedInstrument &&
+             !repository_.insertInvestmentInstrument(selectedInstrument)) ||
+            (!insertedInstrument &&
+             !repository_.updateInvestmentInstrument(selectedInstrument))) {
+            qWarning() << "Failed to save edited investment instrument:"
+                       << repository_.lastError();
+            result[QStringLiteral("error")] = tr(
+                "Не удалось сохранить инструмент");
+            return result;
+        }
+    }
+
     const InvestmentPosition updated(
-        current->id(), accountId, current->instrumentId(), quantityMicros,
+        current->id(), accountId, targetInstrumentId, quantityMicros,
         averagePriceMicros, current->createdAtUtc(),
         QDateTime::currentDateTimeUtc());
     if (!repository_.updateInvestmentPosition(updated)) {
+        if (insertedInstrument &&
+            !repository_.archiveInvestmentInstrument(targetInstrumentId)) {
+            qWarning() << "Failed to roll back edited investment instrument:"
+                       << repository_.lastError();
+        }
         qWarning() << "Failed to update investment position:"
                    << repository_.lastError();
         result[QStringLiteral("error")] = tr("Не удалось обновить позицию");
         return result;
     }
 
+    if (selectedMarketInstrument &&
+        !repository_.saveInvestmentQuote(InvestmentQuote(
+            targetInstrumentId, selectedMarketInstrument->priceMicros(),
+            selectedMarketInstrument->quotedAtUtc()))) {
+        qWarning() << "Failed to save edited investment quote:"
+                   << repository_.lastError();
+    }
+    investmentInstruments_ = repository_.loadInvestmentInstruments();
     investmentPositions_ = repository_.loadInvestmentPositions();
+    investmentQuotes_ = repository_.loadInvestmentQuotes();
     emit investmentPositionsChanged();
     emit accountsChanged();
     emit balanceChanged();

@@ -16,6 +16,7 @@ Dialog {
     property string fixedAccountId: ""
     property string editingPositionId: ""
     property var editingInstrument: null
+    property bool showingCurrentInstrument: false
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -30,6 +31,7 @@ Dialog {
     function openForNewPosition(accountId) {
         editingPositionId = "";
         editingInstrument = null;
+        showingCurrentInstrument = false;
         fixedAccountId = accountId || "";
         selectedResult = -1;
         localError = "";
@@ -54,6 +56,7 @@ Dialog {
             return;
         editingPositionId = position.id || "";
         editingInstrument = position;
+        showingCurrentInstrument = true;
         fixedAccountId = "";
         selectedResult = 0;
         localError = "";
@@ -76,6 +79,7 @@ Dialog {
     onClosed: {
         editingPositionId = "";
         editingInstrument = null;
+        showingCurrentInstrument = false;
         fixedAccountId = "";
     }
 
@@ -113,18 +117,19 @@ Dialog {
                 id: searchField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Например, SBER или RU0009029540")
-                enabled: dialog.editingPositionId.length === 0
                 onAccepted: searchButton.clicked()
             }
             Button {
                 id: searchButton
-                visible: dialog.editingPositionId.length === 0
                 text: dialog.controller && dialog.controller.investmentSearchBusy
                       ? qsTr("Ищем…") : qsTr("Найти")
                 enabled: dialog.controller
                          && !dialog.controller.investmentSearchBusy
                          && searchField.text.trim().length >= 2
                 onClicked: {
+                    if (dialog.editingPositionId.length > 0)
+                        averagePriceField.text = "";
+                    dialog.showingCurrentInstrument = false;
                     dialog.selectedResult = -1;
                     dialog.localError = "";
                     dialog.controller.searchInvestmentInstruments(searchField.text);
@@ -145,7 +150,7 @@ Dialog {
                 anchors.margins: 4
                 clip: true
                 spacing: 4
-                model: dialog.editingPositionId.length > 0
+                model: dialog.showingCurrentInstrument
                      ? [dialog.editingInstrument]
                      : dialog.controller ? dialog.controller.investmentSearchResults : []
                 delegate: Rectangle {
@@ -186,7 +191,7 @@ Dialog {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 110
                         horizontalAlignment: Text.AlignRight
-                        text: dialog.editingPositionId.length > 0
+                        text: dialog.showingCurrentInstrument
                               ? qsTr("Текущая позиция")
                               : modelData.hasPrice
                               ? modelData.priceText + " " + modelData.currency
@@ -199,7 +204,7 @@ Dialog {
                     MouseArea {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
-                        enabled: dialog.editingPositionId.length === 0
+                        enabled: !dialog.showingCurrentInstrument
                         onClicked: {
                             dialog.selectedResult = index;
                             dialog.localError = "";
@@ -267,6 +272,8 @@ Dialog {
                         ? dialog.controller.updateInvestmentPosition(
                               dialog.editingPositionId,
                               accountBox.currentValue,
+                              dialog.showingCurrentInstrument
+                                  ? -1 : dialog.selectedResult,
                               quantityField.text,
                               averagePriceField.text
                           )
