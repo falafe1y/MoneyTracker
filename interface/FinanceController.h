@@ -3,6 +3,7 @@
 #include "../core/Transaction.h"
 #include "../persistence/FinanceRepository.h"
 #include "../services/BalanceCalculator.h"
+#include "../services/CapitalSnapshotStore.h"
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
 #include "../services/CryptoProvider.h"
@@ -229,6 +230,12 @@ class FinanceController final : public QObject
                 NOTIFY dateFilterChanged
         )
 
+    Q_PROPERTY(
+        QVariantList capitalHistory
+            READ capitalHistory
+                NOTIFY capitalHistoryChanged
+        )
+
 public:
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -283,6 +290,7 @@ public:
     bool dateFilterActive() const;
     QString dateFilterFrom() const;
     QString dateFilterTo() const;
+    QVariantList capitalHistory() const;
     Q_INVOKABLE bool setDateFilter(
         const QDateTime& from,
         const QDateTime& to
@@ -426,6 +434,7 @@ signals:
     void investmentSearchResultsChanged();
     void investmentSearchStateChanged();
     void investmentRefreshingChanged();
+    void capitalHistoryChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -492,6 +501,7 @@ private:
     QVector<InvestmentPosition> investmentPositions_;
     QVector<InvestmentQuote> investmentQuotes_;
     QVector<InvestmentMarketInstrument> investmentSearchResults_;
+    QVector<CapitalSnapshotPoint> capitalSnapshots_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
 

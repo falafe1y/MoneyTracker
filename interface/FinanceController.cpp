@@ -10,6 +10,7 @@
 #include <QDebug>
 #include <QCoreApplication>
 #include <QLocale>
+#include <QPointer>
 #include <QThreadPool>
 #include <QUuid>
 
@@ -57,6 +58,21 @@ qint64 scaledInvestmentValueMinor(
     return roundedMinor >= std::numeric_limits<qint64>::max()
         ? std::numeric_limits<qint64>::max()
         : static_cast<qint64>(roundedMinor);
+}
+
+qint64 snapshotTotalMinor(const CapitalSnapshotPoint& point)
+{
+    using Int128 = __int128_t;
+    const Int128 total = static_cast<Int128>(point.fiatMinor) +
+        static_cast<Int128>(point.cryptoMinor) +
+        static_cast<Int128>(point.investmentMinor);
+    if (total > std::numeric_limits<qint64>::max()) {
+        return std::numeric_limits<qint64>::max();
+    }
+    if (total < std::numeric_limits<qint64>::min()) {
+        return std::numeric_limits<qint64>::min();
+    }
+    return static_cast<qint64>(total);
 }
 
 void addAccountFinancialRoles(
@@ -232,6 +248,7 @@ FinanceController::FinanceController(QObject* parent)
             emit transactionsChanged();
             emit currencyRatesChanged();
             emit cryptoWalletsChanged();
+            emit capitalHistoryChanged();
         });
 
     QObject::connect(
@@ -549,6 +566,7 @@ void FinanceController::setAppCurrency(const QString& currency)
     emit transactionsChanged();
     emit currencyRatesChanged();
     emit cryptoWalletsChanged();
+    emit capitalHistoryChanged();
 }
 
 QString FinanceController::uiLanguage() const
@@ -1401,6 +1419,35 @@ QString FinanceController::dateFilterTo() const
     return dateFilterTo_.toString(Qt::ISODate);
 }
 
+QVariantList FinanceController::capitalHistory() const
+{
+    const CapitalHistorySeries series =
+        CapitalSnapshotStore::seriesForRange(
+            capitalSnapshots_, dateFilterFrom_, dateFilterTo_);
+    const QString resolution =
+        series.resolution == CapitalHistoryResolution::Month
+        ? QStringLiteral("month")
+        : series.resolution == CapitalHistoryResolution::Year
+          ? QStringLiteral("year")
+          : QStringLiteral("day");
+
+    QVariantList result;
+    result.reserve(series.points.size());
+    for (const CapitalSnapshotPoint& point : series.points) {
+        const Currency sourceCurrency = currencyFromString(point.currency);
+        const qint64 totalMinor = currencyConverter_.convert(
+            Money(snapshotTotalMinor(point), sourceCurrency),
+            appCurrency_).minorUnits();
+        result.append(QVariantMap{
+            {QStringLiteral("date"), point.date.toString(Qt::ISODate)},
+            {QStringLiteral("totalMinor"), totalMinor},
+            {QStringLiteral("currency"), currencyCode(appCurrency_)},
+            {QStringLiteral("resolution"), resolution}
+        });
+    }
+    return result;
+}
+
 bool FinanceController::setDateFilter(
     const QDateTime& from,
     const QDateTime& to
@@ -1422,6 +1469,7 @@ bool FinanceController::setDateFilter(
     dateFilterFrom_ = newFrom;
     dateFilterTo_ = newTo;
     emit dateFilterChanged();
+    emit capitalHistoryChanged();
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
@@ -1437,6 +1485,7 @@ void FinanceController::clearDateFilter()
     dateFilterFrom_ = {};
     dateFilterTo_ = {};
     emit dateFilterChanged();
+    emit capitalHistoryChanged();
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
@@ -2849,9 +2898,10 @@ void FinanceController::scheduleCapitalSnapshot()
     };
     const QString filePath = CapitalSnapshotStore::defaultFilePath();
     const QDate currentDate = QDate::currentDate();
+    const QPointer<FinanceController> controller(this);
 
     QThreadPool::globalInstance()->start(
-        [filePath, currentDate, snapshot]()
+        [controller, filePath, currentDate, snapshot]()
         {
             const CapitalSnapshotStore::SaveResult result =
                 CapitalSnapshotStore::saveIfNeeded(
@@ -2860,6 +2910,29 @@ void FinanceController::scheduleCapitalSnapshot()
                 qWarning() << "Failed to save daily capital snapshot:"
                            << result.error;
             }
+
+            CapitalSnapshotStore::LoadResult history =
+                CapitalSnapshotStore::load(filePath);
+            if (!controller) {
+                return;
+            }
+            QMetaObject::invokeMethod(
+                controller.data(),
+                [controller,
+                 snapshots = std::move(history.snapshots),
+                 error = std::move(history.error)]() mutable
+                {
+                    if (!controller) {
+                        return;
+                    }
+                    if (!error.isEmpty()) {
+                        qWarning() << "Failed to load capital history:"
+                                   << error;
+                    }
+                    controller->capitalSnapshots_ = std::move(snapshots);
+                    emit controller->capitalHistoryChanged();
+                },
+                Qt::QueuedConnection);
         });
 }
 

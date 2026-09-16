@@ -298,6 +298,52 @@ ApplicationWindow {
              + " — " + Qt.formatDate(to, "dd.MM.yyyy");
     }
 
+    function capitalHistoryResolutionLabel() {
+        const rows = financeController.capitalHistory;
+        if (rows.length === 0)
+            return "";
+        if (rows[0].resolution === "year")
+            return qsTr("По годам");
+        if (rows[0].resolution === "month")
+            return qsTr("По месяцам");
+        return qsTr("По дням");
+    }
+
+    function capitalAxisMoney(minor, code) {
+        const amount = Number(minor) / 100;
+        const absolute = Math.abs(amount);
+        let divisor = 1;
+        let suffix = "";
+        if (absolute >= 1000000000) {
+            divisor = 1000000000;
+            suffix = qsTr("млрд");
+        } else if (absolute >= 1000000) {
+            divisor = 1000000;
+            suffix = qsTr("млн");
+        } else if (absolute >= 1000) {
+            divisor = 1000;
+            suffix = qsTr("тыс.");
+        }
+        if (divisor === 1)
+            return root.money(Math.round(Number(minor)), code, false);
+        const scaled = amount / divisor;
+        const digits = Math.abs(scaled) >= 100 ? 0
+                     : Math.abs(scaled) >= 10 ? 1 : 2;
+        return scaled.toLocaleString(root.uiLocale(), "f", digits)
+             + " " + suffix + " " + root.symbol(code);
+    }
+
+    function capitalDateLabel(row) {
+        const date = root.dateFromIso(row.date);
+        if (!date)
+            return "";
+        if (row.resolution === "year")
+            return Qt.formatDate(date, "yyyy");
+        if (row.resolution === "month")
+            return Qt.formatDate(date, "MMM yyyy");
+        return Qt.formatDate(date, "dd.MM");
+    }
+
     function visibleTransactions() {
         const result = [], ids = {}, accounts = financeController.accounts;
         for (let i = 0; i < accounts.length; ++i)
@@ -1070,55 +1116,181 @@ ApplicationWindow {
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 16
-                            Text {
-                                text: qsTr("Расходы по категориям")
-                                color: root.accent
-                                font.pixelSize: 15
-                                font.weight: Font.DemiBold
-                            }
                             RowLayout {
                                 Layout.fillWidth: true
+                                Text {
+                                    text: qsTr("История капитала")
+                                    color: root.accent
+                                    font.pixelSize: 15
+                                    font.weight: Font.DemiBold
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: root.capitalHistoryResolutionLabel()
+                                    color: root.muted
+                                    font.pixelSize: 11
+                                }
+                            }
+                            Item {
+                                Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                spacing: 18
-                                Repeater {
-                                    model: root.categoryTotals()
-                                    delegate: ColumnLayout {
-                                        required property int index
-                                        required property var modelData
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 0
-                                        Layout.minimumWidth: 0
-                                        Layout.fillHeight: true
-                                        Item {
-                                            Layout.fillHeight: true
+
+                                Canvas {
+                                    id: capitalHistoryChart
+                                    anchors.fill: parent
+                                    property var points: financeController.capitalHistory
+
+                                    onPointsChanged: requestPaint()
+                                    onWidthChanged: requestPaint()
+                                    onHeightChanged: requestPaint()
+
+                                    onPaint: {
+                                        const ctx = getContext("2d");
+                                        ctx.clearRect(0, 0, width, height);
+                                        const data = points || [];
+                                        if (data.length === 0 || width < 150 || height < 90)
+                                            return;
+
+                                        const left = 78;
+                                        const right = 12;
+                                        const top = 8;
+                                        const bottom = 31;
+                                        const plotWidth = Math.max(1, width - left - right);
+                                        const plotHeight = Math.max(1, height - top - bottom);
+
+                                        let minimum = Number(data[0].totalMinor);
+                                        let maximum = minimum;
+                                        for (let i = 1; i < data.length; ++i) {
+                                            const value = Number(data[i].totalMinor);
+                                            minimum = Math.min(minimum, value);
+                                            maximum = Math.max(maximum, value);
                                         }
-                                        Rectangle {
-                                            Layout.alignment: Qt.AlignHCenter
-                                            width: 44
-                                            height: Math.max(5, Math.min(120, modelData.amount / Math.max(1, root.categoryTotals()[0].amount) * 120))
-                                            radius: 5
-                                            color: root.chartColors[index % root.chartColors.length]
-                                            border.width: 1
-                                            border.color: root.line
+                                        if (minimum === maximum) {
+                                            const padding = Math.max(100, Math.abs(minimum) * 0.05);
+                                            minimum -= padding;
+                                            maximum += padding;
+                                        } else {
+                                            const padding = (maximum - minimum) * 0.08;
+                                            minimum -= padding;
+                                            maximum += padding;
                                         }
-                                        Text {
-                                            Layout.alignment: Qt.AlignHCenter
-                                            Layout.fillWidth: true
-                                            Layout.preferredWidth: 0
-                                            Layout.maximumWidth: 80
-                                            text: modelData.label
-                                            color: root.muted
-                                            font.pixelSize: 11
-                                            horizontalAlignment: Text.AlignHCenter
-                                            elide: Text.ElideRight
+
+                                        const valueRange = Math.max(1, maximum - minimum);
+                                        const firstDate = root.dateFromIso(data[0].date);
+                                        const lastDate = root.dateFromIso(data[data.length - 1].date);
+                                        const firstTime = firstDate ? firstDate.getTime() : 0;
+                                        const lastTime = lastDate ? lastDate.getTime() : firstTime;
+                                        const timeRange = Math.max(1, lastTime - firstTime);
+
+                                        function pointX(row, index) {
+                                            if (data.length === 1)
+                                                return left + plotWidth / 2;
+                                            const date = root.dateFromIso(row.date);
+                                            const time = date ? date.getTime() : firstTime;
+                                            return left + (time - firstTime) / timeRange * plotWidth;
+                                        }
+                                        function pointY(value) {
+                                            return top + (maximum - value) / valueRange * plotHeight;
+                                        }
+
+                                        ctx.font = "10px sans-serif";
+                                        ctx.lineWidth = 1;
+                                        const verticalTicks = 4;
+                                        for (let tick = 0; tick <= verticalTicks; ++tick) {
+                                            const ratio = tick / verticalTicks;
+                                            const y = top + ratio * plotHeight;
+                                            const value = maximum - ratio * valueRange;
+                                            ctx.strokeStyle = root.line;
+                                            ctx.beginPath();
+                                            ctx.moveTo(left, y);
+                                            ctx.lineTo(left + plotWidth, y);
+                                            ctx.stroke();
+                                            ctx.fillStyle = root.muted;
+                                            ctx.textAlign = "right";
+                                            ctx.textBaseline = "middle";
+                                            ctx.fillText(
+                                                root.capitalAxisMoney(
+                                                    value,
+                                                    financeController.appCurrency
+                                                ),
+                                                left - 7,
+                                                y
+                                            );
+                                        }
+
+                                        ctx.strokeStyle = root.accent;
+                                        ctx.lineWidth = 2.5;
+                                        ctx.lineJoin = "round";
+                                        ctx.lineCap = "round";
+                                        ctx.beginPath();
+                                        for (let point = 0; point < data.length; ++point) {
+                                            const x = pointX(data[point], point);
+                                            const y = pointY(Number(data[point].totalMinor));
+                                            if (point === 0)
+                                                ctx.moveTo(x, y);
+                                            else
+                                                ctx.lineTo(x, y);
+                                        }
+                                        ctx.stroke();
+
+                                        ctx.fillStyle = root.chartAccent3;
+                                        for (let marker = 0; marker < data.length; ++marker) {
+                                            ctx.beginPath();
+                                            ctx.arc(
+                                                pointX(data[marker], marker),
+                                                pointY(Number(data[marker].totalMinor)),
+                                                3.5,
+                                                0,
+                                                Math.PI * 2
+                                            );
+                                            ctx.fill();
+                                        }
+
+                                        const horizontalTicks = Math.min(5, data.length);
+                                        const used = {};
+                                        for (let label = 0; label < horizontalTicks; ++label) {
+                                            const index = horizontalTicks === 1
+                                                ? 0
+                                                : Math.round(
+                                                      label * (data.length - 1)
+                                                      / (horizontalTicks - 1)
+                                                  );
+                                            if (used[index])
+                                                continue;
+                                            used[index] = true;
+                                            const x = pointX(data[index], index);
+                                            ctx.fillStyle = root.muted;
+                                            ctx.textBaseline = "top";
+                                            ctx.textAlign = index === 0 && data.length > 1
+                                                ? "left"
+                                                : index === data.length - 1 && data.length > 1
+                                                  ? "right"
+                                                  : "center";
+                                            ctx.fillText(
+                                                root.capitalDateLabel(data[index]),
+                                                x,
+                                                top + plotHeight + 8
+                                            );
+                                        }
+                                    }
+
+                                    Connections {
+                                        target: financeController
+                                        function onUiLanguageChanged() {
+                                            capitalHistoryChart.requestPaint();
                                         }
                                     }
                                 }
+
                                 Text {
-                                    visible: root.categoryTotals().length === 0
-                                    text: qsTr("Добавьте расходы — здесь появится график")
+                                    anchors.centerIn: parent
+                                    width: parent.width - 32
+                                    visible: financeController.capitalHistory.length === 0
+                                    text: qsTr("История появится после первого ежедневного снимка")
                                     color: root.muted
-                                    Layout.alignment: Qt.AlignCenter
+                                    font.pixelSize: 12
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
                                 }
                             }
                         }

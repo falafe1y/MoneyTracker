@@ -40,6 +40,8 @@
     <message><source>Задолженность на момент добавления</source><translation>Debt when added</translation></message>
     <message><source>Задолженность: %1</source><translation>Debt: %1</translation></message>
     <message><source>Инвестиции</source><translation>Investments</translation></message>
+    <message><source>История капитала</source><translation>Capital history</translation></message>
+    <message><source>История появится после первого ежедневного снимка</source><translation>History will appear after the first daily snapshot</translation></message>
     <message><source>История операций</source><translation>Transaction history</translation></message>
     <message><source>Категории</source><translation>Categories</translation></message>
     <message><source>Категории расходов</source><translation>Expense categories</translation></message>
@@ -79,6 +81,9 @@
     <message><source>Перевод</source><translation>Transfer</translation></message>
     <message><source>Период</source><translation>Date range</translation></message>
     <message><source>Поиск по операциям...</source><translation>Search transactions...</translation></message>
+    <message><source>По дням</source><translation>By day</translation></message>
+    <message><source>По месяцам</source><translation>By month</translation></message>
+    <message><source>По годам</source><translation>By year</translation></message>
     <message><source>Пользовательские названия счетов и категорий не переводятся.</source><translation>Custom account and category names are not translated.</translation></message>
     <message><source>Проверьте название и параметры счёта</source><translation>Check the account name and settings</translation></message>
     <message><source>Проверьте сумму и выбранные счета</source><translation>Check the amount and selected accounts</translation></message>
@@ -116,6 +121,9 @@
     <message><source>Фиат</source><translation>Fiat</translation></message>
     <message><source>Это действие нельзя отменить. Баланс и статистика будут пересчитаны.</source><translation>This action cannot be undone. Balances and statistics will be recalculated.</translation></message>
     <message><source>Язык интерфейса</source><translation>Interface language</translation></message>
+    <message><source>млрд</source><translation>bn</translation></message>
+    <message><source>млн</source><translation>m</translation></message>
+    <message><source>тыс.</source><translation>k</translation></message>
     <message><source>Импорт и экспорт</source><translation>Import and export</translation></message>
     <message><source>CSV содержит операции, переводы, даты, исходные суммы, счета и категории.</source><translation>CSV includes transactions, transfers, dates, original amounts, accounts, and categories.</translation></message>
     <message><source>Экспортировать CSV</source><translation>Export CSV</translation></message>
