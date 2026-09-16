@@ -454,6 +454,7 @@ private:
     qint64 assetBalanceMinor(AssetType asset) const;
     qint64 cryptoWalletValueMinor(const CryptoWallet& wallet) const;
     qint64 cryptoWalletsTotalMinor() const;
+    void scheduleCapitalSnapshot();
     void scheduleInitialCryptoRefresh();
     void scheduleNextCryptoRefresh(qint64 delayMs);
     void startCryptoBalanceRequest(const CryptoWallet& wallet);

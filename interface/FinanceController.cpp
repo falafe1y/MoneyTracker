@@ -1,6 +1,7 @@
 #include "FinanceController.h"
 
 #include "../services/DateSliceCalculator.h"
+#include "../services/CapitalSnapshotStore.h"
 #include "../services/CsvCodec.h"
 #include "../services/CryptoParser.h"
 #include "../services/TransactionDateFilter.h"
@@ -9,6 +10,7 @@
 #include <QDebug>
 #include <QCoreApplication>
 #include <QLocale>
+#include <QThreadPool>
 #include <QUuid>
 
 #include <QFileInfo>
@@ -477,6 +479,10 @@ FinanceController::FinanceController(QObject* parent)
     archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
     summary_ = repository_.loadSummary();
 
+    QTimer::singleShot(
+        0,
+        this,
+        &FinanceController::scheduleCapitalSnapshot);
     QTimer::singleShot(
         0,
         this,
@@ -2831,6 +2837,30 @@ qint64 FinanceController::cryptoWalletsTotalMinor() const
         total += value;
     }
     return total;
+}
+
+void FinanceController::scheduleCapitalSnapshot()
+{
+    const CapitalSnapshot snapshot{
+        currencyCode(appCurrency_),
+        assetBalanceMinor(AssetType::Fiat),
+        assetBalanceMinor(AssetType::Crypto),
+        assetBalanceMinor(AssetType::Investment)
+    };
+    const QString filePath = CapitalSnapshotStore::defaultFilePath();
+    const QDate currentDate = QDate::currentDate();
+
+    QThreadPool::globalInstance()->start(
+        [filePath, currentDate, snapshot]()
+        {
+            const CapitalSnapshotStore::SaveResult result =
+                CapitalSnapshotStore::saveIfNeeded(
+                    filePath, currentDate, snapshot);
+            if (result.status == CapitalSnapshotStore::SaveStatus::Failed) {
+                qWarning() << "Failed to save daily capital snapshot:"
+                           << result.error;
+            }
+        });
 }
 
 void FinanceController::scheduleInitialCryptoRefresh()

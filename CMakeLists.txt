@@ -49,6 +49,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/DateSliceCalculator.cpp
         SOURCES services/CsvCodec.h
         SOURCES services/CsvCodec.cpp
+        SOURCES services/CapitalSnapshotStore.h
+        SOURCES services/CapitalSnapshotStore.cpp
         SOURCES services/CurrencyRateProvider.h
         SOURCES services/CurrencyRateCache.h
         SOURCES services/CurrencyRateCache.cpp
@@ -293,5 +295,21 @@ target_link_libraries(CryptoParserTest
 add_test(
     NAME CryptoParserTest
     COMMAND CryptoParserTest
+)
+
+add_executable(CapitalSnapshotStoreTest
+    tests/CapitalSnapshotStoreTest.cpp
+    services/CapitalSnapshotStore.cpp
+)
+
+target_link_libraries(CapitalSnapshotStoreTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME CapitalSnapshotStoreTest
+    COMMAND CapitalSnapshotStoreTest
 )
 endif()
