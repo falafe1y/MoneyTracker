@@ -10,7 +10,8 @@ enum class RecurrenceType
 {
     Weekly,
     MonthlyDay,
-    MonthlyWeekday
+    MonthlyWeekday,
+    Daily
 };
 
 class RecurringTransaction

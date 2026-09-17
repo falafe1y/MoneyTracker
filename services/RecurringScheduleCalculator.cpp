@@ -13,6 +13,8 @@ bool RecurringScheduleCalculator::occursOn(
     }
 
     switch (recurring.recurrenceType()) {
+    case RecurrenceType::Daily:
+        return true;
     case RecurrenceType::Weekly:
         return date.dayOfWeek() == recurring.weekday();
     case RecurrenceType::MonthlyDay:

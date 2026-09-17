@@ -32,11 +32,24 @@ class RecurringScheduleCalculatorTest : public QObject
     Q_OBJECT
 
 private slots:
+    void calculatesDailyOccurrences();
     void calculatesWeeklyOccurrences();
     void usesLastDayForShortMonths();
     void calculatesOrdinalWeekday();
     void respectsStartDate();
 };
+
+void RecurringScheduleCalculatorTest::calculatesDailyOccurrences()
+{
+    const QVector<QDate> dates = RecurringScheduleCalculator::occurrences(
+        recurring(RecurrenceType::Daily, 1, 1, 1),
+        QDate(2026, 9, 15),
+        QDate(2026, 9, 17));
+    QCOMPARE(dates, QVector<QDate>({
+        QDate(2026, 9, 15),
+        QDate(2026, 9, 16),
+        QDate(2026, 9, 17)}));
+}
 
 void RecurringScheduleCalculatorTest::calculatesWeeklyOccurrences()
 {

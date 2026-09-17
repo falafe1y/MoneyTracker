@@ -308,6 +308,7 @@
     <message><source>Счёт</source><translation>Account</translation></message>
     <message><source>Категория</source><translation>Category</translation></message>
     <message><source>Повторение</source><translation>Repeat</translation></message>
+    <message><source>Ежедневно</source><translation>Daily</translation></message>
     <message><source>Каждую неделю</source><translation>Every week</translation></message>
     <message><source>Каждый месяц в выбранное число</source><translation>Every month on a selected date</translation></message>
     <message><source>Выбранный день недели каждого месяца</source><translation>A selected weekday each month</translation></message>
@@ -411,6 +412,7 @@
     <message><source>Не удалось сохранить инструмент</source><translation>Could not save the instrument</translation></message>
     <message><source>Не удалось сохранить позицию</source><translation>Could not save the position</translation></message>
     <message><source>Еженедельно: %1</source><translation>Weekly: %1</translation></message>
+    <message><source>Ежедневно</source><translation>Daily</translation></message>
     <message><source>Ежемесячно: %1-е число</source><translation>Monthly: day %1</translation></message>
     <message><source>первая</source><translation>first</translation></message>
     <message><source>вторая</source><translation>second</translation></message>

@@ -1105,7 +1105,10 @@ QVariantList FinanceController::scheduledTransactions() const
 
         QString recurrence;
         QString schedule;
-        if (recurring.recurrenceType() == RecurrenceType::Weekly) {
+        if (recurring.recurrenceType() == RecurrenceType::Daily) {
+            recurrence = QStringLiteral("daily");
+            schedule = tr("Ежедневно");
+        } else if (recurring.recurrenceType() == RecurrenceType::Weekly) {
             recurrence = QStringLiteral("weekly");
             schedule = tr("Еженедельно: %1").arg(locale.standaloneDayName(
                 recurring.weekday(), QLocale::LongFormat));
@@ -1429,7 +1432,9 @@ QVariantMap FinanceController::saveScheduledTransaction(
     }
 
     RecurrenceType recurrenceType;
-    if (recurrence == QStringLiteral("weekly")) {
+    if (recurrence == QStringLiteral("daily")) {
+        recurrenceType = RecurrenceType::Daily;
+    } else if (recurrence == QStringLiteral("weekly")) {
         recurrenceType = RecurrenceType::Weekly;
     } else if (recurrence == QStringLiteral("monthly_day")) {
         recurrenceType = RecurrenceType::MonthlyDay;

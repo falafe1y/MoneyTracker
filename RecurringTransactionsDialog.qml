@@ -129,8 +129,9 @@ Dialog {
         accountBox.currentIndex = indexByValue(accountBox.model, row.accountId);
         categoryBox.model = categoryItems(row.type);
         categoryBox.currentIndex = indexByValue(categoryBox.model, row.categoryId);
-        recurrenceBox.currentIndex = row.recurrence === "weekly" ? 0
-                                   : row.recurrence === "monthly_day" ? 1 : 2;
+        recurrenceBox.currentIndex = row.recurrence === "daily" ? 0
+                                   : row.recurrence === "weekly" ? 1
+                                   : row.recurrence === "monthly_day" ? 2 : 3;
         weekdayBox.currentIndex = indexByValue(weekdayBox.model, row.weekday);
         dayBox.currentIndex = indexByValue(dayBox.model, row.dayOfMonth);
         weekBox.currentIndex = indexByValue(weekBox.model, row.weekOfMonth);
@@ -458,6 +459,7 @@ Dialog {
                         id: recurrenceBox
                         Layout.fillWidth: true
                         model: [
+                            { label: qsTr("Ежедневно"), value: "daily" },
                             { label: qsTr("Каждую неделю"), value: "weekly" },
                             { label: qsTr("Каждый месяц в выбранное число"), value: "monthly_day" },
                             { label: qsTr("Выбранный день недели каждого месяца"), value: "monthly_weekday" }
@@ -465,6 +467,7 @@ Dialog {
                     }
 
                     RowLayout {
+                        visible: recurrenceBox.currentValue !== "daily"
                         Layout.fillWidth: true
                         spacing: 10
                         ColumnLayout {
@@ -484,7 +487,8 @@ Dialog {
                             }
                         }
                         ColumnLayout {
-                            visible: recurrenceBox.currentValue !== "monthly_day"
+                            visible: recurrenceBox.currentValue === "weekly"
+                                  || recurrenceBox.currentValue === "monthly_weekday"
                             Layout.fillWidth: true
                             Text { text: qsTr("День недели"); color: dialog.mutedColor }
                             FormCombo {

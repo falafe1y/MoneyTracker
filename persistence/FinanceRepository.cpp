@@ -1880,7 +1880,7 @@ bool FinanceRepository::initializeSchema()
                        "type INTEGER NOT NULL CHECK(type IN (0,1)), "
                        "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
                        "recurrence_type INTEGER NOT NULL "
-                       "CHECK(recurrence_type IN (0,1,2)), "
+                       "CHECK(recurrence_type IN (0,1,2,3)), "
                        "weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7), "
                        "day_of_month INTEGER NOT NULL "
                        "CHECK(day_of_month BETWEEN 1 AND 31), "
@@ -2065,11 +2065,26 @@ bool FinanceRepository::migrateLegacySchema()
     const bool needsAccountTypeExpansion =
         !accountTableSql.contains(QStringLiteral(",5,6,7"));
 
+    QSqlQuery recurringSchema(database_);
+    if (!recurringSchema.exec(QStringLiteral(
+            "SELECT sql FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'recurring_transactions'")) ||
+        !recurringSchema.next()) {
+        setLastError(recurringSchema.lastError().isValid()
+            ? recurringSchema.lastError().text()
+            : QStringLiteral("Recurring transactions table schema was not found"));
+        return false;
+    }
+    const QString recurringTableSql = recurringSchema.value(0).toString();
+    recurringSchema.finish();
+    const bool needsRecurringTypeExpansion =
+        !recurringTableSql.contains(QStringLiteral("0,1,2,3"));
+
     const bool needsAssetTypeRename = hasLegacyGroupType && !hasAssetType;
     if (!needsAssetTypeRename && hasCreditLimit &&
         hasCryptoHistoryFetchedAt && hasCryptoDecimals &&
         hasInvestmentMarketCode && hasInvestmentPrimaryBoardId &&
-        !needsAccountTypeExpansion) {
+        !needsAccountTypeExpansion && !needsRecurringTypeExpansion) {
         return true;
     }
     if (!database_.transaction()) {
@@ -2265,6 +2280,84 @@ bool FinanceRepository::migrateLegacySchema()
         if (foreignKeyCheck.next()) {
             setLastError(QStringLiteral(
                 "Foreign key violation after accounts migration"));
+            return false;
+        }
+    }
+
+    if (needsRecurringTypeExpansion) {
+        QSqlQuery foreignKeys(database_);
+        if (!foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = OFF"))) {
+            setLastError(foreignKeys.lastError().text());
+            return false;
+        }
+        if (!database_.transaction()) {
+            setLastError(database_.lastError().text());
+            foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+            return false;
+        }
+
+        const QStringList recurringMigrationStatements{
+            QStringLiteral(
+                "CREATE TABLE recurring_transactions_v2 ("
+                "id TEXT PRIMARY KEY, "
+                "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
+                "account_id TEXT NOT NULL REFERENCES accounts(id), "
+                "category_id TEXT NOT NULL REFERENCES categories(id), "
+                "type INTEGER NOT NULL CHECK(type IN (0,1)), "
+                "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
+                "recurrence_type INTEGER NOT NULL "
+                "CHECK(recurrence_type IN (0,1,2,3)), "
+                "weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7), "
+                "day_of_month INTEGER NOT NULL "
+                "CHECK(day_of_month BETWEEN 1 AND 31), "
+                "week_of_month INTEGER NOT NULL "
+                "CHECK(week_of_month BETWEEN 1 AND 5), "
+                "starts_on TEXT NOT NULL CHECK(length(starts_on) = 10), "
+                "generated_through TEXT NOT NULL "
+                "CHECK(length(generated_through) = 10), "
+                "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"),
+            QStringLiteral(
+                "INSERT INTO recurring_transactions_v2 "
+                "SELECT * FROM recurring_transactions"),
+            QStringLiteral("DROP TABLE recurring_transactions"),
+            QStringLiteral(
+                "ALTER TABLE recurring_transactions_v2 "
+                "RENAME TO recurring_transactions"),
+            QStringLiteral(
+                "CREATE INDEX idx_recurring_transactions_account "
+                "ON recurring_transactions(account_id)"),
+            QStringLiteral(
+                "CREATE INDEX idx_recurring_transactions_category "
+                "ON recurring_transactions(category_id)")};
+
+        QSqlQuery recurringMigration(database_);
+        for (const QString& statement : recurringMigrationStatements) {
+            if (!recurringMigration.exec(statement)) {
+                setLastError(recurringMigration.lastError().text());
+                database_.rollback();
+                foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+                return false;
+            }
+        }
+        if (!database_.commit()) {
+            setLastError(database_.lastError().text());
+            database_.rollback();
+            foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+            return false;
+        }
+        if (!foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = ON"))) {
+            setLastError(foreignKeys.lastError().text());
+            return false;
+        }
+
+        QSqlQuery foreignKeyCheck(database_);
+        if (!foreignKeyCheck.exec(QStringLiteral("PRAGMA foreign_key_check"))) {
+            setLastError(foreignKeyCheck.lastError().text());
+            return false;
+        }
+        if (foreignKeyCheck.next()) {
+            setLastError(QStringLiteral(
+                "Foreign key violation after recurring transactions migration"));
             return false;
         }
     }
