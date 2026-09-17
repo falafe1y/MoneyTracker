@@ -243,6 +243,12 @@ class FinanceController final : public QObject
                 NOTIFY bankCsvProfilesChanged
         )
 
+    Q_PROPERTY(
+        QVariantList scheduledTransactions
+            READ scheduledTransactions
+                NOTIFY scheduledTransactionsChanged
+        )
+
 public:
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -299,6 +305,7 @@ public:
     QString dateFilterTo() const;
     QVariantList capitalHistory() const;
     QVariantList bankCsvProfiles() const;
+    QVariantList scheduledTransactions() const;
     Q_INVOKABLE bool setDateFilter(
         const QDateTime& from,
         const QDateTime& to
@@ -426,6 +433,10 @@ public:
         const QUrl& fileUrl,
         const QString& profileId
         );
+    Q_INVOKABLE QVariantMap saveScheduledTransaction(
+        const QVariantMap& values
+        );
+    Q_INVOKABLE bool deleteScheduledTransaction(const QString& id);
 
     Q_INVOKABLE qint64 convertTransaction(
         int transactionIndex,
@@ -456,6 +467,7 @@ signals:
     void investmentRefreshingChanged();
     void capitalHistoryChanged();
     void bankCsvProfilesChanged();
+    void scheduledTransactionsChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -489,6 +501,8 @@ private:
     qint64 cryptoWalletValueMinor(const CryptoWallet& wallet) const;
     qint64 cryptoWalletsTotalMinor() const;
     void rebuildCapitalHistory();
+    void scheduleRecurringMaterialization();
+    void materializeRecurringTransactions();
     void scheduleInitialCryptoRefresh();
     void scheduleNextCryptoRefresh(qint64 delayMs);
     void startCryptoBalanceRequest(const CryptoWallet& wallet);
@@ -528,8 +542,10 @@ private:
     QVector<InvestmentMarketInstrument> investmentSearchResults_;
     CapitalHistorySeries capitalHistorySeries_;
     QVector<BankCsvProfile> bankCsvProfiles_;
+    QVector<RecurringTransaction> recurringTransactions_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
+    bool recurringMaterializationScheduled_ = false;
 
     Currency appCurrency_ = Currency::RUB;
     QString uiLanguage_ = QStringLiteral("ru");
@@ -546,6 +562,7 @@ private:
     QHash<QString, QDateTime> cryptoPricesFetchedAtUtc_;
     QDateTime lastCryptoRefreshAttemptUtc_;
     QTimer cryptoRefreshTimer_;
+    QTimer recurringTimer_;
     QSet<QString> refreshingCryptoWalletIds_;
     QHash<QString, int> pendingCryptoWalletRequests_;
     int pendingCryptoRequests_ = 0;

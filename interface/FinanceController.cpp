@@ -3,6 +3,7 @@
 #include "../services/BankCsvImporter.h"
 #include "../services/CapitalHistoryCalculator.h"
 #include "../services/DateSliceCalculator.h"
+#include "../services/RecurringScheduleCalculator.h"
 #include "../services/CsvCodec.h"
 #include "../services/CryptoParser.h"
 #include "../services/TransactionDateFilter.h"
@@ -14,6 +15,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
+#include <QTimeZone>
 #include <QUuid>
 
 #include <QFileInfo>
@@ -545,6 +547,13 @@ FinanceController::FinanceController(QObject* parent)
         this,
         &FinanceController::refreshCryptoWallets);
 
+    recurringTimer_.setSingleShot(true);
+    QObject::connect(
+        &recurringTimer_,
+        &QTimer::timeout,
+        this,
+        &FinanceController::materializeRecurringTransactions);
+
     if (!repository_.isOpen()) {
         qWarning() << "Failed to open finance database:"
                    << repository_.lastError();
@@ -565,6 +574,7 @@ FinanceController::FinanceController(QObject* parent)
     rateProvider_.setAutomaticUpdatesEnabled(automaticCurrencyRates_);
     selectedAsset_ = assetTypeFromString(repository_.loadSelectedAsset());
     transactions_ = repository_.loadTransactions();
+    recurringTransactions_ = repository_.loadRecurringTransactions();
     categories_ = repository_.loadCategories();
     accounts_ = repository_.loadAccounts();
     cryptoWallets_ = repository_.loadCryptoWallets();
@@ -610,6 +620,7 @@ FinanceController::FinanceController(QObject* parent)
     }
 
     rebuildCapitalHistory();
+    scheduleRecurringMaterialization();
     QTimer::singleShot(
         0,
         this,
@@ -704,6 +715,7 @@ void FinanceController::retranslate()
     emit categoriesChanged();
     emit accountsChanged();
     emit transactionsChanged();
+    emit scheduledTransactionsChanged();
 }
 
 bool FinanceController::automaticCurrencyRates() const
@@ -1064,6 +1076,106 @@ QVariantList FinanceController::bankCsvProfiles() const
     return result;
 }
 
+QVariantList FinanceController::scheduledTransactions() const
+{
+    QVariantList result;
+    const QLocale locale(uiLanguage_ == QStringLiteral("en")
+        ? QLocale::English
+        : QLocale::Russian);
+    const QDate today = QDate::currentDate();
+
+    for (const RecurringTransaction& recurring : recurringTransactions_) {
+        QString accountName;
+        QString currency;
+        for (const Account& account : accounts_) {
+            if (account.id() == recurring.accountId()) {
+                accountName = accountDisplayName(account);
+                currency = currencyCode(account.currency());
+                break;
+            }
+        }
+
+        QString category;
+        for (const Category& candidate : categories_) {
+            if (candidate.id() == recurring.categoryId()) {
+                category = categoryDisplayName(candidate);
+                break;
+            }
+        }
+
+        QString recurrence;
+        QString schedule;
+        if (recurring.recurrenceType() == RecurrenceType::Weekly) {
+            recurrence = QStringLiteral("weekly");
+            schedule = tr("Еженедельно: %1").arg(locale.standaloneDayName(
+                recurring.weekday(), QLocale::LongFormat));
+        } else if (recurring.recurrenceType() == RecurrenceType::MonthlyDay) {
+            recurrence = QStringLiteral("monthly_day");
+            schedule = tr("Ежемесячно: %1-е число")
+                .arg(recurring.dayOfMonth());
+        } else {
+            recurrence = QStringLiteral("monthly_weekday");
+            const QStringList weeks{
+                tr("первая"), tr("вторая"), tr("третья"),
+                tr("четвёртая"), tr("последняя")};
+            schedule = tr("Ежемесячно: %1 неделя, %2")
+                .arg(weeks.value(recurring.weekOfMonth() - 1))
+                .arg(locale.standaloneDayName(
+                    recurring.weekday(), QLocale::LongFormat));
+        }
+
+        QDate nextFrom = today;
+        if (recurring.generatedThrough().isValid() &&
+            recurring.generatedThrough() >= nextFrom) {
+            nextFrom = recurring.generatedThrough().addDays(1);
+        }
+        const QDate next = RecurringScheduleCalculator::nextOccurrence(
+            recurring, nextFrom);
+
+        QVariantMap item;
+        item[QStringLiteral("id")] = recurring.id();
+        item[QStringLiteral("name")] = recurring.name();
+        item[QStringLiteral("accountId")] = recurring.accountId();
+        item[QStringLiteral("accountName")] = accountName;
+        item[QStringLiteral("categoryId")] = recurring.categoryId();
+        item[QStringLiteral("categoryName")] = category;
+        item[QStringLiteral("type")] =
+            recurring.transactionType() == TransactionType::Income
+                ? QStringLiteral("income")
+                : QStringLiteral("expense");
+        item[QStringLiteral("amount")] = recurring.amountMinor();
+        item[QStringLiteral("currency")] = currency;
+        item[QStringLiteral("recurrence")] = recurrence;
+        item[QStringLiteral("weekday")] = recurring.weekday();
+        item[QStringLiteral("dayOfMonth")] = recurring.dayOfMonth();
+        item[QStringLiteral("weekOfMonth")] = recurring.weekOfMonth();
+        item[QStringLiteral("startsOn")] =
+            recurring.startsOn().toString(Qt::ISODate);
+        item[QStringLiteral("nextDate")] = next.toString(Qt::ISODate);
+        item[QStringLiteral("scheduleText")] = schedule;
+        result.append(item);
+    }
+
+    std::sort(
+        result.begin(), result.end(),
+        [](const QVariant& left, const QVariant& right)
+        {
+            const QVariantMap leftMap = left.toMap();
+            const QVariantMap rightMap = right.toMap();
+            const QString leftDate = leftMap.value(
+                QStringLiteral("nextDate")).toString();
+            const QString rightDate = rightMap.value(
+                QStringLiteral("nextDate")).toString();
+            if (leftDate != rightDate) {
+                return leftDate < rightDate;
+            }
+            return leftMap.value(QStringLiteral("name")).toString()
+                .localeAwareCompare(
+                    rightMap.value(QStringLiteral("name")).toString()) < 0;
+        });
+    return result;
+}
+
 QVariantMap FinanceController::inspectBankCsv(
     const QUrl& fileUrl,
     const int headerRow,
@@ -1275,6 +1387,158 @@ bool FinanceController::deleteBankCsvProfile(const QString& id)
     }
     bankCsvProfiles_.erase(existing);
     emit bankCsvProfilesChanged();
+    return true;
+}
+
+QVariantMap FinanceController::saveScheduledTransaction(
+    const QVariantMap& values
+    )
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    QString id = values.value(QStringLiteral("id")).toString().trimmed();
+    const QString name = values.value(
+        QStringLiteral("name")).toString().trimmed();
+    const QString accountId = values.value(
+        QStringLiteral("accountId")).toString();
+    const QString categoryId = values.value(
+        QStringLiteral("categoryId")).toString();
+    const QString type = values.value(
+        QStringLiteral("type")).toString().trimmed().toLower();
+    const qint64 amount = values.value(
+        QStringLiteral("amount")).toLongLong();
+    const QString recurrence = values.value(
+        QStringLiteral("recurrence")).toString().trimmed().toLower();
+    const int weekday = values.value(
+        QStringLiteral("weekday"), 1).toInt();
+    const int dayOfMonth = values.value(
+        QStringLiteral("dayOfMonth"), 1).toInt();
+    const int weekOfMonth = values.value(
+        QStringLiteral("weekOfMonth"), 1).toInt();
+    const QDate startsOn = QDate::fromString(
+        values.value(QStringLiteral("startsOn")).toString(), Qt::ISODate);
+
+    if (name.isEmpty() || amount <= 0 || !startsOn.isValid()) {
+        result[QStringLiteral("error")] =
+            tr("Заполните название, сумму и дату начала");
+        return result;
+    }
+    if (type != QStringLiteral("income") &&
+        type != QStringLiteral("expense")) {
+        result[QStringLiteral("error")] = tr("Выберите тип операции");
+        return result;
+    }
+
+    RecurrenceType recurrenceType;
+    if (recurrence == QStringLiteral("weekly")) {
+        recurrenceType = RecurrenceType::Weekly;
+    } else if (recurrence == QStringLiteral("monthly_day")) {
+        recurrenceType = RecurrenceType::MonthlyDay;
+    } else if (recurrence == QStringLiteral("monthly_weekday")) {
+        recurrenceType = RecurrenceType::MonthlyWeekday;
+    } else {
+        result[QStringLiteral("error")] = tr("Выберите расписание");
+        return result;
+    }
+    if (weekday < 1 || weekday > 7 ||
+        dayOfMonth < 1 || dayOfMonth > 31 ||
+        weekOfMonth < 1 || weekOfMonth > 5) {
+        result[QStringLiteral("error")] = tr("Проверьте параметры расписания");
+        return result;
+    }
+
+    const auto account = std::find_if(
+        accounts_.cbegin(), accounts_.cend(),
+        [&accountId](const Account& candidate)
+        {
+            return candidate.id() == accountId &&
+                candidate.assetType() == AssetType::Fiat;
+        });
+    if (account == accounts_.cend()) {
+        result[QStringLiteral("error")] = tr("Выберите фиатный счёт");
+        return result;
+    }
+
+    const CategoryType requiredCategory = type == QStringLiteral("income")
+        ? CategoryType::Income
+        : CategoryType::Expense;
+    const bool categoryIsValid = std::any_of(
+        categories_.cbegin(), categories_.cend(),
+        [this, &categoryId, requiredCategory](const Category& category)
+        {
+            return category.id() == categoryId &&
+                category.type() == requiredCategory &&
+                !archivedCategoryIds_.contains(categoryId);
+        });
+    if (!categoryIsValid) {
+        result[QStringLiteral("error")] = tr("Выберите подходящую категорию");
+        return result;
+    }
+
+    const auto existing = std::find_if(
+        recurringTransactions_.cbegin(), recurringTransactions_.cend(),
+        [&id](const RecurringTransaction& recurring)
+        {
+            return recurring.id() == id;
+        });
+    if (!id.isEmpty() && existing == recurringTransactions_.cend()) {
+        result[QStringLiteral("error")] =
+            tr("Запланированная операция не найдена");
+        return result;
+    }
+    const bool editing = existing != recurringTransactions_.cend();
+    if (!editing) {
+        id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
+    const QDate generatedThrough = editing
+        ? existing->generatedThrough()
+        : (startsOn > QDate::currentDate()
+            ? startsOn.addDays(-1)
+            : QDate::currentDate().addDays(-1));
+    const RecurringTransaction recurring(
+        id,
+        name,
+        accountId,
+        categoryId,
+        type == QStringLiteral("income")
+            ? TransactionType::Income
+            : TransactionType::Expense,
+        amount,
+        recurrenceType,
+        weekday,
+        dayOfMonth,
+        weekOfMonth,
+        startsOn,
+        generatedThrough);
+
+    const bool saved = editing
+        ? repository_.updateRecurringTransaction(recurring)
+        : repository_.insertRecurringTransaction(recurring);
+    if (!saved) {
+        result[QStringLiteral("error")] = repository_.lastError();
+        return result;
+    }
+
+    recurringTransactions_ = repository_.loadRecurringTransactions();
+    emit scheduledTransactionsChanged();
+    scheduleRecurringMaterialization();
+    result[QStringLiteral("ok")] = true;
+    result[QStringLiteral("id")] = id;
+    return result;
+}
+
+bool FinanceController::deleteScheduledTransaction(const QString& id)
+{
+    const bool exists = std::any_of(
+        recurringTransactions_.cbegin(), recurringTransactions_.cend(),
+        [&id](const RecurringTransaction& recurring)
+        {
+            return recurring.id() == id;
+        });
+    if (!exists || !repository_.deleteRecurringTransaction(id)) {
+        return false;
+    }
+    recurringTransactions_ = repository_.loadRecurringTransactions();
+    emit scheduledTransactionsChanged();
     return true;
 }
 
@@ -2134,6 +2398,7 @@ bool FinanceController::updateAccount(
     emit accountsChanged();
     emit balanceChanged();
     emit transactionsChanged();
+    emit scheduledTransactionsChanged();
     return true;
 }
 
@@ -2156,6 +2421,7 @@ bool FinanceController::deleteAccount(const QString& id)
 
     accounts_.removeAt(accountIndex);
     transactions_ = repository_.loadTransactions();
+    recurringTransactions_ = repository_.loadRecurringTransactions();
     investmentPositions_ = repository_.loadInvestmentPositions();
     summary_ = repository_.loadSummary();
 
@@ -2166,6 +2432,7 @@ bool FinanceController::deleteAccount(const QString& id)
     emit accountsChanged();
     emit investmentPositionsChanged();
     emit transactionsChanged();
+    emit scheduledTransactionsChanged();
     emit balanceChanged();
     return true;
 }
@@ -2776,6 +3043,7 @@ bool FinanceController::renameCategory(
     categories_[categoryIndex] = Category(id, normalizedName, type);
     emit categoriesChanged();
     emit transactionsChanged();
+    emit scheduledTransactionsChanged();
     return true;
 }
 
@@ -2798,8 +3066,10 @@ bool FinanceController::deleteCategory(const QString& id)
     }
 
     archivedCategoryIds_.insert(id);
+    recurringTransactions_ = repository_.loadRecurringTransactions();
     emit categoriesChanged();
     emit transactionsChanged();
+    emit scheduledTransactionsChanged();
     return true;
 }
 
@@ -3386,6 +3656,116 @@ qint64 FinanceController::cryptoWalletsTotalMinor() const
         total += value;
     }
     return total;
+}
+
+void FinanceController::scheduleRecurringMaterialization()
+{
+    if (recurringMaterializationScheduled_) {
+        return;
+    }
+    recurringMaterializationScheduled_ = true;
+    QTimer::singleShot(
+        0,
+        this,
+        &FinanceController::materializeRecurringTransactions);
+}
+
+void FinanceController::materializeRecurringTransactions()
+{
+    recurringMaterializationScheduled_ = false;
+    if (!repository_.isOpen()) {
+        return;
+    }
+
+    const QDate today = QDate::currentDate();
+    int totalInserted = 0;
+    for (const RecurringTransaction& recurring :
+         std::as_const(recurringTransactions_)) {
+        const auto account = std::find_if(
+            accounts_.cbegin(), accounts_.cend(),
+            [&recurring](const Account& candidate)
+            {
+                return candidate.id() == recurring.accountId() &&
+                    candidate.assetType() == AssetType::Fiat;
+            });
+        const CategoryType categoryType =
+            recurring.transactionType() == TransactionType::Income
+                ? CategoryType::Income
+                : CategoryType::Expense;
+        const bool categoryIsValid = std::any_of(
+            categories_.cbegin(), categories_.cend(),
+            [this, &recurring, categoryType](const Category& category)
+            {
+                return category.id() == recurring.categoryId() &&
+                    category.type() == categoryType &&
+                    !archivedCategoryIds_.contains(category.id());
+            });
+        if (account == accounts_.cend() || !categoryIsValid) {
+            qWarning() << "Skipped invalid recurring transaction:"
+                       << recurring.id();
+            continue;
+        }
+
+        QDate from = recurring.generatedThrough().isValid()
+            ? recurring.generatedThrough().addDays(1)
+            : recurring.startsOn();
+        from = std::max(from, recurring.startsOn());
+        if (from > today) {
+            continue;
+        }
+
+        const QVector<QDate> dates =
+            RecurringScheduleCalculator::occurrences(
+                recurring, from, today);
+        QVector<FinanceRepository::RecurringOccurrence> occurrences;
+        occurrences.reserve(dates.size());
+        for (const QDate& date : dates) {
+            const QString transactionId = QStringLiteral("recurring-")
+                + recurring.id() + QLatin1Char('-')
+                + date.toString(QStringLiteral("yyyyMMdd"));
+            occurrences.append(FinanceRepository::RecurringOccurrence{
+                date,
+                Transaction(
+                    transactionId,
+                    recurring.accountId(),
+                    recurring.categoryId(),
+                    Money(recurring.amountMinor(), account->currency()),
+                    recurring.transactionType(),
+                    QDateTime(
+                        date,
+                        QTime(12, 0),
+                        QTimeZone::systemTimeZone()),
+                    recurring.name())
+            });
+        }
+
+        int inserted = 0;
+        if (!repository_.materializeRecurringOccurrences(
+                recurring.id(), occurrences, today, &inserted)) {
+            qWarning() << "Failed to materialize recurring transaction:"
+                       << recurring.id() << repository_.lastError();
+            continue;
+        }
+        totalInserted += inserted;
+    }
+
+    recurringTransactions_ = repository_.loadRecurringTransactions();
+    emit scheduledTransactionsChanged();
+    const QDateTime now = QDateTime::currentDateTime();
+    const QDateTime nextCheck(
+        now.date().addDays(1),
+        QTime(0, 1),
+        QTimeZone::systemTimeZone());
+    recurringTimer_.start(static_cast<int>(std::max<qint64>(
+        1'000, now.msecsTo(nextCheck))));
+    if (totalInserted <= 0) {
+        return;
+    }
+    transactions_ = repository_.loadTransactions();
+    summary_ = repository_.loadSummary();
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
 }
 
 void FinanceController::rebuildCapitalHistory()

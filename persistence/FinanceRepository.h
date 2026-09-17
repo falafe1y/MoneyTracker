@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/Transaction.h"
+#include "../core/RecurringTransaction.h"
 #include "../core/Category.h"
 #include "../core/Account.h"
 #include "../core/CryptoWallet.h"
@@ -10,6 +11,7 @@
 #include "../core/InvestmentQuote.h"
 
 #include <QSqlDatabase>
+#include <QDate>
 #include <QDateTime>
 #include <QSet>
 #include <QVector>
@@ -39,6 +41,12 @@ public:
         QString configurationJson;
     };
 
+    struct RecurringOccurrence
+    {
+        QDate date;
+        Transaction transaction;
+    };
+
     explicit FinanceRepository(const QString& databasePath = {});
     ~FinanceRepository();
 
@@ -48,6 +56,7 @@ public:
     bool isOpen() const;
     QString lastError() const;
     QVector<Transaction> loadTransactions();
+    QVector<RecurringTransaction> loadRecurringTransactions();
     QVector<Category> loadCategories();
     QVector<Account> loadAccounts();
     QVector<CryptoWallet> loadCryptoWallets();
@@ -76,6 +85,19 @@ public:
         const Transaction& incoming
         );
     bool deleteTransaction(const QString& id);
+    bool insertRecurringTransaction(
+        const RecurringTransaction& recurring
+        );
+    bool updateRecurringTransaction(
+        const RecurringTransaction& recurring
+        );
+    bool deleteRecurringTransaction(const QString& id);
+    bool materializeRecurringOccurrences(
+        const QString& recurringId,
+        const QVector<RecurringOccurrence>& occurrences,
+        const QDate& generatedThrough,
+        int* insertedCount = nullptr
+        );
     bool insertCategory(const Category& category);
     bool insertAccount(const Account& account);
     bool updateAccount(const Account& account);

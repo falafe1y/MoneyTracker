@@ -448,7 +448,8 @@ ApplicationWindow {
             || operationDateDialog.visible
             || categoryDialog.visible
             || investmentPositionDialog.visible
-            || bankCsvImportDialog.visible;
+            || bankCsvImportDialog.visible
+            || recurringTransactionsDialog.visible;
     }
 
     function selectedInvestmentAccountId() {
@@ -870,6 +871,14 @@ ApplicationWindow {
                     implicitHeight: 42
                     text: "◷  " + root.dateFilterLabel()
                     onClicked: dateFilterDialog.openForCurrent()
+                }
+                SoftButton {
+                    visible: page === "overview"
+                          && financeController.selectedAsset === "fiat"
+                    implicitWidth: 190
+                    implicitHeight: 42
+                    text: qsTr("Плановые операции")
+                    onClicked: recurringTransactionsDialog.openManager()
                 }
                 AppTextField {
                     visible: page === "overview" || page === "operations"
@@ -3081,6 +3090,22 @@ ApplicationWindow {
         lineColor: root.line
         accentColor: root.accent
         errorColor: root.red
+    }
+
+    RecurringTransactionsDialog {
+        id: recurringTransactionsDialog
+        controller: financeController
+        moneyFormatter: function(minor, currency, sign) {
+            return root.money(minor, currency, sign);
+        }
+        panelColor: root.panel
+        softColor: root.soft
+        textColor: root.accent
+        mutedColor: root.muted
+        lineColor: root.line
+        accentColor: root.accent
+        errorColor: root.red
+        successColor: root.income
     }
 
     Dialog {

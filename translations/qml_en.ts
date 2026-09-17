@@ -278,6 +278,65 @@
     <message><source>%1 %2 за единицу</source><translation>%1 %2 per unit</translation></message>
     <message><source>Удалить позицию</source><translation>Delete position</translation></message>
     <message><source>Позиций пока нет</source><translation>No positions yet</translation></message>
+    <message><source>Плановые операции</source><translation>Scheduled transactions</translation></message>
+  </context>
+  <context>
+    <name>Desktop</name>
+    <message><source>Плановые операции</source><translation>Scheduled transactions</translation></message>
+  </context>
+  <context>
+    <name>RecurringTransactionsDialog</name>
+    <message><source>Не удалось сохранить операцию</source><translation>Could not save the transaction</translation></message>
+    <message><source>Расписание обновлено</source><translation>Schedule updated</translation></message>
+    <message><source>Операция запланирована</source><translation>Transaction scheduled</translation></message>
+    <message><source>Запланированные операции</source><translation>Scheduled transactions</translation></message>
+    <message><source>Редактирование расписания</source><translation>Edit schedule</translation></message>
+    <message><source>Новая запланированная операция</source><translation>New scheduled transaction</translation></message>
+    <message><source>+ Добавить</source><translation>+ Add</translation></message>
+    <message><source>Закрыть</source><translation>Close</translation></message>
+    <message><source>следующая: %1</source><translation>next: %1</translation></message>
+    <message><source>Изменить</source><translation>Edit</translation></message>
+    <message><source>Удалить</source><translation>Delete</translation></message>
+    <message><source>Запланированных операций пока нет</source><translation>No scheduled transactions yet</translation></message>
+    <message><source>Название</source><translation>Name</translation></message>
+    <message><source>Например, аренда квартиры</source><translation>For example, apartment rent</translation></message>
+    <message><source>Тип</source><translation>Type</translation></message>
+    <message><source>Сумма</source><translation>Amount</translation></message>
+    <message><source>Доход</source><translation>Income</translation></message>
+    <message><source>Расход</source><translation>Expense</translation></message>
+    <message><source>0,00</source><translation>0.00</translation></message>
+    <message><source>Счёт</source><translation>Account</translation></message>
+    <message><source>Категория</source><translation>Category</translation></message>
+    <message><source>Повторение</source><translation>Repeat</translation></message>
+    <message><source>Каждую неделю</source><translation>Every week</translation></message>
+    <message><source>Каждый месяц в выбранное число</source><translation>Every month on a selected date</translation></message>
+    <message><source>Выбранный день недели каждого месяца</source><translation>A selected weekday each month</translation></message>
+    <message><source>Неделя месяца</source><translation>Week of month</translation></message>
+    <message><source>Первая</source><translation>First</translation></message>
+    <message><source>Вторая</source><translation>Second</translation></message>
+    <message><source>Третья</source><translation>Third</translation></message>
+    <message><source>Четвёртая</source><translation>Fourth</translation></message>
+    <message><source>Последняя</source><translation>Last</translation></message>
+    <message><source>День недели</source><translation>Weekday</translation></message>
+    <message><source>Понедельник</source><translation>Monday</translation></message>
+    <message><source>Вторник</source><translation>Tuesday</translation></message>
+    <message><source>Среда</source><translation>Wednesday</translation></message>
+    <message><source>Четверг</source><translation>Thursday</translation></message>
+    <message><source>Пятница</source><translation>Friday</translation></message>
+    <message><source>Суббота</source><translation>Saturday</translation></message>
+    <message><source>Воскресенье</source><translation>Sunday</translation></message>
+    <message><source>Число месяца</source><translation>Day of month</translation></message>
+    <message><source>Начать с</source><translation>Start on</translation></message>
+    <message><source>Если выбранного числа нет в месяце, операция будет создана в последний день месяца.</source><translation>If the selected date is not present in a month, the transaction will be created on its last day.</translation></message>
+    <message><source>Отмена</source><translation>Cancel</translation></message>
+    <message><source>Сохранить</source><translation>Save</translation></message>
+    <message><source>Добавить</source><translation>Add</translation></message>
+    <message><source>Расписание удалено</source><translation>Schedule deleted</translation></message>
+    <message><source>Не удалось удалить расписание</source><translation>Could not delete the schedule</translation></message>
+    <message><source>Удалить расписание?</source><translation>Delete schedule?</translation></message>
+    <message><source>Будущие операции больше не будут создаваться. Уже добавленные в историю операции сохранятся.</source><translation>Future transactions will no longer be created. Transactions already added to history will remain.</translation></message>
+    <message><source>Дата начала</source><translation>Start date</translation></message>
+    <message><source>Сегодня</source><translation>Today</translation></message>
   </context>
   <context>
     <name>FinanceController</name>
@@ -351,5 +410,20 @@
     <message><source>Этот инструмент уже добавлен на выбранный счёт</source><translation>This instrument is already in the selected account</translation></message>
     <message><source>Не удалось сохранить инструмент</source><translation>Could not save the instrument</translation></message>
     <message><source>Не удалось сохранить позицию</source><translation>Could not save the position</translation></message>
+    <message><source>Еженедельно: %1</source><translation>Weekly: %1</translation></message>
+    <message><source>Ежемесячно: %1-е число</source><translation>Monthly: day %1</translation></message>
+    <message><source>первая</source><translation>first</translation></message>
+    <message><source>вторая</source><translation>second</translation></message>
+    <message><source>третья</source><translation>third</translation></message>
+    <message><source>четвёртая</source><translation>fourth</translation></message>
+    <message><source>последняя</source><translation>last</translation></message>
+    <message><source>Ежемесячно: %1 неделя, %2</source><translation>Monthly: %1 week, %2</translation></message>
+    <message><source>Заполните название, сумму и дату начала</source><translation>Enter a name, amount, and start date</translation></message>
+    <message><source>Выберите тип операции</source><translation>Select the transaction type</translation></message>
+    <message><source>Выберите расписание</source><translation>Select a schedule</translation></message>
+    <message><source>Проверьте параметры расписания</source><translation>Check the schedule settings</translation></message>
+    <message><source>Выберите фиатный счёт</source><translation>Select a fiat account</translation></message>
+    <message><source>Выберите подходящую категорию</source><translation>Select a matching category</translation></message>
+    <message><source>Запланированная операция не найдена</source><translation>Scheduled transaction was not found</translation></message>
   </context>
 </TS>

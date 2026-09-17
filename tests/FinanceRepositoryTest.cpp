@@ -4,6 +4,7 @@
 #include <QSqlQuery>
 #include <QSet>
 #include <QTemporaryDir>
+#include <QTimeZone>
 #include <QUuid>
 #include <QtTest>
 
@@ -16,6 +17,7 @@ private slots:
     void storesUiLanguage();
     void storesCurrencyRateSettings();
     void storesBankCsvProfiles();
+    void storesAndMaterializesRecurringTransactions();
     void storesCreditCardTerms();
     void migratesCreditLimitForExistingDatabase();
     void updatesAndDeletesTransaction();
@@ -28,6 +30,107 @@ private slots:
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
 };
+
+void FinanceRepositoryTest::storesAndMaterializesRecurringTransactions()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    FinanceRepository repository(temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-recurring-test.sqlite3")));
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+    const Account account(
+        QStringLiteral("recurring-account"),
+        QStringLiteral("Main account"),
+        AssetType::Fiat,
+        AccountType::DebitCard,
+        Currency::RUB);
+    const Category category(
+        QStringLiteral("recurring-category"),
+        QStringLiteral("Rent"),
+        CategoryType::Expense);
+    QVERIFY(repository.insertAccount(account));
+    QVERIFY(repository.insertCategory(category));
+
+    const RecurringTransaction schedule(
+        QStringLiteral("rent-schedule"),
+        QStringLiteral("Rent"),
+        account.id(),
+        category.id(),
+        TransactionType::Expense,
+        50'000,
+        RecurrenceType::Weekly,
+        4,
+        1,
+        1,
+        QDate(2026, 9, 1),
+        QDate(2026, 8, 31));
+    QVERIFY2(repository.insertRecurringTransaction(schedule),
+             qPrintable(repository.lastError()));
+
+    const auto makeOccurrence = [&account, &category](
+        const QString& id,
+        const QDate& date
+        )
+    {
+        return FinanceRepository::RecurringOccurrence{
+            date,
+            Transaction(
+                id,
+                account.id(),
+                category.id(),
+                Money(50'000, Currency::RUB),
+                TransactionType::Expense,
+                QDateTime(date, QTime(12, 0), QTimeZone::UTC),
+                QStringLiteral("Rent"))};
+    };
+    const QVector<FinanceRepository::RecurringOccurrence> occurrences{
+        makeOccurrence(QStringLiteral("rent-20260903"), QDate(2026, 9, 3)),
+        makeOccurrence(QStringLiteral("rent-20260910"), QDate(2026, 9, 10))};
+    int inserted = -1;
+    QVERIFY2(repository.materializeRecurringOccurrences(
+                 schedule.id(), occurrences, QDate(2026, 9, 10), &inserted),
+             qPrintable(repository.lastError()));
+    QCOMPARE(inserted, 2);
+    QCOMPARE(repository.loadTransactions().size(), 2);
+
+    QVERIFY2(repository.materializeRecurringOccurrences(
+                 schedule.id(), occurrences, QDate(2026, 9, 10), &inserted),
+             qPrintable(repository.lastError()));
+    QCOMPARE(inserted, 0);
+    QCOMPARE(repository.loadTransactions().size(), 2);
+
+    QVector<RecurringTransaction> restored =
+        repository.loadRecurringTransactions();
+    QCOMPARE(restored.size(), 1);
+    QCOMPARE(restored.constFirst().generatedThrough(), QDate(2026, 9, 10));
+
+    const RecurringTransaction updated(
+        schedule.id(),
+        QStringLiteral("Updated rent"),
+        account.id(),
+        category.id(),
+        TransactionType::Expense,
+        75'000,
+        RecurrenceType::MonthlyDay,
+        1,
+        15,
+        1,
+        QDate(2026, 9, 1),
+        restored.constFirst().generatedThrough());
+    QVERIFY2(repository.updateRecurringTransaction(updated),
+             qPrintable(repository.lastError()));
+    restored = repository.loadRecurringTransactions();
+    QCOMPARE(restored.constFirst().name(), QStringLiteral("Updated rent"));
+    QCOMPARE(restored.constFirst().amountMinor(), qint64(75'000));
+    QVERIFY(restored.constFirst().recurrenceType() ==
+            RecurrenceType::MonthlyDay);
+    QCOMPARE(restored.constFirst().generatedThrough(), QDate(2026, 9, 10));
+
+    QVERIFY(repository.deleteRecurringTransaction(schedule.id()));
+    QVERIFY(repository.loadRecurringTransactions().isEmpty());
+    QCOMPARE(repository.loadTransactions().size(), 2);
+}
 
 void FinanceRepositoryTest::storesBankCsvProfiles()
 {

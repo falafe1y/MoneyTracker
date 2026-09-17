@@ -222,6 +222,40 @@ QVector<Transaction> FinanceRepository::loadTransactions()
     return result;
 }
 
+QVector<RecurringTransaction> FinanceRepository::loadRecurringTransactions()
+{
+    QVector<RecurringTransaction> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT id, name, account_id, category_id, type, amount_minor, "
+            "       recurrence_type, weekday, day_of_month, week_of_month, "
+            "       starts_on, generated_through "
+            "FROM recurring_transactions "
+            "ORDER BY created_at, name COLLATE NOCASE"))) {
+        setLastError(query.lastError().text());
+        return result;
+    }
+
+    while (query.next()) {
+        result.append(RecurringTransaction(
+            query.value(0).toString(),
+            query.value(1).toString(),
+            query.value(2).toString(),
+            query.value(3).toString(),
+            query.value(4).toInt() == 0
+                ? TransactionType::Income
+                : TransactionType::Expense,
+            query.value(5).toLongLong(),
+            static_cast<RecurrenceType>(query.value(6).toInt()),
+            query.value(7).toInt(),
+            query.value(8).toInt(),
+            query.value(9).toInt(),
+            QDate::fromString(query.value(10).toString(), Qt::ISODate),
+            QDate::fromString(query.value(11).toString(), Qt::ISODate)));
+    }
+    return result;
+}
+
 QVector<Category> FinanceRepository::loadCategories()
 {
     QVector<Category> result;
@@ -712,6 +746,177 @@ bool FinanceRepository::deleteTransaction(const QString& id)
     return true;
 }
 
+bool FinanceRepository::insertRecurringTransaction(
+    const RecurringTransaction& recurring
+    )
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO recurring_transactions("
+        "id, name, account_id, category_id, type, amount_minor, "
+        "recurrence_type, weekday, day_of_month, week_of_month, "
+        "starts_on, generated_through, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+    const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    query.addBindValue(recurring.id());
+    query.addBindValue(recurring.name().trimmed());
+    query.addBindValue(recurring.accountId());
+    query.addBindValue(recurring.categoryId());
+    query.addBindValue(
+        recurring.transactionType() == TransactionType::Income ? 0 : 1);
+    query.addBindValue(recurring.amountMinor());
+    query.addBindValue(static_cast<int>(recurring.recurrenceType()));
+    query.addBindValue(recurring.weekday());
+    query.addBindValue(recurring.dayOfMonth());
+    query.addBindValue(recurring.weekOfMonth());
+    query.addBindValue(recurring.startsOn().toString(Qt::ISODate));
+    query.addBindValue(recurring.generatedThrough().toString(Qt::ISODate));
+    query.addBindValue(now);
+    query.addBindValue(now);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::updateRecurringTransaction(
+    const RecurringTransaction& recurring
+    )
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE recurring_transactions SET "
+        "name = ?, account_id = ?, category_id = ?, type = ?, "
+        "amount_minor = ?, recurrence_type = ?, weekday = ?, "
+        "day_of_month = ?, week_of_month = ?, starts_on = ?, "
+        "updated_at = ? WHERE id = ?"));
+    query.addBindValue(recurring.name().trimmed());
+    query.addBindValue(recurring.accountId());
+    query.addBindValue(recurring.categoryId());
+    query.addBindValue(
+        recurring.transactionType() == TransactionType::Income ? 0 : 1);
+    query.addBindValue(recurring.amountMinor());
+    query.addBindValue(static_cast<int>(recurring.recurrenceType()));
+    query.addBindValue(recurring.weekday());
+    query.addBindValue(recurring.dayOfMonth());
+    query.addBindValue(recurring.weekOfMonth());
+    query.addBindValue(recurring.startsOn().toString(Qt::ISODate));
+    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+    query.addBindValue(recurring.id());
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Recurring transaction was not found"));
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::deleteRecurringTransaction(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "DELETE FROM recurring_transactions WHERE id = ?"));
+    query.addBindValue(id);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Recurring transaction was not found"));
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::materializeRecurringOccurrences(
+    const QString& recurringId,
+    const QVector<RecurringOccurrence>& occurrences,
+    const QDate& generatedThrough,
+    int* insertedCount
+    )
+{
+    if (recurringId.isEmpty() || !generatedThrough.isValid()) {
+        setLastError(QStringLiteral("Invalid recurring materialization range"));
+        return false;
+    }
+    if (insertedCount) {
+        *insertedCount = 0;
+    }
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery occurrenceLookup(database_);
+    occurrenceLookup.prepare(QStringLiteral(
+        "SELECT 1 FROM recurring_transaction_occurrences "
+        "WHERE recurring_id = ? AND occurrence_date = ?"));
+    QSqlQuery transactionInsert(database_);
+    prepareTransactionInsert(transactionInsert);
+    QSqlQuery occurrenceInsert(database_);
+    occurrenceInsert.prepare(QStringLiteral(
+        "INSERT INTO recurring_transaction_occurrences("
+        "recurring_id, occurrence_date, transaction_id) "
+        "VALUES (?, ?, ?)"));
+    const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    int inserted = 0;
+
+    for (const RecurringOccurrence& occurrence : occurrences) {
+        const QString date = occurrence.date.toString(Qt::ISODate);
+        occurrenceLookup.bindValue(0, recurringId);
+        occurrenceLookup.bindValue(1, date);
+        if (!occurrenceLookup.exec()) {
+            setLastError(occurrenceLookup.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        const bool alreadyCreated = occurrenceLookup.next();
+        occurrenceLookup.finish();
+        if (alreadyCreated) {
+            continue;
+        }
+
+        if (!insertTransactionRow(
+                transactionInsert, occurrence.transaction, createdAt)) {
+            setLastError(transactionInsert.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        occurrenceInsert.bindValue(0, recurringId);
+        occurrenceInsert.bindValue(1, date);
+        occurrenceInsert.bindValue(2, occurrence.transaction.id());
+        if (!occurrenceInsert.exec()) {
+            setLastError(occurrenceInsert.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        ++inserted;
+    }
+
+    QSqlQuery progress(database_);
+    progress.prepare(QStringLiteral(
+        "UPDATE recurring_transactions SET generated_through = CASE "
+        "WHEN generated_through < ? THEN ? ELSE generated_through END, "
+        "updated_at = ? WHERE id = ?"));
+    const QString through = generatedThrough.toString(Qt::ISODate);
+    progress.addBindValue(through);
+    progress.addBindValue(through);
+    progress.addBindValue(createdAt);
+    progress.addBindValue(recurringId);
+    if (!progress.exec() || progress.numRowsAffected() != 1 ||
+        !database_.commit()) {
+        setLastError(progress.lastError().isValid()
+                         ? progress.lastError().text()
+                         : database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    if (insertedCount) {
+        *insertedCount = inserted;
+    }
+    return true;
+}
+
 bool FinanceRepository::insertCategory(const Category& category)
 {
     QSqlQuery query(database_);
@@ -788,6 +993,16 @@ bool FinanceRepository::deleteAccount(const QString& id)
 {
     if (!database_.transaction()) {
         setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery recurring(database_);
+    recurring.prepare(QStringLiteral(
+        "DELETE FROM recurring_transactions WHERE account_id = ?"));
+    recurring.addBindValue(id);
+    if (!recurring.exec()) {
+        setLastError(recurring.lastError().text());
+        database_.rollback();
         return false;
     }
 
@@ -1348,16 +1563,35 @@ bool FinanceRepository::updateCategoryName(
 
 bool FinanceRepository::archiveCategory(const QString& id)
 {
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery recurring(database_);
+    recurring.prepare(QStringLiteral(
+        "DELETE FROM recurring_transactions WHERE category_id = ?"));
+    recurring.addBindValue(id);
+    if (!recurring.exec()) {
+        setLastError(recurring.lastError().text());
+        database_.rollback();
+        return false;
+    }
+
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "UPDATE categories SET is_archived = 1 "
         "WHERE id = ? AND is_archived = 0"));
     query.addBindValue(id);
 
-    if (!query.exec() || query.numRowsAffected() != 1) {
+    if (!query.exec() || query.numRowsAffected() != 1 ||
+        !database_.commit()) {
         setLastError(query.lastError().isValid()
                          ? query.lastError().text()
-                         : QStringLiteral("Category was not found"));
+                         : database_.lastError().isValid()
+                           ? database_.lastError().text()
+                           : QStringLiteral("Category was not found"));
+        database_.rollback();
         return false;
     }
     return true;
@@ -1638,6 +1872,32 @@ bool FinanceRepository::initializeSchema()
                        "configuration_json TEXT NOT NULL, "
                        "created_at INTEGER NOT NULL, "
                        "updated_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS recurring_transactions ("
+                       "id TEXT PRIMARY KEY, "
+                       "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
+                       "account_id TEXT NOT NULL REFERENCES accounts(id), "
+                       "category_id TEXT NOT NULL REFERENCES categories(id), "
+                       "type INTEGER NOT NULL CHECK(type IN (0,1)), "
+                       "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
+                       "recurrence_type INTEGER NOT NULL "
+                       "CHECK(recurrence_type IN (0,1,2)), "
+                       "weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7), "
+                       "day_of_month INTEGER NOT NULL "
+                       "CHECK(day_of_month BETWEEN 1 AND 31), "
+                       "week_of_month INTEGER NOT NULL "
+                       "CHECK(week_of_month BETWEEN 1 AND 5), "
+                       "starts_on TEXT NOT NULL CHECK(length(starts_on) = 10), "
+                       "generated_through TEXT NOT NULL "
+                       "CHECK(length(generated_through) = 10), "
+                       "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS "
+                       "recurring_transaction_occurrences ("
+                       "recurring_id TEXT NOT NULL "
+                       "REFERENCES recurring_transactions(id) ON DELETE CASCADE, "
+                       "occurrence_date TEXT NOT NULL, "
+                       "transaction_id TEXT NOT NULL UNIQUE "
+                       "REFERENCES transactions(id) ON DELETE CASCADE, "
+                       "PRIMARY KEY(recurring_id, occurrence_date))"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_wallets ("
                        "id TEXT PRIMARY KEY, address TEXT NOT NULL, "
                        "network TEXT NOT NULL, symbol TEXT NOT NULL, "
@@ -1699,6 +1959,12 @@ bool FinanceRepository::initializeSchema()
                        "ON transactions(account_id, occurred_at DESC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_category "
                        "ON transactions(category_id)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS "
+                       "idx_recurring_transactions_account "
+                       "ON recurring_transactions(account_id)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS "
+                       "idx_recurring_transactions_category "
+                       "ON recurring_transactions(category_id)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS "
                        "idx_crypto_transactions_wallet_date "
                        "ON crypto_transactions(wallet_id, occurred_at DESC)"),

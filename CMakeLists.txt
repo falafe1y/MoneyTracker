@@ -25,6 +25,7 @@ qt_add_qml_module(appMoneyTracker
         InvestmentPositionDialog.qml
         InvestmentPositionsPanel.qml
         BankCsvImportDialog.qml
+        RecurringTransactionsDialog.qml
         # BankComboBox.qml
         # CategoryPicker.qml
         SOURCES core/Account.h
@@ -34,6 +35,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/Currency.cpp
         SOURCES core/Money.h
         SOURCES core/Transaction.h
+        SOURCES core/RecurringTransaction.h
         SOURCES core/CryptoWallet.h
         SOURCES core/CryptoTransaction.h
         SOURCES core/InvestmentInstrument.h
@@ -54,6 +56,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/BankCsvImporter.cpp
         SOURCES services/CapitalHistoryCalculator.h
         SOURCES services/CapitalHistoryCalculator.cpp
+        SOURCES services/RecurringScheduleCalculator.h
+        SOURCES services/RecurringScheduleCalculator.cpp
         SOURCES services/CurrencyRateProvider.h
         SOURCES services/CurrencyRateCache.h
         SOURCES services/CurrencyRateCache.cpp
@@ -331,5 +335,21 @@ target_link_libraries(CapitalHistoryCalculatorTest
 add_test(
     NAME CapitalHistoryCalculatorTest
     COMMAND CapitalHistoryCalculatorTest
+)
+
+add_executable(RecurringScheduleCalculatorTest
+    tests/RecurringScheduleCalculatorTest.cpp
+    services/RecurringScheduleCalculator.cpp
+)
+
+target_link_libraries(RecurringScheduleCalculatorTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME RecurringScheduleCalculatorTest
+    COMMAND RecurringScheduleCalculatorTest
 )
 endif()
