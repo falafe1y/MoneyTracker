@@ -3,6 +3,7 @@
 #include "../core/Transaction.h"
 #include "../persistence/FinanceRepository.h"
 #include "../services/BalanceCalculator.h"
+#include "../services/BankCsvImporter.h"
 #include "../services/CapitalHistoryCalculator.h"
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
@@ -236,6 +237,12 @@ class FinanceController final : public QObject
                 NOTIFY capitalHistoryChanged
         )
 
+    Q_PROPERTY(
+        QVariantList bankCsvProfiles
+            READ bankCsvProfiles
+                NOTIFY bankCsvProfilesChanged
+        )
+
 public:
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -291,6 +298,7 @@ public:
     QString dateFilterFrom() const;
     QString dateFilterTo() const;
     QVariantList capitalHistory() const;
+    QVariantList bankCsvProfiles() const;
     Q_INVOKABLE bool setDateFilter(
         const QDateTime& from,
         const QDateTime& to
@@ -406,6 +414,18 @@ public:
 
     Q_INVOKABLE QVariantMap exportTransactionsCsv(const QUrl& fileUrl) const;
     Q_INVOKABLE QVariantMap importTransactionsCsv(const QUrl& fileUrl);
+    Q_INVOKABLE QVariantMap inspectBankCsv(
+        const QUrl& fileUrl,
+        int headerRow,
+        const QString& delimiter = QStringLiteral("auto"),
+        const QString& encoding = QStringLiteral("auto")
+        ) const;
+    Q_INVOKABLE QVariantMap saveBankCsvProfile(const QVariantMap& values);
+    Q_INVOKABLE bool deleteBankCsvProfile(const QString& id);
+    Q_INVOKABLE QVariantMap importBankCsv(
+        const QUrl& fileUrl,
+        const QString& profileId
+        );
 
     Q_INVOKABLE qint64 convertTransaction(
         int transactionIndex,
@@ -435,6 +455,7 @@ signals:
     void investmentSearchStateChanged();
     void investmentRefreshingChanged();
     void capitalHistoryChanged();
+    void bankCsvProfilesChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -506,6 +527,7 @@ private:
     QVector<InvestmentQuote> investmentQuotes_;
     QVector<InvestmentMarketInstrument> investmentSearchResults_;
     CapitalHistorySeries capitalHistorySeries_;
+    QVector<BankCsvProfile> bankCsvProfiles_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
 

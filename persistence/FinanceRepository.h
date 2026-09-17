@@ -32,6 +32,13 @@ public:
         QDateTime fetchedAtUtc;
     };
 
+    struct BankCsvProfileRecord
+    {
+        QString id;
+        QString name;
+        QString configurationJson;
+    };
+
     explicit FinanceRepository(const QString& databasePath = {});
     ~FinanceRepository();
 
@@ -115,6 +122,13 @@ public:
         double rublesPerUsd,
         double rublesPerEur
         );
+    QVector<BankCsvProfileRecord> loadBankCsvProfiles();
+    bool saveBankCsvProfile(
+        const QString& id,
+        const QString& name,
+        const QString& configurationJson
+        );
+    bool deleteBankCsvProfile(const QString& id);
 
 private:
     bool initializeSchema();

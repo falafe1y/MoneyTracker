@@ -1,5 +1,6 @@
 #include "FinanceController.h"
 
+#include "../services/BankCsvImporter.h"
 #include "../services/CapitalHistoryCalculator.h"
 #include "../services/DateSliceCalculator.h"
 #include "../services/CsvCodec.h"
@@ -9,6 +10,9 @@
 
 #include <QDebug>
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
 #include <QUuid>
 
@@ -84,6 +88,79 @@ qint64 saturatedCapitalSubtract(const qint64 left, const qint64 right)
         return std::numeric_limits<qint64>::min();
     }
     return static_cast<qint64>(total);
+}
+
+qint64 positiveMinorMagnitude(const qint64 value)
+{
+    using Int128 = __int128_t;
+    const Int128 magnitude = value < 0
+        ? -static_cast<Int128>(value)
+        : static_cast<Int128>(value);
+    return magnitude > std::numeric_limits<qint64>::max()
+        ? std::numeric_limits<qint64>::max()
+        : static_cast<qint64>(magnitude);
+}
+
+QVariantMap bankCsvProfileToVariant(const BankCsvProfile& profile)
+{
+    return {
+        {QStringLiteral("id"), profile.id},
+        {QStringLiteral("name"), profile.name},
+        {QStringLiteral("accountId"), profile.accountId},
+        {QStringLiteral("incomeCategoryId"), profile.incomeCategoryId},
+        {QStringLiteral("expenseCategoryId"), profile.expenseCategoryId},
+        {QStringLiteral("encoding"), profile.encoding},
+        {QStringLiteral("delimiter"), profile.delimiter},
+        {QStringLiteral("dateFormat"), profile.dateFormat},
+        {QStringLiteral("amountMode"), profile.amountMode},
+        {QStringLiteral("headerRow"), profile.headerRow},
+        {QStringLiteral("dateColumn"), profile.dateColumn},
+        {QStringLiteral("amountColumn"), profile.amountColumn},
+        {QStringLiteral("incomeColumn"), profile.incomeColumn},
+        {QStringLiteral("expenseColumn"), profile.expenseColumn},
+        {QStringLiteral("descriptionColumn"), profile.descriptionColumn},
+        {QStringLiteral("idColumn"), profile.idColumn},
+        {QStringLiteral("categoryColumn"), profile.categoryColumn},
+        {QStringLiteral("positiveMeansIncome"), profile.positiveMeansIncome}
+    };
+}
+
+BankCsvProfile bankCsvProfileFromVariant(const QVariantMap& values)
+{
+    BankCsvProfile profile;
+    profile.id = values.value(QStringLiteral("id")).toString().trimmed();
+    profile.name = values.value(QStringLiteral("name")).toString().trimmed();
+    profile.accountId = values.value(
+        QStringLiteral("accountId")).toString();
+    profile.incomeCategoryId = values.value(
+        QStringLiteral("incomeCategoryId")).toString();
+    profile.expenseCategoryId = values.value(
+        QStringLiteral("expenseCategoryId")).toString();
+    profile.encoding = values.value(
+        QStringLiteral("encoding"), QStringLiteral("auto")).toString();
+    profile.delimiter = values.value(
+        QStringLiteral("delimiter"), QStringLiteral("auto")).toString();
+    profile.dateFormat = values.value(
+        QStringLiteral("dateFormat"), QStringLiteral("auto")).toString();
+    profile.amountMode = values.value(
+        QStringLiteral("amountMode"), QStringLiteral("signed")).toString();
+    profile.headerRow = values.value(QStringLiteral("headerRow"), 0).toInt();
+    profile.dateColumn = values.value(
+        QStringLiteral("dateColumn"), -1).toInt();
+    profile.amountColumn = values.value(
+        QStringLiteral("amountColumn"), -1).toInt();
+    profile.incomeColumn = values.value(
+        QStringLiteral("incomeColumn"), -1).toInt();
+    profile.expenseColumn = values.value(
+        QStringLiteral("expenseColumn"), -1).toInt();
+    profile.descriptionColumn = values.value(
+        QStringLiteral("descriptionColumn"), -1).toInt();
+    profile.idColumn = values.value(QStringLiteral("idColumn"), -1).toInt();
+    profile.categoryColumn = values.value(
+        QStringLiteral("categoryColumn"), -1).toInt();
+    profile.positiveMeansIncome = values.value(
+        QStringLiteral("positiveMeansIncome"), true).toBool();
+    return profile;
 }
 
 void addAccountFinancialRoles(
@@ -516,6 +593,21 @@ FinanceController::FinanceController(QObject* parent)
     lastCryptoRefreshAttemptUtc_ = repository_.loadCryptoRefreshAttemptUtc();
     archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
     summary_ = repository_.loadSummary();
+    for (const FinanceRepository::BankCsvProfileRecord& record :
+         repository_.loadBankCsvProfiles()) {
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(
+            record.configurationJson.toUtf8(), &parseError);
+        if (parseError.error != QJsonParseError::NoError ||
+            !document.isObject()) {
+            qWarning() << "Invalid bank CSV profile:" << record.id;
+            continue;
+        }
+        BankCsvProfile profile = BankCsvProfile::fromJson(document.object());
+        profile.id = record.id;
+        profile.name = record.name;
+        bankCsvProfiles_.append(profile);
+    }
 
     rebuildCapitalHistory();
     QTimer::singleShot(
@@ -959,6 +1051,398 @@ QVariantMap FinanceController::importTransactionsCsv(const QUrl& fileUrl)
     result["ok"] = true;
     result["imported"] = operationCount;
     result["skipped"] = skipped;
+    return result;
+}
+
+QVariantList FinanceController::bankCsvProfiles() const
+{
+    QVariantList result;
+    result.reserve(bankCsvProfiles_.size());
+    for (const BankCsvProfile& profile : bankCsvProfiles_) {
+        result.append(bankCsvProfileToVariant(profile));
+    }
+    return result;
+}
+
+QVariantMap FinanceController::inspectBankCsv(
+    const QUrl& fileUrl,
+    const int headerRow,
+    const QString& delimiter,
+    const QString& encoding
+    ) const
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    const QString filePath = fileUrl.toLocalFile();
+    if (filePath.isEmpty()) {
+        result[QStringLiteral("error")] = tr("Не выбран CSV-файл");
+        return result;
+    }
+
+    BankCsvProfile optionsProfile;
+    optionsProfile.delimiter = delimiter;
+    optionsProfile.encoding = encoding;
+    const CsvCodec::ReadResult csv = CsvCodec::readFile(
+        filePath, BankCsvImporter::readOptions(optionsProfile));
+    if (!csv.error.isEmpty()) {
+        result[QStringLiteral("error")] = csv.error;
+        return result;
+    }
+    if (headerRow < 0 || headerRow >= csv.rows.size()) {
+        result[QStringLiteral("error")] = tr("Строка заголовков вне файла");
+        return result;
+    }
+
+    QVariantList headers;
+    const QStringList& sourceHeaders = csv.rows[headerRow];
+    headers.reserve(sourceHeaders.size());
+    for (qsizetype index = 0; index < sourceHeaders.size(); ++index) {
+        QString label = sourceHeaders[index].trimmed();
+        if (label.isEmpty()) {
+            label = tr("Столбец %1").arg(index + 1);
+        }
+        headers.append(QVariantMap{
+            {QStringLiteral("label"), label},
+            {QStringLiteral("value"), index}
+        });
+    }
+
+    QVariantList preview;
+    for (qsizetype index = headerRow + 1;
+         index < csv.rows.size() && preview.size() < 5; ++index) {
+        bool empty = true;
+        for (const QString& field : csv.rows[index]) {
+            if (!field.trimmed().isEmpty()) {
+                empty = false;
+                break;
+            }
+        }
+        if (!empty) {
+            preview.append(csv.rows[index].join(QStringLiteral(" | ")));
+        }
+    }
+
+    QString detectedDelimiter = QStringLiteral("semicolon");
+    if (csv.delimiter == QLatin1Char(',')) {
+        detectedDelimiter = QStringLiteral("comma");
+    } else if (csv.delimiter == QLatin1Char('\t')) {
+        detectedDelimiter = QStringLiteral("tab");
+    }
+    QString detectedEncoding = QStringLiteral("utf8");
+    if (csv.encoding == QStringLiteral("Windows-1251")) {
+        detectedEncoding = QStringLiteral("windows1251");
+    } else if (csv.encoding == QStringLiteral("UTF-16LE")) {
+        detectedEncoding = QStringLiteral("utf16le");
+    } else if (csv.encoding == QStringLiteral("UTF-16BE")) {
+        detectedEncoding = QStringLiteral("utf16be");
+    }
+
+    result[QStringLiteral("ok")] = true;
+    result[QStringLiteral("headers")] = headers;
+    result[QStringLiteral("preview")] = preview;
+    result[QStringLiteral("rowCount")] = csv.rows.size();
+    result[QStringLiteral("detectedDelimiter")] = detectedDelimiter;
+    result[QStringLiteral("detectedEncoding")] = detectedEncoding;
+    result[QStringLiteral("encodingLabel")] = csv.encoding;
+    result[QStringLiteral("delimiterLabel")] = csv.delimiter == QLatin1Char('\t')
+        ? tr("табуляция")
+        : QString(csv.delimiter);
+    return result;
+}
+
+QVariantMap FinanceController::saveBankCsvProfile(const QVariantMap& values)
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    BankCsvProfile profile = bankCsvProfileFromVariant(values);
+    if (profile.id.isEmpty()) {
+        profile.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
+    if (profile.name.isEmpty() || profile.headerRow < 0 ||
+        profile.dateColumn < 0) {
+        result[QStringLiteral("error")] =
+            tr("Заполните название, строку заголовков и столбец даты");
+        return result;
+    }
+    if (profile.amountMode == QStringLiteral("signed")) {
+        if (profile.amountColumn < 0) {
+            result[QStringLiteral("error")] = tr("Выберите столбец суммы");
+            return result;
+        }
+    } else if (profile.amountMode == QStringLiteral("separate")) {
+        if (profile.incomeColumn < 0 || profile.expenseColumn < 0 ||
+            profile.incomeColumn == profile.expenseColumn) {
+            result[QStringLiteral("error")] =
+                tr("Выберите разные столбцы дохода и расхода");
+            return result;
+        }
+    } else {
+        result[QStringLiteral("error")] = tr("Неизвестный способ хранения суммы");
+        return result;
+    }
+
+    const QSet<QString> allowedDelimiters{
+        QStringLiteral("auto"), QStringLiteral("semicolon"),
+        QStringLiteral("comma"), QStringLiteral("tab")};
+    const QSet<QString> allowedEncodings{
+        QStringLiteral("auto"), QStringLiteral("utf8"),
+        QStringLiteral("windows1251"), QStringLiteral("utf16le"),
+        QStringLiteral("utf16be")};
+    if (!allowedDelimiters.contains(profile.delimiter) ||
+        !allowedEncodings.contains(profile.encoding)) {
+        result[QStringLiteral("error")] = tr("Неверный разделитель или кодировка");
+        return result;
+    }
+
+    const auto account = std::find_if(
+        accounts_.cbegin(), accounts_.cend(),
+        [&profile](const Account& candidate)
+        {
+            return candidate.id() == profile.accountId &&
+                candidate.assetType() == AssetType::Fiat;
+        });
+    const auto categoryIsValid = [this](
+        const QString& id,
+        const CategoryType type
+        )
+    {
+        return std::any_of(
+            categories_.cbegin(), categories_.cend(),
+            [this, &id, type](const Category& category)
+            {
+                return category.id() == id && category.type() == type &&
+                    !archivedCategoryIds_.contains(id);
+            });
+    };
+    if (account == accounts_.cend()) {
+        result[QStringLiteral("error")] = tr("Выбранный фиатный счёт не найден");
+        return result;
+    }
+    if (!categoryIsValid(profile.incomeCategoryId, CategoryType::Income) ||
+        !categoryIsValid(profile.expenseCategoryId, CategoryType::Expense)) {
+        result[QStringLiteral("error")] = tr("Выберите категории дохода и расхода");
+        return result;
+    }
+    for (const BankCsvProfile& existing : std::as_const(bankCsvProfiles_)) {
+        if (existing.id != profile.id &&
+            existing.name.compare(profile.name, Qt::CaseInsensitive) == 0) {
+            result[QStringLiteral("error")] =
+                tr("Профиль с таким названием уже существует");
+            return result;
+        }
+    }
+
+    const QString configuration = QString::fromUtf8(
+        QJsonDocument(profile.toJson()).toJson(QJsonDocument::Compact));
+    if (!repository_.saveBankCsvProfile(
+            profile.id, profile.name, configuration)) {
+        result[QStringLiteral("error")] = repository_.lastError();
+        return result;
+    }
+
+    const auto existing = std::find_if(
+        bankCsvProfiles_.begin(), bankCsvProfiles_.end(),
+        [&profile](const BankCsvProfile& candidate)
+        {
+            return candidate.id == profile.id;
+        });
+    if (existing == bankCsvProfiles_.end()) {
+        bankCsvProfiles_.append(profile);
+    } else {
+        *existing = profile;
+    }
+    std::sort(
+        bankCsvProfiles_.begin(), bankCsvProfiles_.end(),
+        [](const BankCsvProfile& left, const BankCsvProfile& right)
+        {
+            return left.name.localeAwareCompare(right.name) < 0;
+        });
+    emit bankCsvProfilesChanged();
+    result[QStringLiteral("ok")] = true;
+    result[QStringLiteral("id")] = profile.id;
+    return result;
+}
+
+bool FinanceController::deleteBankCsvProfile(const QString& id)
+{
+    const auto existing = std::find_if(
+        bankCsvProfiles_.begin(), bankCsvProfiles_.end(),
+        [&id](const BankCsvProfile& profile)
+        {
+            return profile.id == id;
+        });
+    if (existing == bankCsvProfiles_.end() ||
+        !repository_.deleteBankCsvProfile(id)) {
+        return false;
+    }
+    bankCsvProfiles_.erase(existing);
+    emit bankCsvProfilesChanged();
+    return true;
+}
+
+QVariantMap FinanceController::importBankCsv(
+    const QUrl& fileUrl,
+    const QString& profileId
+    )
+{
+    QVariantMap result{
+        {QStringLiteral("ok"), false},
+        {QStringLiteral("imported"), 0},
+        {QStringLiteral("skipped"), 0},
+        {QStringLiteral("rejected"), 0}
+    };
+    const QString filePath = fileUrl.toLocalFile();
+    if (filePath.isEmpty()) {
+        result[QStringLiteral("error")] = tr("Не выбран CSV-файл");
+        return result;
+    }
+    const auto profile = std::find_if(
+        bankCsvProfiles_.cbegin(), bankCsvProfiles_.cend(),
+        [&profileId](const BankCsvProfile& candidate)
+        {
+            return candidate.id == profileId;
+        });
+    if (profile == bankCsvProfiles_.cend()) {
+        result[QStringLiteral("error")] = tr("Профиль импорта не найден");
+        return result;
+    }
+    const auto account = std::find_if(
+        accounts_.cbegin(), accounts_.cend(),
+        [&profile](const Account& candidate)
+        {
+            return candidate.id() == profile->accountId &&
+                candidate.assetType() == AssetType::Fiat;
+        });
+    if (account == accounts_.cend()) {
+        result[QStringLiteral("error")] = tr("Счёт из профиля не найден");
+        return result;
+    }
+
+    const BankCsvParseResult parsed = BankCsvImporter::parse(
+        filePath, *profile);
+    result[QStringLiteral("rejected")] = parsed.rejected;
+    if (parsed.operations.isEmpty()) {
+        result[QStringLiteral("error")] = parsed.errors.isEmpty()
+            ? tr("В CSV не найдено операций")
+            : parsed.errors.join(QStringLiteral("; "));
+        return result;
+    }
+
+    const auto categoryById = [this](
+        const QString& id,
+        const CategoryType type
+        ) -> const Category*
+    {
+        for (const Category& category : categories_) {
+            if (category.id() == id && category.type() == type &&
+                !archivedCategoryIds_.contains(id)) {
+                return &category;
+            }
+        }
+        return nullptr;
+    };
+    const auto categoryForOperation = [this, &categoryById, &profile](
+        const BankCsvOperation& operation,
+        const CategoryType type
+        ) -> const Category*
+    {
+        if (!operation.categoryName.isEmpty()) {
+            const Category* match = nullptr;
+            for (const Category& category : categories_) {
+                if (category.type() != type ||
+                    archivedCategoryIds_.contains(category.id())) {
+                    continue;
+                }
+                if (category.name().compare(
+                        operation.categoryName, Qt::CaseInsensitive) == 0 ||
+                    categoryDisplayName(category).compare(
+                        operation.categoryName, Qt::CaseInsensitive) == 0) {
+                    if (match) {
+                        match = nullptr;
+                        break;
+                    }
+                    match = &category;
+                }
+            }
+            if (match) {
+                return match;
+            }
+        }
+        return categoryById(
+            type == CategoryType::Income
+                ? profile->incomeCategoryId
+                : profile->expenseCategoryId,
+            type);
+    };
+
+    QSet<QString> existingIds;
+    for (const Transaction& transaction : std::as_const(transactions_)) {
+        existingIds.insert(transaction.id());
+    }
+    QSet<QString> pendingIds;
+    QHash<QString, int> fingerprintOccurrences;
+    QVector<Transaction> imported;
+    int skipped = 0;
+    for (const BankCsvOperation& operation : parsed.operations) {
+        const bool income = operation.signedMinor > 0;
+        const CategoryType categoryType = income
+            ? CategoryType::Income
+            : CategoryType::Expense;
+        const Category* category = categoryForOperation(
+            operation, categoryType);
+        if (!category) {
+            result[QStringLiteral("error")] = tr(
+                "Не найдена категория для строки %1").arg(operation.sourceRow);
+            return result;
+        }
+
+        QString identity;
+        if (!operation.externalId.isEmpty()) {
+            identity = QStringLiteral("external|") + account->id() +
+                QLatin1Char('|') + operation.externalId;
+        } else {
+            const int occurrence = fingerprintOccurrences[
+                operation.fingerprint]++;
+            identity = QStringLiteral("row|") + account->id() +
+                QLatin1Char('|') + operation.fingerprint + QLatin1Char('|') +
+                QString::number(occurrence);
+        }
+        const QString transactionId = QStringLiteral("bankcsv-") +
+            QString::fromLatin1(QCryptographicHash::hash(
+                identity.toUtf8(), QCryptographicHash::Sha256).toHex());
+        if (existingIds.contains(transactionId) ||
+            pendingIds.contains(transactionId)) {
+            ++skipped;
+            continue;
+        }
+
+        imported.append(Transaction(
+            transactionId,
+            account->id(),
+            category->id(),
+            Money(
+                positiveMinorMagnitude(operation.signedMinor),
+                account->currency()),
+            income ? TransactionType::Income : TransactionType::Expense,
+            operation.occurredAt,
+            operation.description.isEmpty()
+                ? tr("Импорт из банковского CSV")
+                : operation.description));
+        pendingIds.insert(transactionId);
+    }
+
+    if (!repository_.insertTransactions(imported)) {
+        result[QStringLiteral("error")] = repository_.lastError();
+        return result;
+    }
+    transactions_ = repository_.loadTransactions();
+    summary_ = repository_.loadSummary();
+    emit transactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
+
+    result[QStringLiteral("ok")] = true;
+    result[QStringLiteral("imported")] = imported.size();
+    result[QStringLiteral("skipped")] = skipped;
+    result[QStringLiteral("warnings")] = parsed.errors;
     return result;
 }
 

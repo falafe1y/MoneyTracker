@@ -128,6 +128,13 @@
     <message><source>CSV содержит операции, переводы, даты, исходные суммы, счета и категории.</source><translation>CSV includes transactions, transfers, dates, original amounts, accounts, and categories.</translation></message>
     <message><source>Экспортировать CSV</source><translation>Export CSV</translation></message>
     <message><source>Импортировать CSV</source><translation>Import CSV</translation></message>
+    <message><source>CSV банка</source><translation>Bank CSV</translation></message>
+    <message><source>Импорт Ledgera</source><translation>Import Ledgera</translation></message>
+    <message><source>Выберите банковский CSV</source><translation>Select a bank CSV</translation></message>
+    <message><source>Все файлы (*)</source><translation>All files (*)</translation></message>
+    <message><source>Импорт резервной копии Ledgera</source><translation>Import Ledgera backup</translation></message>
+    <message><source>Экспорт Ledgera сохраняет полную резервную копию операций. Банковский импорт поддерживает сопоставление столбцов и сохранённые профили.</source><translation>Ledgera export creates a full transaction backup. Bank import supports column mapping and saved profiles.</translation></message>
+    <message><source>Импортировано: %1, пропущено дубликатов: %2, отклонено строк: %3</source><translation>Imported: %1, duplicates skipped: %2, rows rejected: %3</translation></message>
     <message><source>Экспорт операций в CSV</source><translation>Export transactions to CSV</translation></message>
     <message><source>Импорт операций из CSV</source><translation>Import transactions from CSV</translation></message>
     <message><source>CSV-файлы (*.csv)</source><translation>CSV files (*.csv)</translation></message>
@@ -199,6 +206,47 @@
     <message><source>+ Добавить позицию</source><translation>+ Add position</translation></message>
   </context>
   <context>
+    <name>BankCsvImportDialog</name>
+    <message><source>Импорт банковского CSV</source><translation>Import bank CSV</translation></message>
+    <message><source>Новый профиль</source><translation>New profile</translation></message>
+    <message><source>Не используется</source><translation>Not used</translation></message>
+    <message><source>Выберите столбец</source><translation>Select a column</translation></message>
+    <message><source>Определено: %1, разделитель: %2, строк: %3</source><translation>Detected: %1, delimiter: %2, rows: %3</translation></message>
+    <message><source>Профиль сохранён</source><translation>Profile saved</translation></message>
+    <message><source>Профиль удалён</source><translation>Profile deleted</translation></message>
+    <message><source>Профиль</source><translation>Profile</translation></message>
+    <message><source>Название профиля</source><translation>Profile name</translation></message>
+    <message><source>Например, Альфа-Банк</source><translation>For example, Alfa-Bank</translation></message>
+    <message><source>Кодировка</source><translation>Encoding</translation></message>
+    <message><source>Разделитель</source><translation>Delimiter</translation></message>
+    <message><source>Определить автоматически</source><translation>Detect automatically</translation></message>
+    <message><source>Точка с запятой</source><translation>Semicolon</translation></message>
+    <message><source>Запятая</source><translation>Comma</translation></message>
+    <message><source>Табуляция</source><translation>Tab</translation></message>
+    <message><source>Строка заголовков</source><translation>Header row</translation></message>
+    <message><source>Перечитать столбцы</source><translation>Reload columns</translation></message>
+    <message><source>Счёт</source><translation>Account</translation></message>
+    <message><source>Формат даты</source><translation>Date format</translation></message>
+    <message><source>Столбец даты</source><translation>Date column</translation></message>
+    <message><source>Хранение суммы</source><translation>Amount layout</translation></message>
+    <message><source>Один столбец со знаком</source><translation>One signed column</translation></message>
+    <message><source>Отдельно приход и расход</source><translation>Separate income and expense</translation></message>
+    <message><source>Столбец суммы</source><translation>Amount column</translation></message>
+    <message><source>Положительное значение — доход</source><translation>A positive value is income</translation></message>
+    <message><source>Столбец прихода</source><translation>Income column</translation></message>
+    <message><source>Столбец расхода</source><translation>Expense column</translation></message>
+    <message><source>Описание</source><translation>Description</translation></message>
+    <message><source>Идентификатор операции</source><translation>Transaction ID</translation></message>
+    <message><source>Категория из CSV</source><translation>Category from CSV</translation></message>
+    <message><source>Категория дохода по умолчанию</source><translation>Default income category</translation></message>
+    <message><source>Категория расхода по умолчанию</source><translation>Default expense category</translation></message>
+    <message><source>Предварительный просмотр</source><translation>Preview</translation></message>
+    <message><source>Удалить профиль</source><translation>Delete profile</translation></message>
+    <message><source>Сохранить профиль</source><translation>Save profile</translation></message>
+    <message><source>Импортировать</source><translation>Import</translation></message>
+    <message><source>Импортировано: %1, дубликатов: %2, отклонено строк: %3</source><translation>Imported: %1, duplicates: %2, rows rejected: %3</translation></message>
+  </context>
+  <context>
     <name>InvestmentPositionDialog</name>
     <message><source>Добавить инвестиционную позицию</source><translation>Add investment position</translation></message>
     <message><source>Редактирование инвестиционной позиции</source><translation>Edit investment position</translation></message>
@@ -261,6 +309,22 @@
     <message><source>Ошибка в строке %1: неизвестный тип операции</source><translation>Error on row %1: unknown transaction type</translation></message>
     <message><source>Ошибка в строке %1: повторяющийся идентификатор</source><translation>Error on row %1: duplicate identifier</translation></message>
     <message><source>Ошибка в строке %1: категория не найдена</source><translation>Error on row %1: category not found</translation></message>
+    <message><source>Строка заголовков вне файла</source><translation>The header row is outside the file</translation></message>
+    <message><source>Столбец %1</source><translation>Column %1</translation></message>
+    <message><source>табуляция</source><translation>tab</translation></message>
+    <message><source>Заполните название, строку заголовков и столбец даты</source><translation>Enter a name and select the header row and date column</translation></message>
+    <message><source>Выберите столбец суммы</source><translation>Select the amount column</translation></message>
+    <message><source>Выберите разные столбцы дохода и расхода</source><translation>Select different income and expense columns</translation></message>
+    <message><source>Неизвестный способ хранения суммы</source><translation>Unknown amount layout</translation></message>
+    <message><source>Неверный разделитель или кодировка</source><translation>Invalid delimiter or encoding</translation></message>
+    <message><source>Выбранный фиатный счёт не найден</source><translation>The selected fiat account was not found</translation></message>
+    <message><source>Выберите категории дохода и расхода</source><translation>Select income and expense categories</translation></message>
+    <message><source>Профиль с таким названием уже существует</source><translation>A profile with this name already exists</translation></message>
+    <message><source>Профиль импорта не найден</source><translation>Import profile was not found</translation></message>
+    <message><source>Счёт из профиля не найден</source><translation>The account stored in the profile was not found</translation></message>
+    <message><source>В CSV не найдено операций</source><translation>No transactions were found in the CSV</translation></message>
+    <message><source>Не найдена категория для строки %1</source><translation>No category was found for row %1</translation></message>
+    <message><source>Импорт из банковского CSV</source><translation>Imported from bank CSV</translation></message>
     <message><source>Введите корректный публичный адрес TRON, начинающийся с T</source><translation>Enter a valid public TRON address starting with T</translation></message>
     <message><source>Введите корректный адрес Bitcoin Mainnet</source><translation>Enter a valid Bitcoin Mainnet address</translation></message>
     <message><source>Введите корректный адрес Ethereum Mainnet, начинающийся с 0x</source><translation>Enter a valid Ethereum Mainnet address starting with 0x</translation></message>

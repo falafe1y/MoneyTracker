@@ -15,6 +15,7 @@ private slots:
     void preservesSelectedAccountAfterReopen();
     void storesUiLanguage();
     void storesCurrencyRateSettings();
+    void storesBankCsvProfiles();
     void storesCreditCardTerms();
     void migratesCreditLimitForExistingDatabase();
     void updatesAndDeletesTransaction();
@@ -27,6 +28,43 @@ private slots:
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
 };
+
+void FinanceRepositoryTest::storesBankCsvProfiles()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-bank-csv-profile-test.sqlite3"));
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        QVERIFY2(repository.saveBankCsvProfile(
+                     QStringLiteral("alpha"),
+                     QStringLiteral("Альфа-Банк"),
+                     QStringLiteral("{\"dateColumn\":0}")),
+                 qPrintable(repository.lastError()));
+        QVERIFY2(repository.saveBankCsvProfile(
+                     QStringLiteral("alpha"),
+                     QStringLiteral("Альфа-Банк обновлённый"),
+                     QStringLiteral("{\"dateColumn\":2}")),
+                 qPrintable(repository.lastError()));
+    }
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        const auto profiles = repository.loadBankCsvProfiles();
+        QCOMPARE(profiles.size(), 1);
+        QCOMPARE(profiles.constFirst().id, QStringLiteral("alpha"));
+        QCOMPARE(profiles.constFirst().name,
+                 QStringLiteral("Альфа-Банк обновлённый"));
+        QCOMPARE(profiles.constFirst().configurationJson,
+                 QStringLiteral("{\"dateColumn\":2}"));
+        QVERIFY(repository.deleteBankCsvProfile(QStringLiteral("alpha")));
+        QVERIFY(repository.loadBankCsvProfiles().isEmpty());
+    }
+}
 
 void FinanceRepositoryTest::storesCryptoWalletAndPriceSnapshots()
 {

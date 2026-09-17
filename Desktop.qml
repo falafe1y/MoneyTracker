@@ -2899,7 +2899,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("CSV содержит операции, переводы, даты, исходные суммы, счета и категории.")
+                    text: qsTr("Экспорт Ledgera сохраняет полную резервную копию операций. Банковский импорт поддерживает сопоставление столбцов и сохранённые профили.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -2908,12 +2908,17 @@ ApplicationWindow {
                     SoftButton {
                         text: qsTr("Экспортировать CSV")
                         highlighted: true
-                        implicitWidth: 180
+                        implicitWidth: 160
                         onClicked: exportCsvDialog.open()
                     }
                     SoftButton {
-                        text: qsTr("Импортировать CSV")
-                        implicitWidth: 180
+                        text: qsTr("CSV банка")
+                        implicitWidth: 160
+                        onClicked: bankCsvFileDialog.open()
+                    }
+                    SoftButton {
+                        text: qsTr("Импорт Ledgera")
+                        implicitWidth: 160
                         onClicked: importCsvDialog.open()
                     }
                 }
@@ -2974,8 +2979,16 @@ ApplicationWindow {
     }
 
     FileDialog {
+        id: bankCsvFileDialog
+        title: qsTr("Выберите банковский CSV")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("CSV-файлы (*.csv)"), qsTr("Все файлы (*)")]
+        onAccepted: bankCsvImportDialog.openForFile(selectedFile)
+    }
+
+    FileDialog {
         id: importCsvDialog
-        title: qsTr("Импорт операций из CSV")
+        title: qsTr("Импорт резервной копии Ledgera")
         fileMode: FileDialog.OpenFile
         nameFilters: [qsTr("CSV-файлы (*.csv)")]
         onAccepted: {
@@ -2985,6 +2998,24 @@ ApplicationWindow {
                 ? qsTr("Импортировано: %1, пропущено дубликатов: %2")
                     .arg(result.imported).arg(result.skipped)
                 : qsTr("Не удалось импортировать CSV: %1").arg(result.error);
+        }
+    }
+
+    BankCsvImportDialog {
+        id: bankCsvImportDialog
+        controller: financeController
+        panelColor: root.panel
+        softColor: root.soft
+        textColor: root.accent
+        mutedColor: root.muted
+        lineColor: root.line
+        accentColor: root.accent
+        errorColor: root.red
+        successColor: root.income
+        onImportFinished: function(result) {
+            root.csvStatusOk = true;
+            root.csvStatus = qsTr("Импортировано: %1, пропущено дубликатов: %2, отклонено строк: %3")
+                .arg(result.imported).arg(result.skipped).arg(result.rejected);
         }
     }
 

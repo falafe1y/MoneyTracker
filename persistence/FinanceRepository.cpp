@@ -1536,6 +1536,73 @@ bool FinanceRepository::saveManualCurrencyRates(
     return true;
 }
 
+QVector<FinanceRepository::BankCsvProfileRecord>
+FinanceRepository::loadBankCsvProfiles()
+{
+    QVector<BankCsvProfileRecord> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT id, name, configuration_json "
+            "FROM bank_csv_profiles ORDER BY name COLLATE NOCASE, id"))) {
+        setLastError(query.lastError().text());
+        return result;
+    }
+    while (query.next()) {
+        result.append({
+            query.value(0).toString(),
+            query.value(1).toString(),
+            query.value(2).toString()
+        });
+    }
+    return result;
+}
+
+bool FinanceRepository::saveBankCsvProfile(
+    const QString& id,
+    const QString& name,
+    const QString& configurationJson
+    )
+{
+    if (id.trimmed().isEmpty() || name.trimmed().isEmpty() ||
+        configurationJson.trimmed().isEmpty()) {
+        setLastError(QStringLiteral("Invalid bank CSV profile"));
+        return false;
+    }
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO bank_csv_profiles("
+        "id, name, configuration_json, created_at, updated_at) "
+        "VALUES(?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "name = excluded.name, "
+        "configuration_json = excluded.configuration_json, "
+        "updated_at = excluded.updated_at"));
+    const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    query.addBindValue(id);
+    query.addBindValue(name.trimmed());
+    query.addBindValue(configurationJson);
+    query.addBindValue(now);
+    query.addBindValue(now);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::deleteBankCsvProfile(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "DELETE FROM bank_csv_profiles WHERE id = ?"));
+    query.addBindValue(id);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return query.numRowsAffected() > 0;
+}
+
 bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
@@ -1565,6 +1632,12 @@ bool FinanceRepository::initializeSchema()
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS settings ("
                        "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS bank_csv_profiles ("
+                       "id TEXT PRIMARY KEY, "
+                       "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
+                       "configuration_json TEXT NOT NULL, "
+                       "created_at INTEGER NOT NULL, "
+                       "updated_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_wallets ("
                        "id TEXT PRIMARY KEY, address TEXT NOT NULL, "
                        "network TEXT NOT NULL, symbol TEXT NOT NULL, "

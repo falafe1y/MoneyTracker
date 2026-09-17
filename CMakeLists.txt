@@ -24,6 +24,7 @@ qt_add_qml_module(appMoneyTracker
         Mobile.qml
         InvestmentPositionDialog.qml
         InvestmentPositionsPanel.qml
+        BankCsvImportDialog.qml
         # BankComboBox.qml
         # CategoryPicker.qml
         SOURCES core/Account.h
@@ -49,6 +50,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/DateSliceCalculator.cpp
         SOURCES services/CsvCodec.h
         SOURCES services/CsvCodec.cpp
+        SOURCES services/BankCsvImporter.h
+        SOURCES services/BankCsvImporter.cpp
         SOURCES services/CapitalHistoryCalculator.h
         SOURCES services/CapitalHistoryCalculator.cpp
         SOURCES services/CurrencyRateProvider.h
@@ -263,6 +266,23 @@ target_link_libraries(CsvCodecTest
 add_test(
     NAME CsvCodecTest
     COMMAND CsvCodecTest
+)
+
+add_executable(BankCsvImporterTest
+    tests/BankCsvImporterTest.cpp
+    services/BankCsvImporter.cpp
+    services/CsvCodec.cpp
+)
+
+target_link_libraries(BankCsvImporterTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME BankCsvImporterTest
+    COMMAND BankCsvImporterTest
 )
 
 add_executable(TronUsdtParserTest
