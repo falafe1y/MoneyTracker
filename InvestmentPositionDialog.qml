@@ -49,6 +49,7 @@ Dialog {
             }
         }
         open();
+        Qt.callLater(function() { searchField.forceActiveFocus(); });
     }
 
     function openForEdit(position) {
@@ -74,6 +75,45 @@ Dialog {
             }
         }
         open();
+        Qt.callLater(function() { quantityField.forceActiveFocus(); });
+    }
+
+    function submit() {
+        const result = editingPositionId.length > 0
+            ? controller.updateInvestmentPosition(
+                  editingPositionId,
+                  accountBox.currentValue,
+                  showingCurrentInstrument ? -1 : selectedResult,
+                  quantityField.text,
+                  averagePriceField.text
+              )
+            : controller.addInvestmentPosition(
+                  accountBox.currentValue,
+                  selectedResult,
+                  quantityField.text,
+                  averagePriceField.text
+              );
+        if (result.ok)
+            close();
+        else
+            localError = result.error
+                || (editingPositionId.length > 0
+                    ? qsTr("Не удалось обновить позицию")
+                    : qsTr("Не удалось добавить позицию"));
+    }
+
+    Shortcut {
+        sequences: ["Return", "Enter"]
+        context: Qt.ApplicationShortcut
+        enabled: dialog.visible
+              && saveButton.enabled
+              && !accountBox.activeFocus
+              && !accountBox.popup.visible
+              && !searchField.activeFocus
+              && !searchButton.activeFocus
+              && !cancelButton.activeFocus
+              && !saveButton.activeFocus
+        onActivated: dialog.submit()
     }
 
     onClosed: {
@@ -257,40 +297,19 @@ Dialog {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             Button {
+                id: cancelButton
                 text: qsTr("Отмена")
                 onClicked: dialog.close()
             }
             Button {
+                id: saveButton
                 text: dialog.editingPositionId.length > 0
                     ? qsTr("Сохранить") : qsTr("Добавить")
                 enabled: dialog.controller
                          && !dialog.controller.investmentQuoteBusy
                          && accountBox.currentIndex >= 0
                          && dialog.selectedResult >= 0
-                onClicked: {
-                    const result = dialog.editingPositionId.length > 0
-                        ? dialog.controller.updateInvestmentPosition(
-                              dialog.editingPositionId,
-                              accountBox.currentValue,
-                              dialog.showingCurrentInstrument
-                                  ? -1 : dialog.selectedResult,
-                              quantityField.text,
-                              averagePriceField.text
-                          )
-                        : dialog.controller.addInvestmentPosition(
-                              accountBox.currentValue,
-                              dialog.selectedResult,
-                              quantityField.text,
-                              averagePriceField.text
-                          );
-                    if (result.ok)
-                        dialog.close();
-                    else
-                        dialog.localError = result.error
-                            || (dialog.editingPositionId.length > 0
-                                ? qsTr("Не удалось обновить позицию")
-                                : qsTr("Не удалось добавить позицию"));
-                }
+                onClicked: dialog.submit()
             }
         }
     }

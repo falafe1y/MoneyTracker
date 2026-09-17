@@ -438,6 +438,52 @@ ApplicationWindow {
         return result.slice(0, 5);
     }
 
+    function modalDialogVisible() {
+        return cryptoWalletDialog.visible
+            || accountDialog.visible
+            || deleteAccountDialog.visible
+            || deleteTransactionDialog.visible
+            || operationDialog.visible
+            || dateFilterDialog.visible
+            || operationDateDialog.visible
+            || categoryDialog.visible
+            || investmentPositionDialog.visible
+            || bankCsvImportDialog.visible;
+    }
+
+    function selectedInvestmentAccountId() {
+        const accounts = financeController.investmentAccounts;
+        for (let i = 0; i < accounts.length; ++i)
+            if (accounts[i].id === financeController.selectedAccountId)
+                return accounts[i].id;
+        return "";
+    }
+
+    function openNewOperationForSelectedAsset() {
+        if (financeController.selectedAsset === "fiat") {
+            operationDialog.openForNew();
+            return;
+        }
+        if (financeController.selectedAsset === "investment"
+            && financeController.investmentAccounts.length > 0) {
+            investmentPositionDialog.openForNewPosition(
+                selectedInvestmentAccountId()
+            );
+        }
+    }
+
+    Shortcut {
+        sequence: StandardKey.New
+        context: Qt.ApplicationShortcut
+        enabled: !root.modalDialogVisible()
+              && !accountContextMenu.visible
+              && !transactionContextMenu.visible
+              && (financeController.selectedAsset === "fiat"
+                  || (financeController.selectedAsset === "investment"
+                      && financeController.investmentAccounts.length > 0))
+        onActivated: root.openNewOperationForSelectedAsset()
+    }
+
     component Panel: Rectangle {
         color: root.panel
         radius: 16
@@ -481,6 +527,7 @@ ApplicationWindow {
     component SoftButton: Button {
         id: control
         property bool destructive: false
+        activeFocusOnTab: true
         hoverEnabled: true
         implicitHeight: 42
         contentItem: Text {
@@ -498,8 +545,13 @@ ApplicationWindow {
                    : control.highlighted
                      ? (control.down ? root.navHovered : root.accent)
                      : (control.hovered ? root.soft : root.panel)
-            border.width: control.destructive || control.highlighted ? 0 : 1
-            border.color: root.line
+            border.width: control.activeFocus
+                        ? 2
+                        : control.destructive || control.highlighted ? 0 : 1
+            border.color: control.activeFocus
+                        ? (control.destructive || control.highlighted
+                           ? root.pale : root.navSelected)
+                        : root.line
         }
     }
 
@@ -610,8 +662,9 @@ ApplicationWindow {
         background: Rectangle {
             radius: 11
             color: combo.pressed || combo.popup.visible ? root.panel : combo.hovered ? root.controlHovered : root.soft
-            border.width: combo.popup.visible ? 2 : 1
-            border.color: combo.popup.visible ? root.navSelected : root.line
+            border.width: combo.activeFocus || combo.popup.visible ? 2 : 1
+            border.color: combo.activeFocus || combo.popup.visible
+                        ? root.navSelected : root.line
         }
 
         delegate: ItemDelegate {
@@ -3042,7 +3095,7 @@ ApplicationWindow {
             cryptoAddressField.clear();
             cryptoWalletError.text = "";
             open();
-            cryptoAddressField.forceActiveFocus();
+            Qt.callLater(function() { cryptoAddressField.forceActiveFocus(); });
         }
 
         function submit() {
@@ -3054,6 +3107,17 @@ ApplicationWindow {
                 close();
             else
                 cryptoWalletError.text = result.error || qsTr("Не удалось добавить кошелёк");
+        }
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.ApplicationShortcut
+            enabled: cryptoWalletDialog.visible
+                  && !cryptoTypeBox.activeFocus
+                  && !cryptoTypeBox.popup.visible
+                  && !cryptoCancelButton.activeFocus
+                  && !cryptoSubmitButton.activeFocus
+            onActivated: cryptoWalletDialog.submit()
         }
 
         background: Rectangle {
@@ -3096,7 +3160,6 @@ ApplicationWindow {
                         ? qsTr("Публичный адрес Bitcoin (1…, 3… или bc1…)")
                         : qsTr("Публичный адрес Ethereum (0x…)")
                 maximumLength: 90
-                onAccepted: cryptoWalletDialog.submit()
             }
             Text {
                 Layout.fillWidth: true
@@ -3115,10 +3178,12 @@ ApplicationWindow {
             RowLayout {
                 Item { Layout.fillWidth: true }
                 SoftButton {
+                    id: cryptoCancelButton
                     text: qsTr("Отмена")
                     onClicked: cryptoWalletDialog.close()
                 }
                 SoftButton {
+                    id: cryptoSubmitButton
                     text: qsTr("Добавить")
                     highlighted: true
                     onClicked: cryptoWalletDialog.submit()
@@ -3201,6 +3266,7 @@ ApplicationWindow {
             accountCurrencyBox.currentIndex = 0;
             accountError.text = "";
             open();
+            Qt.callLater(function() { accountNameField.forceActiveFocus(); });
         }
 
         function openForEdit(row) {
@@ -3224,6 +3290,60 @@ ApplicationWindow {
             accountCreditLimitField.text = root.amountForInput(row.creditLimitMinor);
             accountError.text = "";
             open();
+            Qt.callLater(function() { accountNameField.forceActiveFocus(); });
+        }
+
+        function submit() {
+            const type = accountTypes[accountTypeBox.currentIndex].value;
+            const enteredMinor = Math.round(
+                (Number(accountBalanceField.text.replace(",", ".")) || 0) * 100
+            );
+            const initialBalanceMinor = creditCardSelected
+                                      ? -Math.abs(enteredMinor)
+                                      : enteredMinor;
+            const creditLimitMinor = creditCardSelected
+                                   ? Math.round(
+                                       (Number(accountCreditLimitField.text.replace(",", ".")) || 0)
+                                       * 100
+                                     )
+                                   : 0;
+            if (creditCardSelected && creditLimitMinor <= 0) {
+                accountError.text = qsTr("Укажите кредитный лимит");
+                return;
+            }
+            const ok = editingId
+                     ? financeController.updateAccount(
+                         editingId,
+                         accountNameField.text,
+                         type,
+                         accountCurrencyBox.currentText,
+                         initialBalanceMinor,
+                         creditLimitMinor
+                     )
+                     : financeController.addAccount(
+                         accountNameField.text,
+                         type,
+                         accountCurrencyBox.currentText,
+                         initialBalanceMinor,
+                         creditLimitMinor
+                     );
+            if (ok)
+                close();
+            else
+                accountError.text = qsTr("Проверьте название и параметры счёта");
+        }
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.ApplicationShortcut
+            enabled: accountDialog.visible
+                  && !accountTypeBox.activeFocus
+                  && !accountTypeBox.popup.visible
+                  && !accountCurrencyBox.activeFocus
+                  && !accountCurrencyBox.popup.visible
+                  && !accountCancelButton.activeFocus
+                  && !accountSubmitButton.activeFocus
+            onActivated: accountDialog.submit()
         }
 
         onClosed: {
@@ -3332,46 +3452,15 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    id: accountCancelButton
                     text: qsTr("Отмена")
                     onClicked: accountDialog.close()
                 }
                 SoftButton {
+                    id: accountSubmitButton
                     text: accountDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
                     highlighted: true
-                    onClicked: {
-                        const type = accountDialog.accountTypes[accountTypeBox.currentIndex].value;
-                        const enteredMinor = Math.round((Number(accountBalanceField.text.replace(",", ".")) || 0) * 100);
-                        const initialBalanceMinor = accountDialog.creditCardSelected
-                                                  ? -Math.abs(enteredMinor)
-                                                  : enteredMinor;
-                        const creditLimitMinor = accountDialog.creditCardSelected
-                                               ? Math.round((Number(accountCreditLimitField.text.replace(",", ".")) || 0) * 100)
-                                               : 0;
-                        if (accountDialog.creditCardSelected && creditLimitMinor <= 0) {
-                            accountError.text = qsTr("Укажите кредитный лимит");
-                            return;
-                        }
-                        const ok = accountDialog.editingId
-                                 ? financeController.updateAccount(
-                                     accountDialog.editingId,
-                                     accountNameField.text,
-                                     type,
-                                     accountCurrencyBox.currentText,
-                                     initialBalanceMinor,
-                                     creditLimitMinor
-                                 )
-                                 : financeController.addAccount(
-                                     accountNameField.text,
-                                     type,
-                                     accountCurrencyBox.currentText,
-                                     initialBalanceMinor,
-                                     creditLimitMinor
-                                 );
-                        if (ok)
-                            accountDialog.close();
-                        else
-                            accountError.text = qsTr("Проверьте название и параметры счёта");
-                    }
+                    onClicked: accountDialog.submit()
                 }
             }
         }
@@ -3440,6 +3529,28 @@ ApplicationWindow {
             accountData = row;
             deleteAccountError.text = "";
             open();
+        }
+
+        function confirmDelete() {
+            const row = accountData;
+            const ok = row && row.isCrypto
+                     ? financeController.deleteCryptoWallet(row.id)
+                     : row && financeController.deleteAccount(row.id);
+            if (ok)
+                close();
+            else
+                deleteAccountError.text = row && row.isCrypto
+                                        ? qsTr("Не удалось удалить криптовалюту")
+                                        : qsTr("Не удалось удалить счёт");
+        }
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.ApplicationShortcut
+            enabled: deleteAccountDialog.visible
+                  && !deleteAccountCancelButton.activeFocus
+                  && !deleteAccountSubmitButton.activeFocus
+            onActivated: deleteAccountDialog.confirmDelete()
         }
 
         onClosed: accountData = null
@@ -3530,24 +3641,15 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    id: deleteAccountCancelButton
                     text: qsTr("Отмена")
                     onClicked: deleteAccountDialog.close()
                 }
                 SoftButton {
+                    id: deleteAccountSubmitButton
                     text: qsTr("Удалить")
                     destructive: true
-                    onClicked: {
-                        const row = deleteAccountDialog.accountData;
-                        const ok = row && row.isCrypto
-                                 ? financeController.deleteCryptoWallet(row.id)
-                                 : row && financeController.deleteAccount(row.id);
-                        if (ok)
-                            deleteAccountDialog.close();
-                        else
-                            deleteAccountError.text = row && row.isCrypto
-                                                    ? qsTr("Не удалось удалить криптовалюту")
-                                                    : qsTr("Не удалось удалить счёт");
-                    }
+                    onClicked: deleteAccountDialog.confirmDelete()
                 }
             }
         }
@@ -3617,6 +3719,29 @@ ApplicationWindow {
             transactionData = row;
             deleteTransactionError.text = "";
             open();
+        }
+
+        function confirmDelete() {
+            const row = transactionData;
+            const ok = row && row.type === "investment_position"
+                     ? financeController.deleteInvestmentPosition(row.id)
+                     : row && financeController.deleteTransaction(row.id);
+            if (ok)
+                close();
+            else
+                deleteTransactionError.text = row
+                    && row.type === "investment_position"
+                    ? qsTr("Не удалось удалить инвестиционную позицию")
+                    : qsTr("Не удалось удалить операцию");
+        }
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.ApplicationShortcut
+            enabled: deleteTransactionDialog.visible
+                  && !deleteTransactionCancelButton.activeFocus
+                  && !deleteTransactionSubmitButton.activeFocus
+            onActivated: deleteTransactionDialog.confirmDelete()
         }
 
         onClosed: transactionData = null
@@ -3715,25 +3840,15 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    id: deleteTransactionCancelButton
                     text: qsTr("Отмена")
                     onClicked: deleteTransactionDialog.close()
                 }
                 SoftButton {
+                    id: deleteTransactionSubmitButton
                     text: qsTr("Удалить")
                     destructive: true
-                    onClicked: {
-                        const row = deleteTransactionDialog.transactionData;
-                        const ok = row && row.type === "investment_position"
-                                 ? financeController.deleteInvestmentPosition(row.id)
-                                 : row && financeController.deleteTransaction(row.id);
-                        if (ok)
-                            deleteTransactionDialog.close();
-                        else
-                            deleteTransactionError.text = row
-                                && row.type === "investment_position"
-                                ? qsTr("Не удалось удалить инвестиционную позицию")
-                                : qsTr("Не удалось удалить операцию");
-                    }
+                    onClicked: deleteTransactionDialog.confirmDelete()
                 }
             }
         }
@@ -3820,6 +3935,7 @@ ApplicationWindow {
                 }
             }
             open();
+            Qt.callLater(function() { operationAmount.forceActiveFocus(); });
         }
 
         function openForEdit(row) {
@@ -3856,6 +3972,108 @@ ApplicationWindow {
             }
             operationDescription.text = row.rawDescription || "";
             open();
+            Qt.callLater(function() { operationAmount.forceActiveFocus(); });
+        }
+
+        function submit() {
+            if (!financeController.allAccounts.length) {
+                operationError.text = qsTr("Сначала добавьте счёт");
+                return;
+            }
+            const isTransfer = operationType.currentIndex === 2;
+            if (!operationAccount.model.length
+                || operationAccount.currentIndex < 0) {
+                operationError.text = qsTr("Для выбранной операции нет доступного счёта");
+                return;
+            }
+            if (isTransfer && financeController.allAccounts.length < 2) {
+                operationError.text = qsTr("Для перевода нужны два счёта");
+                return;
+            }
+            if (isTransfer && transferTargetAccount.currentIndex < 0) {
+                operationError.text = qsTr("Выберите счёт назначения");
+                return;
+            }
+            if (!isTransfer && !operationCategory.model.length) {
+                operationError.text = qsTr("Сначала добавьте категорию");
+                return;
+            }
+            const account = operationAccount.model[operationAccount.currentIndex];
+            const category = isTransfer
+                         ? null
+                         : operationCategory.model[operationCategory.currentIndex];
+            const minor = Math.round(
+                (Number(operationAmount.text.replace(",", ".")) || 0) * 100
+            );
+            const type = operationType.currentIndex === 0 ? "income"
+                       : operationType.currentIndex === 1 ? "expense"
+                       : "transfer";
+            const targetAccount = isTransfer
+                                ? transferTargetAccount.model[
+                                      transferTargetAccount.currentIndex
+                                  ]
+                                : null;
+            const ok = editingId
+                     ? financeController.updateOperation(
+                         editingId,
+                         minor,
+                         operationDescription.text,
+                         isTransfer ? "" : category.value,
+                         account.id,
+                         type,
+                         isTransfer ? targetAccount.id : "",
+                         selectedDate
+                     )
+                     : isTransfer
+                       ? financeController.addTransfer(
+                           minor,
+                           operationDescription.text,
+                           account.id,
+                           targetAccount.id,
+                           selectedDate
+                       )
+                       : type === "income"
+                         ? financeController.addIncome(
+                             minor,
+                             operationDescription.text,
+                             category.value,
+                             account.currency,
+                             account.id,
+                             selectedDate
+                         )
+                         : financeController.addExpense(
+                             minor,
+                             operationDescription.text,
+                             category.value,
+                             account.currency,
+                             account.id,
+                             selectedDate
+                         );
+            if (ok)
+                close();
+            else
+                operationError.text = isTransfer
+                    ? qsTr("Проверьте сумму и выбранные счета")
+                    : qsTr("Проверьте сумму, счёт и категорию");
+        }
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.ApplicationShortcut
+            enabled: operationDialog.visible
+                  && !operationDateDialog.visible
+                  && !operationType.activeFocus
+                  && !operationType.popup.visible
+                  && !operationAccount.activeFocus
+                  && !operationAccount.popup.visible
+                  && !transferTargetAccount.activeFocus
+                  && !transferTargetAccount.popup.visible
+                  && !operationCategory.activeFocus
+                  && !operationCategory.popup.visible
+                  && !operationDateButton.activeFocus
+                  && !operationCancelButton.activeFocus
+                  && !operationSubmitButton.activeFocus
+            onActivated: operationDialog.submit()
         }
 
         onClosed: {
@@ -4034,91 +4252,15 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    id: operationCancelButton
                     text: qsTr("Отмена")
                     onClicked: operationDialog.close()
                 }
                 SoftButton {
+                    id: operationSubmitButton
                     text: qsTr("Сохранить")
                     highlighted: true
-                    onClicked: {
-                        if (!financeController.allAccounts.length) {
-                            operationError.text = qsTr("Сначала добавьте счёт");
-                            return;
-                        }
-                        const isTransfer = operationType.currentIndex === 2;
-                        if (!operationAccount.model.length ||
-                            operationAccount.currentIndex < 0) {
-                            operationError.text = qsTr("Для выбранной операции нет доступного счёта");
-                            return;
-                        }
-                        if (isTransfer && financeController.allAccounts.length < 2) {
-                            operationError.text = qsTr("Для перевода нужны два счёта");
-                            return;
-                        }
-                        if (isTransfer && transferTargetAccount.currentIndex < 0) {
-                            operationError.text = qsTr("Выберите счёт назначения");
-                            return;
-                        }
-                        if (!isTransfer && !operationCategory.model.length) {
-                            operationError.text = qsTr("Сначала добавьте категорию");
-                            return;
-                        }
-                        const account = operationAccount.model[operationAccount.currentIndex];
-                        const category = isTransfer
-                                     ? null
-                                     : operationCategory.model[operationCategory.currentIndex];
-                        const minor = Math.round(
-                            (Number(operationAmount.text.replace(",", ".")) || 0) * 100
-                        );
-                        const type = operationType.currentIndex === 0 ? "income"
-                                   : operationType.currentIndex === 1 ? "expense"
-                                   : "transfer";
-                        const targetAccount = isTransfer
-                                            ? transferTargetAccount.model[transferTargetAccount.currentIndex]
-                                            : null;
-                        const ok = operationDialog.editingId
-                                 ? financeController.updateOperation(
-                                     operationDialog.editingId,
-                                     minor,
-                                     operationDescription.text,
-                                     isTransfer ? "" : category.value,
-                                     account.id,
-                                     type,
-                                     isTransfer ? targetAccount.id : "",
-                                     operationDialog.selectedDate
-                                 )
-                                 : isTransfer
-                                   ? financeController.addTransfer(
-                                     minor,
-                                     operationDescription.text,
-                                     account.id,
-                                     targetAccount.id,
-                                     operationDialog.selectedDate
-                                 )
-                                 : type === "income"
-                                   ? financeController.addIncome(
-                                       minor,
-                                       operationDescription.text,
-                                       category.value,
-                                       account.currency,
-                                       account.id,
-                                       operationDialog.selectedDate
-                                   )
-                                   : financeController.addExpense(
-                                       minor,
-                                       operationDescription.text,
-                                       category.value,
-                                       account.currency,
-                                       account.id,
-                                       operationDialog.selectedDate
-                                   );
-                        if (ok)
-                            operationDialog.close();
-                        else
-                            operationError.text = isTransfer
-                                ? qsTr("Проверьте сумму и выбранные счета")
-                                : qsTr("Проверьте сумму, счёт и категорию");
-                    }
+                    onClicked: operationDialog.submit()
                 }
             }
         }
@@ -4567,6 +4709,24 @@ ApplicationWindow {
             categoryNameField.text = row.label;
             categoryType.currentIndex = row.type === "income" ? 0 : 1;
         }
+        function submit() {
+            const ok = editingId
+                     ? financeController.renameCategory(
+                         editingId,
+                         categoryNameField.text
+                     )
+                     : financeController.addCategory(
+                         categoryNameField.text,
+                         categoryType.currentIndex === 0 ? "income" : "expense"
+                     );
+            if (ok) {
+                editingId = "";
+                categoryNameField.clear();
+                categoryError.text = "";
+            } else {
+                categoryError.text = qsTr("Не удалось сохранить категорию");
+            }
+        }
         background: Rectangle {
             color: root.panel
             radius: 18
@@ -4587,6 +4747,7 @@ ApplicationWindow {
                     id: categoryNameField
                     Layout.fillWidth: true
                     placeholderText: qsTr("Название категории")
+                    onAccepted: categoryDialog.submit()
                 }
                 AppComboBox {
                     id: categoryType
@@ -4596,15 +4757,7 @@ ApplicationWindow {
                 SoftButton {
                     text: categoryDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
                     highlighted: true
-                    onClicked: {
-                        const ok = categoryDialog.editingId ? financeController.renameCategory(categoryDialog.editingId, categoryNameField.text) : financeController.addCategory(categoryNameField.text, categoryType.currentIndex === 0 ? "income" : "expense");
-                        if (ok) {
-                            categoryDialog.editingId = "";
-                            categoryNameField.clear();
-                            categoryError.text = "";
-                        } else
-                            categoryError.text = qsTr("Не удалось сохранить категорию");
-                    }
+                    onClicked: categoryDialog.submit()
                 }
             }
             Text {
