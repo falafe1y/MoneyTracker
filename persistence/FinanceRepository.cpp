@@ -216,7 +216,8 @@ QVector<Transaction> FinanceRepository::loadTransactions()
                   currencyFromCode(query.value(7).toString())),
             query.value(4).toInt() == 0
                 ? TransactionType::Income : TransactionType::Expense,
-            QDateTime::fromMSecsSinceEpoch(query.value(5).toLongLong(), Qt::UTC),
+            QDateTime::fromMSecsSinceEpoch(
+                query.value(5).toLongLong(), QTimeZone::UTC),
             query.value(6).toString()));
     }
     return result;
@@ -330,11 +331,11 @@ QVector<CryptoWallet> FinanceRepository::loadCryptoWallets()
             fetchedAt.isNull()
                 ? QDateTime()
                 : QDateTime::fromMSecsSinceEpoch(
-                      fetchedAt.toLongLong(), Qt::UTC),
+                      fetchedAt.toLongLong(), QTimeZone::UTC),
             query.value(7).isNull()
                 ? QDateTime()
                 : QDateTime::fromMSecsSinceEpoch(
-                      query.value(7).toLongLong(), Qt::UTC)));
+                      query.value(7).toLongLong(), QTimeZone::UTC)));
     }
     return result;
 }
@@ -362,7 +363,7 @@ QVector<CryptoTransaction> FinanceRepository::loadCryptoTransactions()
             query.value(3).toString(),
             query.value(4).toLongLong(),
             QDateTime::fromMSecsSinceEpoch(
-                query.value(5).toLongLong(), Qt::UTC)));
+                query.value(5).toLongLong(), QTimeZone::UTC)));
     }
     return result;
 }
@@ -446,7 +447,7 @@ QVector<InvestmentQuote> FinanceRepository::loadInvestmentQuotes()
             query.value(0).toString(),
             query.value(1).toLongLong(),
             QDateTime::fromMSecsSinceEpoch(
-                query.value(2).toLongLong(), Qt::UTC)));
+                query.value(2).toLongLong(), QTimeZone::UTC)));
     }
     return result;
 }
@@ -468,7 +469,7 @@ FinanceRepository::CryptoPriceSnapshot FinanceRepository::loadCryptoPrice(
         }
         if (!query.value(1).isNull()) {
             result.fetchedAtUtc = QDateTime::fromMSecsSinceEpoch(
-                query.value(1).toLongLong(), Qt::UTC);
+                query.value(1).toLongLong(), QTimeZone::UTC);
         }
     }
     return result;
@@ -484,7 +485,8 @@ QDateTime FinanceRepository::loadCryptoRefreshAttemptUtc() const
         bool ok = false;
         const qint64 milliseconds = query.value(0).toString().toLongLong(&ok);
         if (ok && milliseconds > 0) {
-            return QDateTime::fromMSecsSinceEpoch(milliseconds, Qt::UTC);
+            return QDateTime::fromMSecsSinceEpoch(
+                milliseconds, QTimeZone::UTC);
         }
     }
     return {};

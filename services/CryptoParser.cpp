@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QTimeZone>
 
 #include <algorithm>
 #include <array>
@@ -449,7 +450,7 @@ bool parseBitcoinTransactionsResponse(
             outgoing ? normalizedAddress : counterparty,
             outgoing ? counterparty : normalizedAddress,
             outgoing ? -net : net,
-            QDateTime::fromSecsSinceEpoch(timestamp, Qt::UTC)));
+            QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone::UTC)));
     }
     return true;
 }
@@ -565,7 +566,7 @@ bool parseEthereumTransactionsResponse(
             from,
             to,
             amountAtomic,
-            QDateTime::fromSecsSinceEpoch(timestamp, Qt::UTC)));
+            QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone::UTC)));
     }
     return true;
 }

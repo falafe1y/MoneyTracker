@@ -180,7 +180,7 @@ void FinanceRepositoryTest::storesCryptoWalletAndPriceSnapshots()
     const QString databasePath = temporaryDirectory.filePath(
         QStringLiteral("moneytracker-crypto-test.sqlite3"));
     const QDateTime balanceFetchedAt = QDateTime::fromMSecsSinceEpoch(
-        1'788'100'000'000, Qt::UTC);
+        1'788'100'000'000, QTimeZone::UTC);
     const QDateTime priceFetchedAt = balanceFetchedAt.addSecs(2);
 
     {
@@ -490,7 +490,7 @@ void FinanceRepositoryTest::preservesSelectedAccountAfterReopen()
     const QString transactionId = QStringLiteral("test-transaction");
     const QDateTime occurredAt = QDateTime::fromMSecsSinceEpoch(
         1'788'000'000'000,
-        Qt::UTC
+        QTimeZone::UTC
     );
 
     {
@@ -582,7 +582,7 @@ void FinanceRepositoryTest::updatesAndDeletesTransaction()
     );
     const QDateTime originalDate = QDateTime::fromMSecsSinceEpoch(
         1'788'000'000'000,
-        Qt::UTC
+        QTimeZone::UTC
     );
     const QDateTime updatedDate = originalDate.addDays(1);
 

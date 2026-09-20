@@ -2,6 +2,7 @@
 #include "../core/InvestmentPosition.h"
 #include "../core/InvestmentQuote.h"
 
+#include <QTimeZone>
 #include <QtTest>
 
 class InvestmentModelTest : public QObject
@@ -63,7 +64,7 @@ void InvestmentModelTest::preservesFractionalPositionPrecision()
 void InvestmentModelTest::preservesQuoteData()
 {
     const QDateTime quotedAt = QDateTime::fromMSecsSinceEpoch(
-        1'788'200'000'123, Qt::UTC);
+        1'788'200'000'123, QTimeZone::UTC);
     const InvestmentQuote quote(
         QStringLiteral("instrument-aapl"), 201'120'001, quotedAt);
 

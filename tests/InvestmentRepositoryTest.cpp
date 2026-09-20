@@ -2,6 +2,7 @@
 
 #include <QTemporaryDir>
 #include <QSqlQuery>
+#include <QTimeZone>
 #include <QUuid>
 #include <QtTest>
 
@@ -68,7 +69,7 @@ void InvestmentRepositoryTest::storesUpdatesAndArchivesInvestmentModel()
     const QString databasePath = temporaryDirectory.filePath(
         QStringLiteral("investment-model.sqlite3"));
     const QDateTime firstQuoteAt = QDateTime::fromMSecsSinceEpoch(
-        1'788'300'000'123, Qt::UTC);
+        1'788'300'000'123, QTimeZone::UTC);
     const QDateTime updatedQuoteAt = firstQuoteAt.addSecs(300);
 
     {

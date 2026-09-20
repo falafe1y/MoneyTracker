@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimeZone>
 
 #include <cmath>
 #include <cstring>
@@ -247,7 +248,7 @@ bool parseTronUsdtTransactionsResponse(
         const qint64 timestamp = static_cast<qint64>(item.value(
             QStringLiteral("block_timestamp")).toDouble(0.0));
         const QDateTime occurredAtUtc = QDateTime::fromMSecsSinceEpoch(
-            timestamp, Qt::UTC);
+            timestamp, QTimeZone::UTC);
 
         if (transactionId.isEmpty() || !isValidTronAddress(fromAddress) ||
             !isValidTronAddress(toAddress) || !amountOk || amountAtomic <= 0 ||
