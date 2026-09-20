@@ -104,6 +104,7 @@
     <message><source>Теперь выберите конец периода</source><translation>Now select the end date</translation></message>
     <message><source>Структура расходов</source><translation>Expense breakdown</translation></message>
     <message><source>Сумма</source><translation>Amount</translation></message>
+    <message><source>Валюта</source><translation>Currency</translation></message>
     <message><source>Счета</source><translation>Accounts</translation></message>
     <message><source>Счёт</source><translation>Account</translation></message>
     <message><source>Счёт будет удалён. Это действие нельзя отменить.</source><translation>The account will be deleted. This action cannot be undone.</translation></message>
@@ -422,6 +423,7 @@
     <message><source>Ежемесячно: %1 неделя, %2</source><translation>Monthly: %1 week, %2</translation></message>
     <message><source>Заполните название, сумму и дату начала</source><translation>Enter a name, amount, and start date</translation></message>
     <message><source>Выберите тип операции</source><translation>Select the transaction type</translation></message>
+    <message><source>Выберите валюту суммы</source><translation>Select the amount currency</translation></message>
     <message><source>Выберите расписание</source><translation>Select a schedule</translation></message>
     <message><source>Проверьте параметры расписания</source><translation>Check the schedule settings</translation></message>
     <message><source>Выберите фиатный счёт</source><translation>Select a fiat account</translation></message>

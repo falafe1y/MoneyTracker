@@ -59,6 +59,7 @@ void FinanceRepositoryTest::storesAndMaterializesRecurringTransactions()
         category.id(),
         TransactionType::Expense,
         50'000,
+        Currency::USD,
         RecurrenceType::Weekly,
         4,
         1,
@@ -103,6 +104,7 @@ void FinanceRepositoryTest::storesAndMaterializesRecurringTransactions()
     QVector<RecurringTransaction> restored =
         repository.loadRecurringTransactions();
     QCOMPARE(restored.size(), 1);
+    QCOMPARE(restored.constFirst().currency(), Currency::USD);
     QCOMPARE(restored.constFirst().generatedThrough(), QDate(2026, 9, 10));
 
     const RecurringTransaction updated(
@@ -112,6 +114,7 @@ void FinanceRepositoryTest::storesAndMaterializesRecurringTransactions()
         category.id(),
         TransactionType::Expense,
         75'000,
+        Currency::EUR,
         RecurrenceType::MonthlyDay,
         1,
         15,
@@ -123,6 +126,7 @@ void FinanceRepositoryTest::storesAndMaterializesRecurringTransactions()
     restored = repository.loadRecurringTransactions();
     QCOMPARE(restored.constFirst().name(), QStringLiteral("Updated rent"));
     QCOMPARE(restored.constFirst().amountMinor(), qint64(75'000));
+    QCOMPARE(restored.constFirst().currency(), Currency::EUR);
     QVERIFY(restored.constFirst().recurrenceType() ==
             RecurrenceType::MonthlyDay);
     QCOMPARE(restored.constFirst().generatedThrough(), QDate(2026, 9, 10));

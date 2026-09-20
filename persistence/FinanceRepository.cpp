@@ -228,8 +228,8 @@ QVector<RecurringTransaction> FinanceRepository::loadRecurringTransactions()
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
             "SELECT id, name, account_id, category_id, type, amount_minor, "
-            "       recurrence_type, weekday, day_of_month, week_of_month, "
-            "       starts_on, generated_through "
+            "       amount_currency, recurrence_type, weekday, day_of_month, "
+            "       week_of_month, starts_on, generated_through "
             "FROM recurring_transactions "
             "ORDER BY created_at, name COLLATE NOCASE"))) {
         setLastError(query.lastError().text());
@@ -246,12 +246,13 @@ QVector<RecurringTransaction> FinanceRepository::loadRecurringTransactions()
                 ? TransactionType::Income
                 : TransactionType::Expense,
             query.value(5).toLongLong(),
-            static_cast<RecurrenceType>(query.value(6).toInt()),
-            query.value(7).toInt(),
+            currencyFromCode(query.value(6).toString()),
+            static_cast<RecurrenceType>(query.value(7).toInt()),
             query.value(8).toInt(),
             query.value(9).toInt(),
-            QDate::fromString(query.value(10).toString(), Qt::ISODate),
-            QDate::fromString(query.value(11).toString(), Qt::ISODate)));
+            query.value(10).toInt(),
+            QDate::fromString(query.value(11).toString(), Qt::ISODate),
+            QDate::fromString(query.value(12).toString(), Qt::ISODate)));
     }
     return result;
 }
@@ -753,10 +754,10 @@ bool FinanceRepository::insertRecurringTransaction(
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "INSERT INTO recurring_transactions("
-        "id, name, account_id, category_id, type, amount_minor, "
+        "id, name, account_id, category_id, type, amount_minor, amount_currency, "
         "recurrence_type, weekday, day_of_month, week_of_month, "
         "starts_on, generated_through, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
     const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
     query.addBindValue(recurring.id());
     query.addBindValue(recurring.name().trimmed());
@@ -765,6 +766,7 @@ bool FinanceRepository::insertRecurringTransaction(
     query.addBindValue(
         recurring.transactionType() == TransactionType::Income ? 0 : 1);
     query.addBindValue(recurring.amountMinor());
+    query.addBindValue(currencyCode(recurring.currency()));
     query.addBindValue(static_cast<int>(recurring.recurrenceType()));
     query.addBindValue(recurring.weekday());
     query.addBindValue(recurring.dayOfMonth());
@@ -788,7 +790,7 @@ bool FinanceRepository::updateRecurringTransaction(
     query.prepare(QStringLiteral(
         "UPDATE recurring_transactions SET "
         "name = ?, account_id = ?, category_id = ?, type = ?, "
-        "amount_minor = ?, recurrence_type = ?, weekday = ?, "
+        "amount_minor = ?, amount_currency = ?, recurrence_type = ?, weekday = ?, "
         "day_of_month = ?, week_of_month = ?, starts_on = ?, "
         "updated_at = ? WHERE id = ?"));
     query.addBindValue(recurring.name().trimmed());
@@ -797,6 +799,7 @@ bool FinanceRepository::updateRecurringTransaction(
     query.addBindValue(
         recurring.transactionType() == TransactionType::Income ? 0 : 1);
     query.addBindValue(recurring.amountMinor());
+    query.addBindValue(currencyCode(recurring.currency()));
     query.addBindValue(static_cast<int>(recurring.recurrenceType()));
     query.addBindValue(recurring.weekday());
     query.addBindValue(recurring.dayOfMonth());
@@ -1879,6 +1882,8 @@ bool FinanceRepository::initializeSchema()
                        "category_id TEXT NOT NULL REFERENCES categories(id), "
                        "type INTEGER NOT NULL CHECK(type IN (0,1)), "
                        "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
+                       "amount_currency TEXT NOT NULL "
+                       "CHECK(amount_currency IN ('RUB','USD','EUR')), "
                        "recurrence_type INTEGER NOT NULL "
                        "CHECK(recurrence_type IN (0,1,2,3)), "
                        "weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7), "
@@ -2080,11 +2085,26 @@ bool FinanceRepository::migrateLegacySchema()
     const bool needsRecurringTypeExpansion =
         !recurringTableSql.contains(QStringLiteral("0,1,2,3"));
 
+    QSqlQuery recurringColumns(database_);
+    if (!recurringColumns.exec(QStringLiteral(
+            "PRAGMA table_info(recurring_transactions)"))) {
+        setLastError(recurringColumns.lastError().text());
+        return false;
+    }
+    bool hasRecurringAmountCurrency = false;
+    while (recurringColumns.next()) {
+        hasRecurringAmountCurrency = hasRecurringAmountCurrency ||
+            recurringColumns.value(1).toString() ==
+                QStringLiteral("amount_currency");
+    }
+    recurringColumns.finish();
+
     const bool needsAssetTypeRename = hasLegacyGroupType && !hasAssetType;
     if (!needsAssetTypeRename && hasCreditLimit &&
         hasCryptoHistoryFetchedAt && hasCryptoDecimals &&
         hasInvestmentMarketCode && hasInvestmentPrimaryBoardId &&
-        !needsAccountTypeExpansion && !needsRecurringTypeExpansion) {
+        !needsAccountTypeExpansion && !needsRecurringTypeExpansion &&
+        hasRecurringAmountCurrency) {
         return true;
     }
     if (!database_.transaction()) {
@@ -2358,6 +2378,37 @@ bool FinanceRepository::migrateLegacySchema()
         if (foreignKeyCheck.next()) {
             setLastError(QStringLiteral(
                 "Foreign key violation after recurring transactions migration"));
+            return false;
+        }
+    }
+
+    if (!hasRecurringAmountCurrency) {
+        if (!database_.transaction()) {
+            setLastError(database_.lastError().text());
+            return false;
+        }
+        QSqlQuery recurringCurrencyMigration(database_);
+        const QStringList statements{
+            QStringLiteral(
+                "ALTER TABLE recurring_transactions ADD COLUMN "
+                "amount_currency TEXT NOT NULL DEFAULT 'RUB' "
+                "CHECK(amount_currency IN ('RUB','USD','EUR'))"),
+            QStringLiteral(
+                "UPDATE recurring_transactions "
+                "SET amount_currency = COALESCE(("
+                "SELECT currency FROM accounts "
+                "WHERE accounts.id = recurring_transactions.account_id"
+                "), 'RUB')")};
+        for (const QString& statement : statements) {
+            if (!recurringCurrencyMigration.exec(statement)) {
+                setLastError(recurringCurrencyMigration.lastError().text());
+                database_.rollback();
+                return false;
+            }
+        }
+        if (!database_.commit()) {
+            setLastError(database_.lastError().text());
+            database_.rollback();
             return false;
         }
     }

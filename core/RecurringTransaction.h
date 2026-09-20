@@ -24,6 +24,7 @@ public:
         QString categoryId,
         TransactionType transactionType,
         qint64 amountMinor,
+        Currency currency,
         RecurrenceType recurrenceType,
         int weekday,
         int dayOfMonth,
@@ -37,6 +38,7 @@ public:
         , categoryId_(std::move(categoryId))
         , transactionType_(transactionType)
         , amountMinor_(amountMinor)
+        , currency_(currency)
         , recurrenceType_(recurrenceType)
         , weekday_(weekday)
         , dayOfMonth_(dayOfMonth)
@@ -52,6 +54,7 @@ public:
     const QString& categoryId() const noexcept { return categoryId_; }
     TransactionType transactionType() const noexcept { return transactionType_; }
     qint64 amountMinor() const noexcept { return amountMinor_; }
+    Currency currency() const noexcept { return currency_; }
     RecurrenceType recurrenceType() const noexcept { return recurrenceType_; }
     int weekday() const noexcept { return weekday_; }
     int dayOfMonth() const noexcept { return dayOfMonth_; }
@@ -66,6 +69,7 @@ private:
     QString categoryId_;
     TransactionType transactionType_;
     qint64 amountMinor_ = 0;
+    Currency currency_ = Currency::RUB;
     RecurrenceType recurrenceType_ = RecurrenceType::MonthlyDay;
     int weekday_ = 1;
     int dayOfMonth_ = 1;

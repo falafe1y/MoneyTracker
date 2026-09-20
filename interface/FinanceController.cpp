@@ -1086,11 +1086,9 @@ QVariantList FinanceController::scheduledTransactions() const
 
     for (const RecurringTransaction& recurring : recurringTransactions_) {
         QString accountName;
-        QString currency;
         for (const Account& account : accounts_) {
             if (account.id() == recurring.accountId()) {
                 accountName = accountDisplayName(account);
-                currency = currencyCode(account.currency());
                 break;
             }
         }
@@ -1147,7 +1145,7 @@ QVariantList FinanceController::scheduledTransactions() const
                 ? QStringLiteral("income")
                 : QStringLiteral("expense");
         item[QStringLiteral("amount")] = recurring.amountMinor();
-        item[QStringLiteral("currency")] = currency;
+        item[QStringLiteral("currency")] = currencyCode(recurring.currency());
         item[QStringLiteral("recurrence")] = recurrence;
         item[QStringLiteral("weekday")] = recurring.weekday();
         item[QStringLiteral("dayOfMonth")] = recurring.dayOfMonth();
@@ -1409,6 +1407,8 @@ QVariantMap FinanceController::saveScheduledTransaction(
         QStringLiteral("type")).toString().trimmed().toLower();
     const qint64 amount = values.value(
         QStringLiteral("amount")).toLongLong();
+    const QString amountCurrencyCode = values.value(
+        QStringLiteral("currency")).toString().trimmed().toUpper();
     const QString recurrence = values.value(
         QStringLiteral("recurrence")).toString().trimmed().toLower();
     const int weekday = values.value(
@@ -1423,6 +1423,12 @@ QVariantMap FinanceController::saveScheduledTransaction(
     if (name.isEmpty() || amount <= 0 || !startsOn.isValid()) {
         result[QStringLiteral("error")] =
             tr("Заполните название, сумму и дату начала");
+        return result;
+    }
+    if (amountCurrencyCode != QStringLiteral("RUB") &&
+        amountCurrencyCode != QStringLiteral("USD") &&
+        amountCurrencyCode != QStringLiteral("EUR")) {
+        result[QStringLiteral("error")] = tr("Выберите валюту суммы");
         return result;
     }
     if (type != QStringLiteral("income") &&
@@ -1508,6 +1514,7 @@ QVariantMap FinanceController::saveScheduledTransaction(
             ? TransactionType::Income
             : TransactionType::Expense,
         amount,
+        currencyFromString(amountCurrencyCode),
         recurrenceType,
         weekday,
         dayOfMonth,
@@ -3711,6 +3718,16 @@ void FinanceController::materializeRecurringTransactions()
             continue;
         }
 
+        const Money accountAmount = currencyConverter_.convert(
+            Money(recurring.amountMinor(), recurring.currency()),
+            account->currency());
+        if (accountAmount.minorUnits() <= 0) {
+            qWarning() << "Skipped recurring transaction because its amount "
+                          "could not be converted:"
+                       << recurring.id();
+            continue;
+        }
+
         QDate from = recurring.generatedThrough().isValid()
             ? recurring.generatedThrough().addDays(1)
             : recurring.startsOn();
@@ -3734,7 +3751,7 @@ void FinanceController::materializeRecurringTransactions()
                     transactionId,
                     recurring.accountId(),
                     recurring.categoryId(),
-                    Money(recurring.amountMinor(), account->currency()),
+                    accountAmount,
                     recurring.transactionType(),
                     QDateTime(
                         date,

@@ -40,7 +40,8 @@ Dialog {
             if (accounts[i].asset === "fiat")
                 result.push({
                     label: accounts[i].name + " · " + accounts[i].currency,
-                    value: accounts[i].id
+                    value: accounts[i].id,
+                    currency: accounts[i].currency
                 });
         }
         return result;
@@ -61,6 +62,14 @@ Dialog {
             if (model[i].value === value)
                 return i;
         return model.length > 0 ? 0 : -1;
+    }
+
+    function selectAccountCurrency() {
+        const items = accountBox.model;
+        const index = accountBox.currentIndex;
+        if (index >= 0 && index < items.length)
+            currencyBox.currentIndex = indexByValue(
+                currencyBox.model, items[index].currency);
     }
 
     function dateFromIso(value) {
@@ -108,6 +117,7 @@ Dialog {
         typeBox.currentIndex = 1;
         accountBox.model = fiatAccounts();
         accountBox.currentIndex = accountBox.model.length > 0 ? 0 : -1;
+        selectAccountCurrency();
         categoryBox.model = categoryItems("expense");
         categoryBox.currentIndex = categoryBox.model.length > 0 ? 0 : -1;
         recurrenceBox.currentIndex = 0;
@@ -127,6 +137,7 @@ Dialog {
         typeBox.currentIndex = row.type === "income" ? 0 : 1;
         accountBox.model = fiatAccounts();
         accountBox.currentIndex = indexByValue(accountBox.model, row.accountId);
+        currencyBox.currentIndex = indexByValue(currencyBox.model, row.currency);
         categoryBox.model = categoryItems(row.type);
         categoryBox.currentIndex = indexByValue(categoryBox.model, row.categoryId);
         recurrenceBox.currentIndex = row.recurrence === "daily" ? 0
@@ -152,6 +163,7 @@ Dialog {
             categoryId: categoryBox.currentValue || "",
             type: typeBox.currentValue,
             amount: minor,
+            currency: currencyBox.currentValue,
             recurrence: recurrenceBox.currentValue,
             weekday: weekdayBox.currentValue,
             dayOfMonth: dayBox.currentValue,
@@ -447,10 +459,27 @@ Dialog {
                                 }
                             }
                         }
+                        ColumnLayout {
+                            Layout.preferredWidth: 120
+                            Text { text: qsTr("Валюта"); color: dialog.mutedColor }
+                            FormCombo {
+                                id: currencyBox
+                                Layout.fillWidth: true
+                                model: [
+                                    { label: "RUB", value: "RUB" },
+                                    { label: "USD", value: "USD" },
+                                    { label: "EUR", value: "EUR" }
+                                ]
+                            }
+                        }
                     }
 
                     Text { text: qsTr("Счёт"); color: dialog.mutedColor }
-                    FormCombo { id: accountBox; Layout.fillWidth: true }
+                    FormCombo {
+                        id: accountBox
+                        Layout.fillWidth: true
+                        onActivated: dialog.selectAccountCurrency()
+                    }
                     Text { text: qsTr("Категория"); color: dialog.mutedColor }
                     FormCombo { id: categoryBox; Layout.fillWidth: true }
 
@@ -527,6 +556,7 @@ Dialog {
 
                     Text {
                         Layout.fillWidth: true
+                        visible: recurrenceBox.currentValue === "monthly_day"
                         text: qsTr("Если выбранного числа нет в месяце, операция будет создана в последний день месяца.")
                         color: dialog.mutedColor
                         font.pixelSize: 11

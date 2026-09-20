@@ -19,6 +19,7 @@ RecurringTransaction recurring(
         QStringLiteral("category"),
         TransactionType::Expense,
         10'000,
+        Currency::RUB,
         recurrenceType,
         weekday,
         dayOfMonth,
