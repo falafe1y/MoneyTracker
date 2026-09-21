@@ -17,6 +17,8 @@ private slots:
     void storesUiLanguage();
     void storesCurrencyRateSettings();
     void storesBankCsvProfiles();
+    void storesProjectsAndTransactionAssignments();
+    void migratesProjectAssignmentForExistingDatabase();
     void storesAndMaterializesRecurringTransactions();
     void storesCreditCardTerms();
     void migratesCreditLimitForExistingDatabase();
@@ -30,6 +32,169 @@ private slots:
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
 };
+
+void FinanceRepositoryTest::migratesProjectAssignmentForExistingDatabase()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-project-migration.sqlite3"));
+    const QString connectionName = QStringLiteral("project-migration-") +
+        QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    {
+        QSqlDatabase database = QSqlDatabase::addDatabase(
+            QStringLiteral("QSQLITE"), connectionName);
+        database.setDatabaseName(databasePath);
+        QVERIFY(database.open());
+        QSqlQuery query(database);
+        QVERIFY(query.exec(QStringLiteral(
+            "CREATE TABLE accounts("
+            "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+            "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
+            "account_type INTEGER NOT NULL "
+            "CHECK(account_type IN (0,1,2,3,4,5,6,7)), "
+            "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+            "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
+            "credit_limit_minor INTEGER NOT NULL DEFAULT 0, "
+            "is_archived INTEGER NOT NULL DEFAULT 0, "
+            "created_at INTEGER NOT NULL)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "CREATE TABLE categories("
+            "id TEXT PRIMARY KEY, name TEXT NOT NULL, type INTEGER NOT NULL, "
+            "is_system INTEGER NOT NULL DEFAULT 0, "
+            "is_archived INTEGER NOT NULL DEFAULT 0, "
+            "created_at INTEGER NOT NULL)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "CREATE TABLE transactions("
+            "id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id), "
+            "category_id TEXT NOT NULL REFERENCES categories(id), "
+            "type INTEGER NOT NULL CHECK(type IN (0,1)), "
+            "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
+            "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
+            "created_at INTEGER NOT NULL)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "INSERT INTO accounts VALUES("
+            "'legacy-account','Legacy',0,1,'RUB',0,0,0,1)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "INSERT INTO categories VALUES("
+            "'legacy-expense','Legacy expense',1,0,0,1)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "INSERT INTO transactions VALUES("
+            "'legacy-operation','legacy-account','legacy-expense',1,1000,1,'',1)")));
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(connectionName);
+
+    FinanceRepository repository(databasePath);
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+    const QVector<Transaction> transactions = repository.loadTransactions();
+    QCOMPARE(transactions.size(), 1);
+    QVERIFY(transactions.constFirst().projectId().isEmpty());
+
+    const Project project(
+        QStringLiteral("migrated-project"),
+        QStringLiteral("Migrated project"));
+    QVERIFY(repository.insertProject(project));
+    const Transaction assigned(
+        transactions.constFirst().id(),
+        transactions.constFirst().accountId(),
+        transactions.constFirst().categoryId(),
+        transactions.constFirst().money(),
+        transactions.constFirst().type(),
+        transactions.constFirst().date(),
+        transactions.constFirst().description(),
+        project.id());
+    QVERIFY2(repository.updateTransaction(assigned),
+             qPrintable(repository.lastError()));
+    QCOMPARE(repository.loadTransactions().constFirst().projectId(), project.id());
+}
+
+void FinanceRepositoryTest::storesProjectsAndTransactionAssignments()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-projects-test.sqlite3"));
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+        const Account account(
+            QStringLiteral("project-account"),
+            QStringLiteral("Project card"),
+            AssetType::Fiat,
+            AccountType::DebitCard,
+            Currency::RUB);
+        const Category incomeCategory(
+            QStringLiteral("project-income"),
+            QStringLiteral("Project income"),
+            CategoryType::Income);
+        const Category expenseCategory(
+            QStringLiteral("project-expense"),
+            QStringLiteral("Project expense"),
+            CategoryType::Expense);
+        const Project firstProject(
+            QStringLiteral("moneytracker"),
+            QStringLiteral("MoneyTracker"));
+        const Project secondProject(
+            QStringLiteral("proxy"),
+            QStringLiteral("Proxy"));
+
+        QVERIFY(repository.insertAccount(account));
+        QVERIFY(repository.insertCategory(incomeCategory));
+        QVERIFY(repository.insertCategory(expenseCategory));
+        QVERIFY(repository.insertProject(firstProject));
+        QVERIFY(repository.insertProject(secondProject));
+        QVERIFY(repository.insertTransaction(Transaction(
+            QStringLiteral("project-income-operation"),
+            account.id(),
+            incomeCategory.id(),
+            Money(100'000, Currency::RUB),
+            TransactionType::Income,
+            QDateTime::currentDateTimeUtc(),
+            QStringLiteral("First customer"),
+            firstProject.id())));
+        QVERIFY(repository.insertTransaction(Transaction(
+            QStringLiteral("project-expense-operation"),
+            account.id(),
+            expenseCategory.id(),
+            Money(2'600, Currency::RUB),
+            TransactionType::Expense,
+            QDateTime::currentDateTimeUtc(),
+            QStringLiteral("ChatGPT"),
+            firstProject.id())));
+
+        const QVector<Project> projects = repository.loadProjects();
+        QCOMPARE(projects.size(), 2);
+        const QVector<Transaction> transactions =
+            repository.loadTransactions();
+        QCOMPARE(transactions.size(), 2);
+        QCOMPARE(transactions.at(0).projectId(), firstProject.id());
+        QCOMPARE(transactions.at(1).projectId(), firstProject.id());
+
+        QVERIFY(repository.updateProject(Project(
+            firstProject.id(), QStringLiteral("Ledgera"))));
+        QVERIFY(repository.archiveProject(secondProject.id()));
+        const QVector<Project> activeProjects = repository.loadProjects();
+        QCOMPARE(activeProjects.size(), 1);
+        QCOMPARE(activeProjects.constFirst().id(), firstProject.id());
+        QCOMPARE(activeProjects.constFirst().name(), QStringLiteral("Ledgera"));
+    }
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        QCOMPARE(repository.loadProjects().size(), 1);
+        const QVector<Transaction> transactions =
+            repository.loadTransactions();
+        QCOMPARE(transactions.size(), 2);
+        for (const Transaction& transaction : transactions) {
+            QCOMPARE(transaction.projectId(), QStringLiteral("moneytracker"));
+        }
+    }
+}
 
 void FinanceRepositoryTest::storesAndMaterializesRecurringTransactions()
 {

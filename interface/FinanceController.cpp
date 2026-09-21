@@ -348,6 +348,7 @@ FinanceController::FinanceController(QObject* parent)
             emit transactionsChanged();
             emit currencyRatesChanged();
             emit cryptoWalletsChanged();
+            emit projectsChanged();
         });
 
     QObject::connect(
@@ -574,6 +575,7 @@ FinanceController::FinanceController(QObject* parent)
     rateProvider_.setAutomaticUpdatesEnabled(automaticCurrencyRates_);
     selectedAsset_ = assetTypeFromString(repository_.loadSelectedAsset());
     transactions_ = repository_.loadTransactions();
+    projects_ = repository_.loadProjects();
     recurringTransactions_ = repository_.loadRecurringTransactions();
     categories_ = repository_.loadCategories();
     accounts_ = repository_.loadAccounts();
@@ -582,6 +584,9 @@ FinanceController::FinanceController(QObject* parent)
     investmentInstruments_ = repository_.loadInvestmentInstruments();
     investmentPositions_ = repository_.loadInvestmentPositions();
     investmentQuotes_ = repository_.loadInvestmentQuotes();
+    if (!projects_.isEmpty()) {
+        selectedProjectId_ = projects_.constFirst().id();
+    }
     if (!cryptoWallets_.isEmpty()) {
         selectedCryptoWalletId_ = cryptoWallets_.constFirst().id();
     }
@@ -687,6 +692,7 @@ void FinanceController::setAppCurrency(const QString& currency)
     emit transactionsChanged();
     emit currencyRatesChanged();
     emit cryptoWalletsChanged();
+    emit projectsChanged();
 }
 
 QString FinanceController::uiLanguage() const
@@ -716,6 +722,7 @@ void FinanceController::retranslate()
     emit accountsChanged();
     emit transactionsChanged();
     emit scheduledTransactionsChanged();
+    emit projectsChanged();
 }
 
 bool FinanceController::automaticCurrencyRates() const
@@ -1727,43 +1734,73 @@ QVariantList FinanceController::transactions() const
     QVariantList result;
 
     for (const Transaction& transaction : dateFilteredTransactions()) {
-        QVariantMap item;
-
-        item["id"] = transaction.id();
-        item["accountId"] = transaction.accountId();
-        item["categoryId"] = transaction.categoryId();
-        item["categoryName"] = categoryName(transaction.categoryId());
-
-        item["amount"] = transaction.money().minorUnits();
-        item["displayAmount"] = currencyConverter_.convert(
-            transaction.money(), appCurrency_).minorUnits();
-
-        item["currency"] = currencyCode(
-            transaction.money().currency()
-            );
-
-        const bool transfer = isTransfer(transaction);
-        item["type"] = transfer
-            ? QStringLiteral("transfer")
-            : transaction.type() == TransactionType::Income
-                ? QStringLiteral("income")
-                : QStringLiteral("expense");
-        item["direction"] = transaction.categoryId() == QStringLiteral("transfer-in")
-            ? QStringLiteral("in")
-            : transaction.categoryId() == QStringLiteral("transfer-out")
-                ? QStringLiteral("out")
-                : QString();
-
-        item["date"] = transaction.date().toString(
-            Qt::ISODate
-            );
-
-        item["description"] = transactionDisplayDescription(transaction);
-        item["rawDescription"] = transaction.description();
-
-        result.append(item);
+        result.append(transactionToVariant(transaction));
     }
 
+    return result;
+}
+
+QVariantList FinanceController::projects() const
+{
+    QVariantList result;
+    result.reserve(projects_.size());
+    for (const Project& project : projects_) {
+        qint64 incomeMinor = 0;
+        qint64 expenseMinor = 0;
+        int operationCount = 0;
+        for (const Transaction& transaction : transactions_) {
+            if (transaction.projectId() != project.id() ||
+                isTransfer(transaction)) {
+                continue;
+            }
+            const qint64 converted = currencyConverter_.convert(
+                transaction.money(), appCurrency_).minorUnits();
+            if (transaction.type() == TransactionType::Income) {
+                incomeMinor += converted;
+            } else {
+                expenseMinor += converted;
+            }
+            ++operationCount;
+        }
+
+        QVariantMap item;
+        item[QStringLiteral("id")] = project.id();
+        item[QStringLiteral("name")] = project.name();
+        item[QStringLiteral("incomeMinor")] = incomeMinor;
+        item[QStringLiteral("expenseMinor")] = expenseMinor;
+        item[QStringLiteral("resultMinor")] = incomeMinor - expenseMinor;
+        item[QStringLiteral("operationCount")] = operationCount;
+        result.append(item);
+    }
+    return result;
+}
+
+QString FinanceController::selectedProjectId() const
+{
+    return selectedProjectId_;
+}
+
+void FinanceController::setSelectedProjectId(const QString& id)
+{
+    if (id == selectedProjectId_ || (!id.isEmpty() && !hasProject(id))) {
+        return;
+    }
+    selectedProjectId_ = id;
+    emit selectedProjectIdChanged();
+    emit projectsChanged();
+}
+
+QVariantList FinanceController::projectTransactions() const
+{
+    QVariantList result;
+    if (selectedProjectId_.isEmpty()) {
+        return result;
+    }
+    for (const Transaction& transaction : transactions_) {
+        if (transaction.projectId() == selectedProjectId_) {
+            result.append(transactionToVariant(transaction));
+        }
+    }
     return result;
 }
 
@@ -2446,6 +2483,101 @@ bool FinanceController::deleteAccount(const QString& id)
     emit transactionsChanged();
     emit scheduledTransactionsChanged();
     emit balanceChanged();
+    emit projectsChanged();
+    return true;
+}
+
+bool FinanceController::addProject(const QString& name)
+{
+    const QString normalizedName = name.trimmed();
+    if (normalizedName.isEmpty() || normalizedName.size() > 80) {
+        return false;
+    }
+    for (const Project& project : projects_) {
+        if (project.name().compare(normalizedName, Qt::CaseInsensitive) == 0) {
+            return false;
+        }
+    }
+
+    const Project project(
+        QUuid::createUuid().toString(QUuid::WithoutBraces),
+        normalizedName);
+    if (!repository_.insertProject(project)) {
+        qWarning() << "Failed to save project:" << repository_.lastError();
+        return false;
+    }
+
+    projects_.append(project);
+    selectedProjectId_ = project.id();
+    emit projectsChanged();
+    emit selectedProjectIdChanged();
+    return true;
+}
+
+bool FinanceController::renameProject(
+    const QString& id,
+    const QString& name
+    )
+{
+    const QString normalizedName = name.trimmed();
+    if (id.isEmpty() || normalizedName.isEmpty() ||
+        normalizedName.size() > 80) {
+        return false;
+    }
+
+    int projectIndex = -1;
+    for (int index = 0; index < projects_.size(); ++index) {
+        const Project& project = projects_.at(index);
+        if (project.id() == id) {
+            projectIndex = index;
+        } else if (project.name().compare(
+                       normalizedName, Qt::CaseInsensitive) == 0) {
+            return false;
+        }
+    }
+    if (projectIndex < 0) {
+        return false;
+    }
+
+    const Project updated(id, normalizedName);
+    if (!repository_.updateProject(updated)) {
+        qWarning() << "Failed to rename project:" << repository_.lastError();
+        return false;
+    }
+    projects_[projectIndex] = updated;
+    emit projectsChanged();
+    return true;
+}
+
+bool FinanceController::deleteProject(const QString& id)
+{
+    int projectIndex = -1;
+    for (int index = 0; index < projects_.size(); ++index) {
+        if (projects_.at(index).id() == id) {
+            projectIndex = index;
+            break;
+        }
+    }
+    if (projectIndex < 0 || !repository_.archiveProject(id)) {
+        if (projectIndex >= 0) {
+            qWarning() << "Failed to archive project:"
+                       << repository_.lastError();
+        }
+        return false;
+    }
+
+    projects_.removeAt(projectIndex);
+    if (selectedProjectId_ == id) {
+        const int projectCount = static_cast<int>(projects_.size());
+        const int nextIndex = projectIndex < projectCount
+            ? projectIndex
+            : projectCount - 1;
+        selectedProjectId_ = projects_.isEmpty()
+            ? QString()
+            : projects_.at(nextIndex).id();
+        emit selectedProjectIdChanged();
+    }
+    emit projectsChanged();
     return true;
 }
 
@@ -3158,6 +3290,39 @@ bool FinanceController::addExpense(
         );
 }
 
+bool FinanceController::addProjectTransaction(
+    const QString& projectId,
+    const qint64 minorUnits,
+    const QString& description,
+    const QString& categoryId,
+    const QString& accountId,
+    const QString& type,
+    const QDateTime& occurredAt
+    )
+{
+    if (!hasProject(projectId)) {
+        return false;
+    }
+    const QString normalizedType = type.trimmed().toLower();
+    if (normalizedType != QStringLiteral("income") &&
+        normalizedType != QStringLiteral("expense")) {
+        return false;
+    }
+    const TransactionType transactionType =
+        normalizedType == QStringLiteral("income")
+            ? TransactionType::Income
+            : TransactionType::Expense;
+    return addTransaction(
+        minorUnits,
+        transactionType,
+        description,
+        categoryId,
+        Currency::RUB,
+        accountId,
+        occurredAt,
+        projectId);
+}
+
 bool FinanceController::addTransfer(
     const qint64 sourceMinorUnits,
     const QString& description,
@@ -3261,6 +3426,7 @@ bool FinanceController::updateOperation(
         return false;
     }
     const Transaction& original = transactions_[transactionIndex];
+    const QString originalProjectId = original.projectId();
     const bool originalIsTransfer = isTransfer(original);
     const QString normalizedType = type.trimmed().toLower();
     if (normalizedType != QStringLiteral("income") &&
@@ -3329,6 +3495,9 @@ bool FinanceController::updateOperation(
         emit transactionsChanged();
         emit balanceChanged();
         emit accountsChanged();
+        if (!originalProjectId.isEmpty()) {
+            emit projectsChanged();
+        }
         return true;
     }
 
@@ -3339,7 +3508,9 @@ bool FinanceController::updateOperation(
             break;
         }
     }
-    if (!selectedAccount || selectedAccount->assetType() != selectedAsset_) {
+    if (!selectedAccount ||
+        (originalProjectId.isEmpty() &&
+         selectedAccount->assetType() != selectedAsset_)) {
         return false;
     }
 
@@ -3373,7 +3544,8 @@ bool FinanceController::updateOperation(
         Money(minorUnits, selectedAccount->currency()),
         transactionType,
         occurredAt,
-        description
+        description,
+        originalProjectId
         );
 
     const bool saved = repository_.isOpen() &&
@@ -3392,6 +3564,9 @@ bool FinanceController::updateOperation(
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
+    if (!originalProjectId.isEmpty()) {
+        emit projectsChanged();
+    }
     return true;
 }
 
@@ -3461,6 +3636,7 @@ bool FinanceController::deleteTransaction(const QString& id)
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
+    emit projectsChanged();
     return true;
 }
 
@@ -3471,7 +3647,8 @@ bool FinanceController::addTransaction(
     const QString& categoryId,
     Currency currency,
     const QString& accountId,
-    const QDateTime& occurredAt
+    const QDateTime& occurredAt,
+    const QString& projectId
     )
 {
     if (minorUnits <= 0 || !occurredAt.isValid()) {
@@ -3487,7 +3664,27 @@ bool FinanceController::addTransaction(
         }
     }
 
-    if (!selectedAccount || selectedAccount->assetType() != selectedAsset_) {
+    if (!selectedAccount ||
+        (projectId.isEmpty() && selectedAccount->assetType() != selectedAsset_)) {
+        return false;
+    }
+
+    if (!projectId.isEmpty() && !hasProject(projectId)) {
+        return false;
+    }
+
+    const CategoryType requiredCategoryType =
+        type == TransactionType::Income
+            ? CategoryType::Income
+            : CategoryType::Expense;
+    const bool categoryIsValid = std::any_of(
+        categories_.cbegin(), categories_.cend(),
+        [this, &categoryId, requiredCategoryType](const Category& category) {
+            return category.id() == categoryId &&
+                category.type() == requiredCategoryType &&
+                !archivedCategoryIds_.contains(categoryId);
+        });
+    if (!categoryIsValid) {
         return false;
     }
 
@@ -3505,7 +3702,8 @@ bool FinanceController::addTransaction(
             ),
             type,
             occurredAt,
-            description
+            description,
+            projectId
             );
 
     if (!repository_.isOpen() ||
@@ -3527,6 +3725,9 @@ bool FinanceController::addTransaction(
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
+    if (!projectId.isEmpty()) {
+        emit projectsChanged();
+    }
     return true;
 }
 
@@ -4187,6 +4388,49 @@ QString FinanceController::transactionDisplayDescription(
     }
     return tr("Перевод: %1 → %2")
         .arg(accountDisplayName(*source), accountDisplayName(*target));
+}
+
+QVariantMap FinanceController::transactionToVariant(
+    const Transaction& transaction
+    ) const
+{
+    QVariantMap item;
+    item[QStringLiteral("id")] = transaction.id();
+    item[QStringLiteral("accountId")] = transaction.accountId();
+    item[QStringLiteral("categoryId")] = transaction.categoryId();
+    item[QStringLiteral("categoryName")] = categoryName(
+        transaction.categoryId());
+    item[QStringLiteral("projectId")] = transaction.projectId();
+    item[QStringLiteral("amount")] = transaction.money().minorUnits();
+    item[QStringLiteral("displayAmount")] = currencyConverter_.convert(
+        transaction.money(), appCurrency_).minorUnits();
+    item[QStringLiteral("currency")] = currencyCode(
+        transaction.money().currency());
+
+    const bool transfer = isTransfer(transaction);
+    item[QStringLiteral("type")] = transfer
+        ? QStringLiteral("transfer")
+        : transaction.type() == TransactionType::Income
+            ? QStringLiteral("income")
+            : QStringLiteral("expense");
+    item[QStringLiteral("direction")] =
+        transaction.categoryId() == QStringLiteral("transfer-in")
+            ? QStringLiteral("in")
+            : transaction.categoryId() == QStringLiteral("transfer-out")
+                ? QStringLiteral("out")
+                : QString();
+    item[QStringLiteral("date")] = transaction.date().toString(Qt::ISODate);
+    item[QStringLiteral("description")] =
+        transactionDisplayDescription(transaction);
+    item[QStringLiteral("rawDescription")] = transaction.description();
+    return item;
+}
+
+bool FinanceController::hasProject(const QString& id) const
+{
+    return std::any_of(
+        projects_.cbegin(), projects_.cend(),
+        [&id](const Project& project) { return project.id() == id; });
 }
 
 int FinanceController::currencyIndex(const Currency currency)

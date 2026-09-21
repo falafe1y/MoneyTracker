@@ -249,6 +249,25 @@ class FinanceController final : public QObject
                 NOTIFY scheduledTransactionsChanged
         )
 
+    Q_PROPERTY(
+        QVariantList projects
+            READ projects
+                NOTIFY projectsChanged
+        )
+
+    Q_PROPERTY(
+        QString selectedProjectId
+            READ selectedProjectId
+                WRITE setSelectedProjectId
+                    NOTIFY selectedProjectIdChanged
+        )
+
+    Q_PROPERTY(
+        QVariantList projectTransactions
+            READ projectTransactions
+                NOTIFY projectsChanged
+        )
+
 public:
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -306,6 +325,10 @@ public:
     QVariantList capitalHistory() const;
     QVariantList bankCsvProfiles() const;
     QVariantList scheduledTransactions() const;
+    QVariantList projects() const;
+    QString selectedProjectId() const;
+    void setSelectedProjectId(const QString& id);
+    QVariantList projectTransactions() const;
     Q_INVOKABLE bool setDateFilter(
         const QDateTime& from,
         const QDateTime& to
@@ -330,6 +353,22 @@ public:
         );
 
     Q_INVOKABLE bool deleteAccount(const QString& id);
+
+    Q_INVOKABLE bool addProject(const QString& name);
+    Q_INVOKABLE bool renameProject(
+        const QString& id,
+        const QString& name
+        );
+    Q_INVOKABLE bool deleteProject(const QString& id);
+    Q_INVOKABLE bool addProjectTransaction(
+        const QString& projectId,
+        qint64 minorUnits,
+        const QString& description,
+        const QString& categoryId,
+        const QString& accountId,
+        const QString& type,
+        const QDateTime& occurredAt
+        );
 
     Q_INVOKABLE QVariantMap addCryptoWallet(
         const QString& symbol,
@@ -468,6 +507,8 @@ signals:
     void capitalHistoryChanged();
     void bankCsvProfilesChanged();
     void scheduledTransactionsChanged();
+    void projectsChanged();
+    void selectedProjectIdChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -487,8 +528,12 @@ private:
         const QString& categoryId,
         Currency currency,
         const QString& accountId,
-        const QDateTime& occurredAt
+        const QDateTime& occurredAt,
+        const QString& projectId = {}
         );
+
+    QVariantMap transactionToVariant(const Transaction& transaction) const;
+    bool hasProject(const QString& id) const;
 
     qint64 accountBalanceMinor(const Account& account) const;
     qint64 investmentAccountValueMinor(const QString& accountId) const;
@@ -543,6 +588,7 @@ private:
     CapitalHistorySeries capitalHistorySeries_;
     QVector<BankCsvProfile> bankCsvProfiles_;
     QVector<RecurringTransaction> recurringTransactions_;
+    QVector<Project> projects_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
     bool recurringMaterializationScheduled_ = false;
@@ -555,6 +601,7 @@ private:
     AssetType selectedAsset_ = AssetType::Fiat;
     QString selectedAccountId_;
     QString selectedCryptoWalletId_;
+    QString selectedProjectId_;
     QDate dateFilterFrom_;
     QDate dateFilterTo_;
 

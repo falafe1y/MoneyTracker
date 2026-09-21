@@ -134,6 +134,22 @@ ApplicationWindow {
         return "";
     }
 
+    function selectedProject() {
+        const rows = financeController.projects;
+        for (let i = 0; i < rows.length; ++i)
+            if (rows[i].id === financeController.selectedProjectId)
+                return rows[i];
+        return null;
+    }
+
+    function projectName(id) {
+        const rows = financeController.projects;
+        for (let i = 0; i < rows.length; ++i)
+            if (rows[i].id === id)
+                return rows[i].name;
+        return "";
+    }
+
     function accountTypeLabel(type) {
         if (type === "cash") return qsTr("Наличные");
         if (type === "debit_card") return qsTr("Дебетовая карта");
@@ -443,6 +459,8 @@ ApplicationWindow {
             || accountDialog.visible
             || deleteAccountDialog.visible
             || deleteTransactionDialog.visible
+            || projectDialog.visible
+            || deleteProjectDialog.visible
             || operationDialog.visible
             || dateFilterDialog.visible
             || operationDateDialog.visible
@@ -804,6 +822,12 @@ ApplicationWindow {
                 }
                 NavButton {
                     Layout.fillWidth: true
+                    text: qsTr("Проекты")
+                    glyph: "▤"
+                    target: "projects"
+                }
+                NavButton {
+                    Layout.fillWidth: true
                     text: qsTr("Аналитика")
                     glyph: "▥"
                     target: "analytics"
@@ -838,6 +862,7 @@ ApplicationWindow {
                         : page === "accounts" ? qsTr("Счета")
                         : page === "categories" ? qsTr("Категории")
                         : page === "operations" ? qsTr("Операции")
+                        : page === "projects" ? qsTr("Проекты")
                         : page === "analytics" ? qsTr("Аналитика")
                         : qsTr("Настройки")
                     color: root.accent
@@ -891,7 +916,13 @@ ApplicationWindow {
             Loader {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                sourceComponent: page === "overview" ? overviewPage : page === "accounts" ? accountsPage : page === "categories" ? categoriesPage : page === "operations" ? operationsPage : page === "analytics" ? analyticsPage : settingsPage
+                sourceComponent: page === "overview" ? overviewPage
+                               : page === "accounts" ? accountsPage
+                               : page === "categories" ? categoriesPage
+                               : page === "operations" ? operationsPage
+                               : page === "projects" ? projectsPage
+                               : page === "analytics" ? analyticsPage
+                               : settingsPage
             }
         }
     }
@@ -1668,6 +1699,7 @@ ApplicationWindow {
         property var rows: []
         property bool expandToContent: false
         property bool addInvestmentPositionAction: false
+        property string projectId: ""
 
         // 68 px block header + 34 px table header + 38 px per transaction + 2 px frame inset.
         // Keep these values in sync with TransactionTable row/header heights below.
@@ -1703,7 +1735,9 @@ ApplicationWindow {
                     enabled: !transactionBlock.addInvestmentPositionAction
                           || financeController.investmentAccounts.length > 0
                     onClicked: {
-                        if (transactionBlock.addInvestmentPositionAction)
+                        if (transactionBlock.projectId.length > 0)
+                            operationDialog.openForNew(transactionBlock.projectId);
+                        else if (transactionBlock.addInvestmentPositionAction)
                             investmentPositionDialog.openForNewPosition(
                                 financeController.selectedAccountId
                             );
@@ -2041,6 +2075,244 @@ ApplicationWindow {
                     visible: transactionTable.rows.length === 0
                     text: qsTr("Операций пока нет")
                     color: root.muted
+                }
+            }
+        }
+    }
+
+    Component {
+        id: projectsPage
+        RowLayout {
+            spacing: 14
+
+            Panel {
+                Layout.preferredWidth: 310
+                Layout.minimumWidth: 270
+                Layout.fillHeight: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 12
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: qsTr("Мои проекты")
+                            color: root.accent
+                            font.pixelSize: 17
+                            font.weight: Font.DemiBold
+                        }
+                        Item { Layout.fillWidth: true }
+                        SoftButton {
+                            text: qsTr("+ Проект")
+                            highlighted: true
+                            onClicked: projectDialog.openForNew()
+                        }
+                    }
+
+                    ListView {
+                        id: projectList
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        spacing: 7
+                        model: financeController.projects
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AlwaysOff
+                        }
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: ListView.view.width
+                            height: 72
+                            radius: 12
+                            color: financeController.selectedProjectId
+                                   === modelData.id
+                                   ? root.pale
+                                   : root.soft
+                            border.width: 1
+                            border.color: financeController.selectedProjectId
+                                          === modelData.id
+                                          ? root.accentSoft
+                                          : root.line
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 4
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.name
+                                    color: root.accent
+                                    font.pixelSize: 14
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: qsTr("%1 операций · результат %2")
+                                          .arg(modelData.operationCount)
+                                          .arg(root.money(
+                                              modelData.resultMinor,
+                                              financeController.appCurrency,
+                                              true
+                                          ))
+                                    color: root.muted
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: financeController.selectedProjectId =
+                                           modelData.id
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        visible: financeController.projects.length === 0
+                        text: qsTr("Создайте первый проект, чтобы учитывать его доходы и расходы")
+                        color: root.muted
+                        font.pixelSize: 12
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 14
+                visible: root.selectedProject() !== null
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.selectedProject()
+                              ? root.selectedProject().name
+                              : ""
+                        color: root.accent
+                        font.pixelSize: 22
+                        font.weight: Font.Bold
+                        elide: Text.ElideRight
+                    }
+                    SoftButton {
+                        text: qsTr("Изменить")
+                        onClicked: projectDialog.openForEdit(
+                            root.selectedProject()
+                        )
+                    }
+                    SoftButton {
+                        text: qsTr("Удалить")
+                        destructive: true
+                        onClicked: deleteProjectDialog.openFor(
+                            root.selectedProject()
+                        )
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+
+                    Repeater {
+                        model: [
+                            {
+                                title: qsTr("Доходы проекта"),
+                                amount: root.selectedProject()
+                                        ? root.selectedProject().incomeMinor : 0,
+                                color: root.income
+                            },
+                            {
+                                title: qsTr("Расходы проекта"),
+                                amount: root.selectedProject()
+                                        ? root.selectedProject().expenseMinor : 0,
+                                color: root.red
+                            },
+                            {
+                                title: qsTr("Результат проекта"),
+                                amount: root.selectedProject()
+                                        ? root.selectedProject().resultMinor : 0,
+                                color: root.selectedProject()
+                                       && root.selectedProject().resultMinor < 0
+                                       ? root.red : root.income
+                            }
+                        ]
+
+                        delegate: Panel {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 110
+                            color: root.soft
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 9
+                                Text {
+                                    text: modelData.title
+                                    color: root.muted
+                                    font.pixelSize: 13
+                                }
+                                Text {
+                                    text: root.money(
+                                        modelData.amount,
+                                        financeController.appCurrency,
+                                        false
+                                    )
+                                    color: modelData.color
+                                    font.pixelSize: 23
+                                    font.weight: Font.Bold
+                                }
+                            }
+                        }
+                    }
+                }
+
+                TransactionBlock {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: qsTr("Операции проекта")
+                    rows: financeController.projectTransactions
+                    projectId: financeController.selectedProjectId
+                }
+            }
+
+            Panel {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: root.selectedProject() === null
+                color: root.soft
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 60, 430)
+                    spacing: 12
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Проект не выбран")
+                        color: root.accent
+                        font.pixelSize: 21
+                        font.weight: Font.Bold
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Создайте проект слева, а затем добавляйте его доходы и расходы прямо здесь")
+                        color: root.muted
+                        font.pixelSize: 13
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
         }
@@ -3880,6 +4152,177 @@ ApplicationWindow {
     }
 
     Dialog {
+        id: projectDialog
+        width: 460
+        modal: true
+        anchors.centerIn: parent
+        padding: 24
+        property string editingId: ""
+
+        function openForNew() {
+            editingId = "";
+            projectNameField.clear();
+            projectError.text = "";
+            open();
+            Qt.callLater(function() { projectNameField.forceActiveFocus(); });
+        }
+
+        function openForEdit(project) {
+            if (!project)
+                return;
+            editingId = project.id;
+            projectNameField.text = project.name;
+            projectError.text = "";
+            open();
+            Qt.callLater(function() {
+                projectNameField.forceActiveFocus();
+                projectNameField.selectAll();
+            });
+        }
+
+        function submit() {
+            const ok = editingId.length > 0
+                     ? financeController.renameProject(
+                           editingId,
+                           projectNameField.text
+                       )
+                     : financeController.addProject(projectNameField.text);
+            if (ok)
+                close();
+            else
+                projectError.text = qsTr(
+                    "Укажите уникальное название проекта"
+                );
+        }
+
+        onClosed: editingId = ""
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+            Text {
+                text: projectDialog.editingId.length > 0
+                      ? qsTr("Редактирование проекта")
+                      : qsTr("Новый проект")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+            AppTextField {
+                id: projectNameField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Название проекта")
+                maximumLength: 80
+                onAccepted: projectDialog.submit()
+            }
+            Text {
+                id: projectError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Item { Layout.fillWidth: true }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: projectDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Сохранить")
+                    highlighted: true
+                    onClicked: projectDialog.submit()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: deleteProjectDialog
+        width: 470
+        modal: true
+        anchors.centerIn: parent
+        padding: 24
+        property var projectData: null
+
+        function openFor(project) {
+            if (!project)
+                return;
+            projectData = project;
+            deleteProjectError.text = "";
+            open();
+        }
+
+        function confirmDelete() {
+            if (projectData && financeController.deleteProject(projectData.id)) {
+                close();
+                return;
+            }
+            deleteProjectError.text = qsTr("Не удалось удалить проект");
+        }
+
+        onClosed: projectData = null
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+            Text {
+                text: qsTr("Удалить проект?")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: deleteProjectDialog.projectData
+                      ? deleteProjectDialog.projectData.name
+                      : ""
+                color: root.accent
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Операции останутся на своих счетах и продолжат учитываться в общем балансе. Проект будет скрыт из списка.")
+                color: root.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                id: deleteProjectError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 12
+            }
+            RowLayout {
+                Item { Layout.fillWidth: true }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: deleteProjectDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Удалить")
+                    destructive: true
+                    onClicked: deleteProjectDialog.confirmDelete()
+                }
+            }
+        }
+    }
+
+    Dialog {
         id: operationDialog
         width: 520
         modal: true
@@ -3889,6 +4332,7 @@ ApplicationWindow {
         property var editingTransaction: null
         property string editingSourceAccountId: ""
         property string editingTargetAccountId: ""
+        property string editingProjectId: ""
         property date selectedDate: new Date()
 
         function selectDate(day) {
@@ -3932,21 +4376,28 @@ ApplicationWindow {
             transferTargetAccount.currentIndex = targetIndex;
         }
 
-        function openForNew() {
+        function openForNew(projectId) {
             editingId = "";
             editingTransaction = null;
             editingSourceAccountId = "";
             editingTargetAccountId = "";
+            editingProjectId = projectId || "";
             operationError.text = "";
             operationAmount.clear();
             operationDescription.clear();
             selectedDate = new Date();
             operationType.currentIndex = 1;
+            const availableAccounts = editingProjectId.length > 0
+                                    ? financeController.allAccounts
+                                    : financeController.accounts;
             operationAccount.currentIndex = root.indexByRole(
-                financeController.accounts,
+                availableAccounts,
                 "id",
                 financeController.selectedAccountId
             );
+            if (operationAccount.currentIndex < 0
+                && availableAccounts.length > 0)
+                operationAccount.currentIndex = 0;
             operationCategory.currentIndex = 0;
             const source = operationAccount.currentIndex >= 0
                          ? financeController.accounts[operationAccount.currentIndex]
@@ -3966,6 +4417,7 @@ ApplicationWindow {
         function openForEdit(row) {
             editingId = row.id;
             editingTransaction = row;
+            editingProjectId = row.projectId || "";
             operationError.text = "";
             const restoredDate = new Date(row.date);
             selectedDate = isNaN(restoredDate.getTime()) ? new Date() : restoredDate;
@@ -3984,7 +4436,9 @@ ApplicationWindow {
                 editingTargetAccountId = "";
                 operationType.currentIndex = row.type === "income" ? 0 : 1;
                 operationAccount.currentIndex = root.indexByRole(
-                    financeController.accounts,
+                    editingProjectId.length > 0
+                    ? financeController.allAccounts
+                    : financeController.accounts,
                     "id",
                     row.accountId
                 );
@@ -4057,6 +4511,16 @@ ApplicationWindow {
                            targetAccount.id,
                            selectedDate
                        )
+                       : editingProjectId.length > 0
+                         ? financeController.addProjectTransaction(
+                             editingProjectId,
+                             minor,
+                             operationDescription.text,
+                             category.value,
+                             account.id,
+                             type,
+                             selectedDate
+                         )
                        : type === "income"
                          ? financeController.addIncome(
                              minor,
@@ -4106,6 +4570,7 @@ ApplicationWindow {
             editingTransaction = null;
             editingSourceAccountId = "";
             editingTargetAccountId = "";
+            editingProjectId = "";
         }
 
         background: Rectangle {
@@ -4119,7 +4584,11 @@ ApplicationWindow {
             Text {
                 text: operationDialog.editingId
                       ? qsTr("Редактирование операции")
-                      : qsTr("Новая операция")
+                      : operationDialog.editingProjectId.length > 0
+                        ? qsTr("Новая операция проекта · %1").arg(
+                              root.projectName(operationDialog.editingProjectId)
+                          )
+                        : qsTr("Новая операция")
                 color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
@@ -4127,7 +4596,9 @@ ApplicationWindow {
             AppComboBox {
                 id: operationType
                 Layout.fillWidth: true
-                model: [qsTr("Доход"), qsTr("Расход"), qsTr("Перевод")]
+                model: operationDialog.editingProjectId.length > 0
+                     ? [qsTr("Доход"), qsTr("Расход")]
+                     : [qsTr("Доход"), qsTr("Расход"), qsTr("Перевод")]
                 onActivated: {
                     operationCategory.currentIndex = 0;
                     if (!operationDialog.editingTransaction)
@@ -4140,7 +4611,9 @@ ApplicationWindow {
                         );
                     } else {
                         operationAccount.currentIndex = root.indexByRole(
-                            financeController.accounts,
+                            operationDialog.editingProjectId.length > 0
+                            ? financeController.allAccounts
+                            : financeController.accounts,
                             "id",
                             operationDialog.editingTransaction.accountId
                         );
@@ -4156,10 +4629,14 @@ ApplicationWindow {
             AppComboBox {
                 id: operationAccount
                 Layout.fillWidth: true
-                model: operationType.currentIndex === 2
+                model: operationDialog.editingProjectId.length > 0
+                     ? financeController.allAccounts
+                     : operationType.currentIndex === 2
                      ? financeController.allAccounts
                      : financeController.accounts
-                textRole: operationType.currentIndex === 2 ? "displayName" : "name"
+                textRole: operationDialog.editingProjectId.length > 0
+                        || operationType.currentIndex === 2
+                        ? "displayName" : "name"
             }
             Text {
                 visible: operationType.currentIndex === 2

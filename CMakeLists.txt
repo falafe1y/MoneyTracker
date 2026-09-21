@@ -34,6 +34,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/Currency.h
         SOURCES core/Currency.cpp
         SOURCES core/Money.h
+        SOURCES core/Project.h
         SOURCES core/Transaction.h
         SOURCES core/RecurringTransaction.h
         SOURCES core/CryptoWallet.h

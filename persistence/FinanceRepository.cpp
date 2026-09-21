@@ -84,8 +84,8 @@ void prepareTransactionInsert(QSqlQuery& query)
 {
     query.prepare(QStringLiteral(
         "INSERT INTO transactions(id, account_id, category_id, type, "
-        "amount_minor, occurred_at, description, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"));
+        "amount_minor, occurred_at, description, project_id, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 }
 
 bool insertTransactionRow(
@@ -101,7 +101,12 @@ bool insertTransactionRow(
     query.bindValue(4, transaction.money().minorUnits());
     query.bindValue(5, transaction.date().toMSecsSinceEpoch());
     query.bindValue(6, transaction.description());
-    query.bindValue(7, createdAt);
+    if (transaction.projectId().isEmpty()) {
+        query.bindValue(7, QVariant());
+    } else {
+        query.bindValue(7, transaction.projectId());
+    }
+    query.bindValue(8, createdAt);
     return query.exec();
 }
 
@@ -201,7 +206,7 @@ QVector<Transaction> FinanceRepository::loadTransactions()
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
             "SELECT t.id, t.account_id, t.category_id, t.amount_minor, "
-            "t.type, t.occurred_at, t.description, a.currency "
+            "t.type, t.occurred_at, t.description, a.currency, t.project_id "
             "FROM transactions t JOIN accounts a ON a.id = t.account_id "
             "ORDER BY t.occurred_at DESC, t.created_at DESC"))) {
         setLastError(query.lastError().text());
@@ -218,7 +223,28 @@ QVector<Transaction> FinanceRepository::loadTransactions()
                 ? TransactionType::Income : TransactionType::Expense,
             QDateTime::fromMSecsSinceEpoch(
                 query.value(5).toLongLong(), QTimeZone::UTC),
-            query.value(6).toString()));
+            query.value(6).toString(),
+            query.value(8).toString()));
+    }
+    return result;
+}
+
+QVector<Project> FinanceRepository::loadProjects()
+{
+    QVector<Project> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT id, name FROM projects "
+            "WHERE is_archived = 0 "
+            "ORDER BY created_at, name COLLATE NOCASE"))) {
+        setLastError(query.lastError().text());
+        return result;
+    }
+
+    while (query.next()) {
+        result.append(Project(
+            query.value(0).toString(),
+            query.value(1).toString()));
     }
     return result;
 }
@@ -648,7 +674,7 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
     query.prepare(QStringLiteral(
         "UPDATE transactions "
         "SET account_id = ?, category_id = ?, type = ?, amount_minor = ?, "
-        "    occurred_at = ?, description = ? "
+        "    occurred_at = ?, description = ?, project_id = ? "
         "WHERE id = ?"));
     query.addBindValue(transaction.accountId());
     query.addBindValue(transaction.categoryId());
@@ -656,6 +682,11 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
     query.addBindValue(transaction.money().minorUnits());
     query.addBindValue(transaction.date().toMSecsSinceEpoch());
     query.addBindValue(transaction.description());
+    if (transaction.projectId().isEmpty()) {
+        query.addBindValue(QVariant());
+    } else {
+        query.addBindValue(transaction.projectId());
+    }
     query.addBindValue(transaction.id());
 
     if (!query.exec() || query.numRowsAffected() != 1) {
@@ -935,6 +966,59 @@ bool FinanceRepository::insertCategory(const Category& category)
 
     if (!query.exec()) {
         setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::insertProject(const Project& project)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO projects(id, name, is_archived, created_at, updated_at) "
+        "VALUES (?, ?, 0, ?, ?)"));
+    const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    query.addBindValue(project.id());
+    query.addBindValue(project.name().trimmed());
+    query.addBindValue(now);
+    query.addBindValue(now);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::updateProject(const Project& project)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE projects SET name = ?, updated_at = ? "
+        "WHERE id = ? AND is_archived = 0"));
+    query.addBindValue(project.name().trimmed());
+    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+    query.addBindValue(project.id());
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Project was not found"));
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::archiveProject(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "UPDATE projects SET is_archived = 1, updated_at = ? "
+        "WHERE id = ? AND is_archived = 0"));
+    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+    query.addBindValue(id);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        setLastError(query.lastError().isValid()
+                         ? query.lastError().text()
+                         : QStringLiteral("Project was not found"));
         return false;
     }
     return true;
@@ -1861,6 +1945,13 @@ bool FinanceRepository::initializeSchema()
                        "is_system INTEGER NOT NULL DEFAULT 0 CHECK(is_system IN (0,1)), "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
                        "created_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS projects ("
+                       "id TEXT PRIMARY KEY, "
+                       "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
+                       "is_archived INTEGER NOT NULL DEFAULT 0 "
+                       "CHECK(is_archived IN (0,1)), "
+                       "created_at INTEGER NOT NULL, "
+                       "updated_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS transactions ("
                        "id TEXT PRIMARY KEY, "
                        "account_id TEXT NOT NULL REFERENCES accounts(id), "
@@ -1868,6 +1959,7 @@ bool FinanceRepository::initializeSchema()
                        "type INTEGER NOT NULL CHECK(type IN (0,1)), "
                        "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
                        "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
+                       "project_id TEXT REFERENCES projects(id) ON DELETE SET NULL, "
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS settings ("
                        "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
@@ -2023,6 +2115,20 @@ bool FinanceRepository::migrateLegacySchema()
     }
     columns.finish();
 
+    QSqlQuery transactionColumns(database_);
+    if (!transactionColumns.exec(QStringLiteral(
+            "PRAGMA table_info(transactions)"))) {
+        setLastError(transactionColumns.lastError().text());
+        return false;
+    }
+    bool hasTransactionProjectId = false;
+    while (transactionColumns.next()) {
+        hasTransactionProjectId = hasTransactionProjectId ||
+            transactionColumns.value(1).toString() ==
+                QStringLiteral("project_id");
+    }
+    transactionColumns.finish();
+
     QSqlQuery cryptoColumns(database_);
     if (!cryptoColumns.exec(QStringLiteral(
             "PRAGMA table_info(crypto_wallets)"))) {
@@ -2106,7 +2212,14 @@ bool FinanceRepository::migrateLegacySchema()
         hasCryptoHistoryFetchedAt && hasCryptoDecimals &&
         hasInvestmentMarketCode && hasInvestmentPrimaryBoardId &&
         !needsAccountTypeExpansion && !needsRecurringTypeExpansion &&
-        hasRecurringAmountCurrency) {
+        hasRecurringAmountCurrency && hasTransactionProjectId) {
+        QSqlQuery projectIndex(database_);
+        if (!projectIndex.exec(QStringLiteral(
+                "CREATE INDEX IF NOT EXISTS idx_transactions_project_date "
+                "ON transactions(project_id, occurred_at DESC)"))) {
+            setLastError(projectIndex.lastError().text());
+            return false;
+        }
         return true;
     }
     if (!database_.transaction()) {
@@ -2134,6 +2247,15 @@ bool FinanceRepository::migrateLegacySchema()
     if (needsAssetTypeRename &&
         !migration.exec(QStringLiteral(
             "ALTER TABLE accounts RENAME COLUMN group_type TO asset_type"))) {
+        setLastError(migration.lastError().text());
+        database_.rollback();
+        return false;
+    }
+
+    if (!hasTransactionProjectId &&
+        !migration.exec(QStringLiteral(
+            "ALTER TABLE transactions ADD COLUMN "
+            "project_id TEXT REFERENCES projects(id) ON DELETE SET NULL"))) {
         setLastError(migration.lastError().text());
         database_.rollback();
         return false;
@@ -2413,6 +2535,14 @@ bool FinanceRepository::migrateLegacySchema()
             database_.rollback();
             return false;
         }
+    }
+
+    QSqlQuery projectIndex(database_);
+    if (!projectIndex.exec(QStringLiteral(
+            "CREATE INDEX IF NOT EXISTS idx_transactions_project_date "
+            "ON transactions(project_id, occurred_at DESC)"))) {
+        setLastError(projectIndex.lastError().text());
+        return false;
     }
     return true;
 }

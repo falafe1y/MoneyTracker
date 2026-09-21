@@ -9,6 +9,7 @@
 #include "../core/InvestmentInstrument.h"
 #include "../core/InvestmentPosition.h"
 #include "../core/InvestmentQuote.h"
+#include "../core/Project.h"
 
 #include <QSqlDatabase>
 #include <QDate>
@@ -56,6 +57,7 @@ public:
     bool isOpen() const;
     QString lastError() const;
     QVector<Transaction> loadTransactions();
+    QVector<Project> loadProjects();
     QVector<RecurringTransaction> loadRecurringTransactions();
     QVector<Category> loadCategories();
     QVector<Account> loadAccounts();
@@ -69,6 +71,9 @@ public:
     QSet<QString> loadArchivedCategoryIds();
     Summary loadSummary();
     bool insertTransaction(const Transaction& transaction);
+    bool insertProject(const Project& project);
+    bool updateProject(const Project& project);
+    bool archiveProject(const QString& id);
     bool insertTransfer(
         const Transaction& outgoing,
         const Transaction& incoming

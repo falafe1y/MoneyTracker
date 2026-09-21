@@ -21,7 +21,8 @@ public:
         Money money,
         TransactionType type,
         QDateTime date,
-        QString description = {}
+        QString description = {},
+        QString projectId = {}
         )
         : id_(std::move(id))
         , accountId_(std::move(accountId))
@@ -30,6 +31,7 @@ public:
         , type_(type)
         , date_(std::move(date))
         , description_(std::move(description))
+        , projectId_(std::move(projectId))
     {
     }
 
@@ -68,6 +70,11 @@ public:
         return description_;
     }
 
+    const QString& projectId() const noexcept
+    {
+        return projectId_;
+    }
+
 private:
     QString id_;
     QString accountId_;
@@ -76,4 +83,5 @@ private:
     TransactionType type_;
     QDateTime date_;
     QString description_;
+    QString projectId_;
 };

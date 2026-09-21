@@ -284,6 +284,26 @@
   <context>
     <name>Desktop</name>
     <message><source>Плановые операции</source><translation>Scheduled transactions</translation></message>
+    <message><source>Проекты</source><translation>Projects</translation></message>
+    <message><source>Мои проекты</source><translation>My projects</translation></message>
+    <message><source>+ Проект</source><translation>+ Project</translation></message>
+    <message><source>%1 операций · результат %2</source><translation>%1 transactions · result %2</translation></message>
+    <message><source>Создайте первый проект, чтобы учитывать его доходы и расходы</source><translation>Create your first project to track its income and expenses</translation></message>
+    <message><source>Изменить</source><translation>Edit</translation></message>
+    <message><source>Доходы проекта</source><translation>Project income</translation></message>
+    <message><source>Расходы проекта</source><translation>Project expenses</translation></message>
+    <message><source>Результат проекта</source><translation>Project result</translation></message>
+    <message><source>Операции проекта</source><translation>Project transactions</translation></message>
+    <message><source>Проект не выбран</source><translation>No project selected</translation></message>
+    <message><source>Создайте проект слева, а затем добавляйте его доходы и расходы прямо здесь</source><translation>Create a project on the left, then add its income and expenses here</translation></message>
+    <message><source>Укажите уникальное название проекта</source><translation>Enter a unique project name</translation></message>
+    <message><source>Редактирование проекта</source><translation>Edit project</translation></message>
+    <message><source>Новый проект</source><translation>New project</translation></message>
+    <message><source>Название проекта</source><translation>Project name</translation></message>
+    <message><source>Удалить проект?</source><translation>Delete project?</translation></message>
+    <message><source>Операции останутся на своих счетах и продолжат учитываться в общем балансе. Проект будет скрыт из списка.</source><translation>Transactions will remain in their accounts and continue to affect the total balance. The project will be hidden from the list.</translation></message>
+    <message><source>Не удалось удалить проект</source><translation>Could not delete the project</translation></message>
+    <message><source>Новая операция проекта · %1</source><translation>New project transaction · %1</translation></message>
   </context>
   <context>
     <name>RecurringTransactionsDialog</name>
