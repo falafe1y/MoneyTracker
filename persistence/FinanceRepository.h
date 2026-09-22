@@ -10,6 +10,7 @@
 #include "../core/InvestmentPosition.h"
 #include "../core/InvestmentQuote.h"
 #include "../core/Project.h"
+#include "../core/Budget.h"
 
 #include <QSqlDatabase>
 #include <QDate>
@@ -47,6 +48,21 @@ public:
         QDate date;
         Transaction transaction;
     };
+
+    QVector<Budget> loadBudgets();
+    qint64 loadBudgetLimit(
+        const QString& budgetId,
+        const QDate& month,
+        qint64 fallback
+        );
+    bool insertBudget(const Budget& budget, const QDate& month);
+    bool updateBudget(const Budget& budget, const QDate& month);
+    bool archiveBudget(const QString& id);
+    bool ensureBudgetMonth(
+        const QString& budgetId,
+        const QDate& month,
+        qint64 limitMinor
+        );
 
     explicit FinanceRepository(const QString& databasePath = {});
     ~FinanceRepository();

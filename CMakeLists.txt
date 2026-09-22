@@ -26,6 +26,7 @@ qt_add_qml_module(appMoneyTracker
         InvestmentPositionsPanel.qml
         BankCsvImportDialog.qml
         RecurringTransactionsDialog.qml
+        BudgetDialog.qml
         # BankComboBox.qml
         # CategoryPicker.qml
         SOURCES core/Account.h
@@ -34,6 +35,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/Currency.h
         SOURCES core/Currency.cpp
         SOURCES core/Money.h
+        SOURCES core/Budget.h
         SOURCES core/Project.h
         SOURCES core/Transaction.h
         SOURCES core/RecurringTransaction.h

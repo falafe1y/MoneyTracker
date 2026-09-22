@@ -19,6 +19,8 @@ private slots:
     void storesBankCsvProfiles();
     void storesProjectsAndTransactionAssignments();
     void migratesProjectAssignmentForExistingDatabase();
+    void migratesLegacyProjectTable();
+    void storesUpdatesAndArchivesBudgets();
     void storesAndMaterializesRecurringTransactions();
     void storesCreditCardTerms();
     void migratesCreditLimitForExistingDatabase();
@@ -32,6 +34,101 @@ private slots:
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
 };
+
+void FinanceRepositoryTest::migratesLegacyProjectTable()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-project-table-migration.sqlite3"));
+    const QString connectionName = QStringLiteral("project-table-migration-") +
+        QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    {
+        QSqlDatabase database = QSqlDatabase::addDatabase(
+            QStringLiteral("QSQLITE"), connectionName);
+        database.setDatabaseName(databasePath);
+        QVERIFY(database.open());
+        QSqlQuery query(database);
+        QVERIFY(query.exec(QStringLiteral(
+            "CREATE TABLE projects(id TEXT PRIMARY KEY, name TEXT NOT NULL)")));
+        QVERIFY(query.exec(QStringLiteral(
+            "INSERT INTO projects(id, name) VALUES('legacy', 'Legacy')")));
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(connectionName);
+
+    FinanceRepository repository(databasePath);
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+    const QVector<Project> projects = repository.loadProjects();
+    QCOMPARE(projects.size(), 1);
+    QCOMPARE(projects.constFirst().id(), QStringLiteral("legacy"));
+    QVERIFY(repository.archiveProject(QStringLiteral("legacy")));
+    QVERIFY(repository.loadProjects().isEmpty());
+}
+
+void FinanceRepositoryTest::storesUpdatesAndArchivesBudgets()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-budgets-test.sqlite3"));
+    FinanceRepository repository(databasePath);
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+    const Account firstAccount(
+        QStringLiteral("budget-card"), QStringLiteral("Card"),
+        AssetType::Fiat, AccountType::DebitCard, Currency::RUB);
+    const Account secondAccount(
+        QStringLiteral("budget-cash"), QStringLiteral("Cash"),
+        AssetType::Fiat, AccountType::Cash, Currency::USD);
+    const Category groceries(
+        QStringLiteral("budget-groceries"), QStringLiteral("Groceries"),
+        CategoryType::Expense);
+    QVERIFY(repository.insertAccount(firstAccount));
+    QVERIFY(repository.insertAccount(secondAccount));
+    QVERIFY(repository.insertCategory(groceries));
+
+    const Budget created(
+        QStringLiteral("household-budget"), QStringLiteral("Household"),
+        Currency::RUB, 100'000'00, false, false,
+        {firstAccount.id()}, {{groceries.id(), 25'000'00}},
+        QDate(2026, 9, 1));
+    QVERIFY2(repository.insertBudget(created, QDate(2026, 9, 1)),
+             qPrintable(repository.lastError()));
+
+    QVector<Budget> budgets = repository.loadBudgets();
+    QCOMPARE(budgets.size(), 1);
+    QCOMPARE(budgets.constFirst().name(), QStringLiteral("Household"));
+    QCOMPARE(budgets.constFirst().accountIds(), QStringList{firstAccount.id()});
+    QCOMPARE(budgets.constFirst().categoryLimits().size(), 1);
+    QCOMPARE(repository.loadBudgetLimit(
+        created.id(), QDate(2026, 9, 1), 0), qint64(100'000'00));
+
+    QVERIFY(repository.ensureBudgetMonth(
+        created.id(), QDate(2026, 10, 1), created.defaultLimitMinor()));
+    QCOMPARE(repository.loadBudgetLimit(
+        created.id(), QDate(2026, 10, 1), 0), qint64(100'000'00));
+
+    const Budget updated(
+        created.id(), QStringLiteral("Family"), Currency::USD,
+        1'500'00, true, true, {}, {{groceries.id(), 500'00}},
+        created.startsOn());
+    QVERIFY2(repository.updateBudget(updated, QDate(2026, 10, 1)),
+             qPrintable(repository.lastError()));
+    budgets = repository.loadBudgets();
+    QCOMPARE(budgets.constFirst().name(), QStringLiteral("Family"));
+    QVERIFY(budgets.constFirst().allAccounts());
+    QVERIFY(budgets.constFirst().allCategories());
+    QVERIFY(budgets.constFirst().accountIds().isEmpty());
+    QCOMPARE(repository.loadBudgetLimit(
+        created.id(), QDate(2026, 9, 1), 0), qint64(100'000'00));
+    QCOMPARE(repository.loadBudgetLimit(
+        created.id(), QDate(2026, 10, 1), 0), qint64(1'500'00));
+
+    QVERIFY(repository.archiveBudget(created.id()));
+    QVERIFY(repository.loadBudgets().isEmpty());
+}
 
 void FinanceRepositoryTest::migratesProjectAssignmentForExistingDatabase()
 {

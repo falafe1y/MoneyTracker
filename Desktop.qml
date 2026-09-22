@@ -142,6 +142,29 @@ ApplicationWindow {
         return null;
     }
 
+    function selectedBudget() {
+        const rows = financeController.budgets;
+        for (let i = 0; i < rows.length; ++i)
+            if (rows[i].id === financeController.selectedBudgetId)
+                return rows[i];
+        return null;
+    }
+
+    function budgetMonthDate() {
+        const parts = financeController.selectedBudgetMonth.split("-");
+        return parts.length === 3
+             ? new Date(Number(parts[0]), Number(parts[1]) - 1, 1)
+             : new Date();
+    }
+
+    function shiftBudgetMonth(offset) {
+        const value = budgetMonthDate();
+        value.setMonth(value.getMonth() + offset);
+        const month = value.getMonth() + 1;
+        financeController.selectedBudgetMonth = value.getFullYear() + "-"
+            + (month < 10 ? "0" : "") + month + "-01";
+    }
+
     function projectName(id) {
         const rows = financeController.projects;
         for (let i = 0; i < rows.length; ++i)
@@ -822,6 +845,12 @@ ApplicationWindow {
                 }
                 NavButton {
                     Layout.fillWidth: true
+                    text: qsTr("Бюджеты")
+                    glyph: "▧"
+                    target: "budgets"
+                }
+                NavButton {
+                    Layout.fillWidth: true
                     text: qsTr("Проекты")
                     glyph: "▤"
                     target: "projects"
@@ -862,6 +891,7 @@ ApplicationWindow {
                         : page === "accounts" ? qsTr("Счета")
                         : page === "categories" ? qsTr("Категории")
                         : page === "operations" ? qsTr("Операции")
+                        : page === "budgets" ? qsTr("Бюджеты")
                         : page === "projects" ? qsTr("Проекты")
                         : page === "analytics" ? qsTr("Аналитика")
                         : qsTr("Настройки")
@@ -920,6 +950,7 @@ ApplicationWindow {
                                : page === "accounts" ? accountsPage
                                : page === "categories" ? categoriesPage
                                : page === "operations" ? operationsPage
+                               : page === "budgets" ? budgetsPage
                                : page === "projects" ? projectsPage
                                : page === "analytics" ? analyticsPage
                                : settingsPage
@@ -2075,6 +2106,405 @@ ApplicationWindow {
                     visible: transactionTable.rows.length === 0
                     text: qsTr("Операций пока нет")
                     color: root.muted
+                }
+            }
+        }
+    }
+
+    Component {
+        id: budgetsPage
+        RowLayout {
+            spacing: 14
+
+            Panel {
+                Layout.preferredWidth: 320
+                Layout.minimumWidth: 280
+                Layout.fillHeight: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 12
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Мои бюджеты")
+                            color: root.accent
+                            font.pixelSize: 17
+                            font.weight: Font.Bold
+                        }
+                        SoftButton {
+                            text: qsTr("+ Бюджет")
+                            highlighted: true
+                            onClicked: budgetDialog.openForNew()
+                        }
+                    }
+
+                    ListView {
+                        id: budgetList
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: 8
+                        clip: true
+                        model: financeController.budgets
+
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: ListView.view.width
+                            height: 108
+                            radius: 12
+                            color: financeController.selectedBudgetId === modelData.id
+                                 ? root.pale : root.soft
+                            border.width: financeController.selectedBudgetId === modelData.id
+                                        ? 2 : 1
+                            border.color: financeController.selectedBudgetId === modelData.id
+                                        ? root.accentSoft : root.line
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 6
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData.name
+                                        color: root.accent
+                                        font.pixelSize: 14
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: Math.round(modelData.progress * 100) + "%"
+                                        color: modelData.progress > 1 ? root.red : root.muted
+                                        font.pixelSize: 12
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: root.money(modelData.displaySpentMinor,
+                                                     modelData.displayCurrency, false)
+                                        + " / "
+                                        + root.money(modelData.displayLimitMinor,
+                                                     modelData.displayCurrency, false)
+                                    color: modelData.progress > 1 ? root.red : root.muted
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 7
+                                    radius: 4
+                                    color: root.line
+                                    Rectangle {
+                                        width: parent.width * Math.min(1, modelData.progress)
+                                        height: parent.height
+                                        radius: parent.radius
+                                        color: modelData.progress > 1 ? root.red : root.accentSoft
+                                    }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: financeController.selectedBudgetId = modelData.id
+                            }
+                        }
+
+                        Label {
+                            anchors.centerIn: parent
+                            visible: budgetList.count === 0
+                            width: parent.width - 30
+                            text: qsTr("Создайте первый месячный бюджет")
+                            color: root.muted
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 14
+                visible: root.selectedBudget() !== null
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    SoftButton { text: "‹"; onClicked: root.shiftBudgetMonth(-1) }
+                    Text {
+                        Layout.preferredWidth: 180
+                        text: Qt.formatDate(root.budgetMonthDate(), "MMMM yyyy")
+                        color: root.accent
+                        font.pixelSize: 16
+                        font.weight: Font.DemiBold
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    SoftButton { text: "›"; onClicked: root.shiftBudgetMonth(1) }
+                    Item { Layout.fillWidth: true }
+                    SoftButton {
+                        text: qsTr("Изменить")
+                        onClicked: budgetDialog.openForEdit(root.selectedBudget())
+                    }
+                    SoftButton {
+                        text: qsTr("Удалить")
+                        destructive: true
+                        onClicked: deleteBudgetDialog.openFor(root.selectedBudget())
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    Repeater {
+                        model: [
+                            {
+                                title: qsTr("Лимит"),
+                                amount: root.selectedBudget()
+                                      ? root.selectedBudget().displayLimitMinor : 0,
+                                color: root.accent
+                            },
+                            {
+                                title: qsTr("Потрачено"),
+                                amount: root.selectedBudget()
+                                      ? root.selectedBudget().displaySpentMinor : 0,
+                                color: root.red
+                            },
+                            {
+                                title: qsTr("Осталось"),
+                                amount: root.selectedBudget()
+                                      ? root.selectedBudget().displayLimitMinor
+                                        - root.selectedBudget().displaySpentMinor : 0,
+                                color: root.selectedBudget()
+                                    && root.selectedBudget().remainingMinor < 0
+                                    ? root.red : root.income
+                            }
+                        ]
+                        delegate: Panel {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 106
+                            color: root.soft
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 8
+                                Text { text: modelData.title; color: root.muted }
+                                Text {
+                                    text: root.money(modelData.amount,
+                                        root.selectedBudget()
+                                        ? root.selectedBudget().displayCurrency
+                                        : financeController.appCurrency, false)
+                                    color: modelData.color
+                                    font.pixelSize: 22
+                                    font.weight: Font.Bold
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.selectedBudget() && root.selectedBudget().rateMissing
+                    text: qsTr("Не удалось пересчитать часть сумм: проверьте валютные курсы")
+                    color: root.red
+                    font.pixelSize: 12
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 14
+
+                    Panel {
+                        Layout.preferredWidth: 370
+                        Layout.fillHeight: true
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: 10
+                            Text {
+                                text: qsTr("Категории")
+                                color: root.accent
+                                font.pixelSize: 17
+                                font.weight: Font.Bold
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedBudget()
+                                    ? (root.selectedBudget().allAccounts
+                                       ? qsTr("Все счета")
+                                       : qsTr("Выбрано счетов: %1")
+                                         .arg(root.selectedBudget().accountIds.length))
+                                    : ""
+                                color: root.muted
+                                font.pixelSize: 12
+                            }
+                            ListView {
+                                id: budgetCategoryList
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: 8
+                                clip: true
+                                model: root.selectedBudget()
+                                     ? root.selectedBudget().categoryLimits : []
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: ListView.view.width
+                                    height: modelData.limitMinor > 0 ? 74 : 50
+                                    radius: 10
+                                    color: root.soft
+                                    border.width: 1
+                                    border.color: root.line
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        spacing: 5
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.name
+                                                color: root.accent
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                text: modelData.limitMinor > 0
+                                                    ? root.money(modelData.spentMinor,
+                                                        root.selectedBudget().currency, false)
+                                                      + " / "
+                                                      + root.money(modelData.limitMinor,
+                                                        root.selectedBudget().currency, false)
+                                                    : root.money(modelData.spentMinor,
+                                                        root.selectedBudget().currency, false)
+                                                color: modelData.progress > 1 ? root.red : root.muted
+                                                font.pixelSize: 11
+                                            }
+                                        }
+                                        Rectangle {
+                                            visible: modelData.limitMinor > 0
+                                            Layout.fillWidth: true
+                                            height: 6
+                                            radius: 3
+                                            color: root.line
+                                            Rectangle {
+                                                width: parent.width * Math.min(1, modelData.progress)
+                                                height: parent.height
+                                                radius: parent.radius
+                                                color: modelData.progress > 1
+                                                     ? root.red : root.accentSoft
+                                            }
+                                        }
+                                    }
+                                }
+                                Label {
+                                    anchors.centerIn: parent
+                                    visible: budgetCategoryList.count === 0
+                                    text: qsTr("В этом месяце расходов пока нет")
+                                    color: root.muted
+                                }
+                            }
+                        }
+                    }
+
+                    Panel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: 10
+                            Text {
+                                text: qsTr("Операции бюджета")
+                                color: root.accent
+                                font.pixelSize: 17
+                                font.weight: Font.Bold
+                            }
+                            ListView {
+                                id: budgetOperationList
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: 7
+                                clip: true
+                                model: financeController.budgetTransactions
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: ListView.view.width
+                                    height: 64
+                                    radius: 10
+                                    color: root.soft
+                                    border.width: 1
+                                    border.color: root.line
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 3
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.description.length > 0
+                                                    ? modelData.description : modelData.categoryName
+                                                color: root.accent
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                text: modelData.categoryName + " · "
+                                                    + Qt.formatDateTime(
+                                                        new Date(modelData.date), "dd.MM.yyyy")
+                                                color: root.muted
+                                                font.pixelSize: 11
+                                            }
+                                        }
+                                        Text {
+                                            text: "−" + root.money(
+                                                modelData.budgetAmountMinor,
+                                                modelData.budgetCurrency, false)
+                                            color: root.red
+                                            font.weight: Font.DemiBold
+                                        }
+                                    }
+                                }
+                                Label {
+                                    anchors.centerIn: parent
+                                    visible: budgetOperationList.count === 0
+                                    text: qsTr("Операций пока нет")
+                                    color: root.muted
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Panel {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: root.selectedBudget() === null
+                color: root.soft
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 60, 430)
+                    spacing: 12
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Бюджет не выбран")
+                        color: root.accent
+                        font.pixelSize: 21
+                        font.weight: Font.Bold
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Создайте бюджет и выберите счета и категории, расходы которых нужно контролировать")
+                        color: root.muted
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
         }
@@ -3380,6 +3810,18 @@ ApplicationWindow {
         successColor: root.income
     }
 
+    BudgetDialog {
+        id: budgetDialog
+        controller: financeController
+        panelColor: root.panel
+        softColor: root.soft
+        textColor: root.accent
+        mutedColor: root.muted
+        lineColor: root.line
+        accentColor: root.accent
+        errorColor: root.red
+    }
+
     Dialog {
         id: cryptoWalletDialog
         width: 500
@@ -4317,6 +4759,84 @@ ApplicationWindow {
                     text: qsTr("Удалить")
                     destructive: true
                     onClicked: deleteProjectDialog.confirmDelete()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: deleteBudgetDialog
+        width: 470
+        modal: true
+        anchors.centerIn: parent
+        padding: 24
+        property var budgetData: null
+
+        function openFor(budget) {
+            if (!budget)
+                return;
+            budgetData = budget;
+            deleteBudgetError.text = "";
+            open();
+        }
+
+        function confirmDelete() {
+            if (budgetData && financeController.deleteBudget(budgetData.id)) {
+                close();
+                return;
+            }
+            deleteBudgetError.text = qsTr("Не удалось удалить бюджет");
+        }
+
+        onClosed: budgetData = null
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+            Text {
+                text: qsTr("Удалить бюджет?")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: deleteBudgetDialog.budgetData
+                    ? deleteBudgetDialog.budgetData.name : ""
+                color: root.accent
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("История операций и счета не изменятся. Будет удалён только бюджет и его месячные лимиты.")
+                color: root.muted
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                id: deleteBudgetError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 12
+            }
+            RowLayout {
+                Item { Layout.fillWidth: true }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: deleteBudgetDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Удалить")
+                    destructive: true
+                    onClicked: deleteBudgetDialog.confirmDelete()
                 }
             }
         }

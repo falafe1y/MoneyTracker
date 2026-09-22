@@ -256,6 +256,32 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QVariantList budgets
+            READ budgets
+                NOTIFY budgetsChanged
+        )
+
+    Q_PROPERTY(
+        QString selectedBudgetId
+            READ selectedBudgetId
+                WRITE setSelectedBudgetId
+                    NOTIFY selectedBudgetIdChanged
+        )
+
+    Q_PROPERTY(
+        QString selectedBudgetMonth
+            READ selectedBudgetMonth
+                WRITE setSelectedBudgetMonth
+                    NOTIFY selectedBudgetMonthChanged
+        )
+
+    Q_PROPERTY(
+        QVariantList budgetTransactions
+            READ budgetTransactions
+                NOTIFY budgetsChanged
+        )
+
+    Q_PROPERTY(
         QString selectedProjectId
             READ selectedProjectId
                 WRITE setSelectedProjectId
@@ -329,6 +355,12 @@ public:
     QString selectedProjectId() const;
     void setSelectedProjectId(const QString& id);
     QVariantList projectTransactions() const;
+    QVariantList budgets() const;
+    QString selectedBudgetId() const;
+    void setSelectedBudgetId(const QString& id);
+    QString selectedBudgetMonth() const;
+    void setSelectedBudgetMonth(const QString& month);
+    QVariantList budgetTransactions() const;
     Q_INVOKABLE bool setDateFilter(
         const QDateTime& from,
         const QDateTime& to
@@ -360,6 +392,8 @@ public:
         const QString& name
         );
     Q_INVOKABLE bool deleteProject(const QString& id);
+    Q_INVOKABLE QVariantMap saveBudget(const QVariantMap& values);
+    Q_INVOKABLE bool deleteBudget(const QString& id);
     Q_INVOKABLE bool addProjectTransaction(
         const QString& projectId,
         qint64 minorUnits,
@@ -509,6 +543,9 @@ signals:
     void scheduledTransactionsChanged();
     void projectsChanged();
     void selectedProjectIdChanged();
+    void budgetsChanged();
+    void selectedBudgetIdChanged();
+    void selectedBudgetMonthChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -534,6 +571,12 @@ private:
 
     QVariantMap transactionToVariant(const Transaction& transaction) const;
     bool hasProject(const QString& id) const;
+    bool hasBudget(const QString& id) const;
+    bool transactionMatchesBudget(
+        const Transaction& transaction,
+        const Budget& budget
+        ) const;
+    void refreshBudgetMonthLimits();
 
     qint64 accountBalanceMinor(const Account& account) const;
     qint64 investmentAccountValueMinor(const QString& accountId) const;
@@ -589,6 +632,7 @@ private:
     QVector<BankCsvProfile> bankCsvProfiles_;
     QVector<RecurringTransaction> recurringTransactions_;
     QVector<Project> projects_;
+    QVector<Budget> budgets_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
     bool recurringMaterializationScheduled_ = false;
@@ -602,6 +646,9 @@ private:
     QString selectedAccountId_;
     QString selectedCryptoWalletId_;
     QString selectedProjectId_;
+    QString selectedBudgetId_;
+    QDate selectedBudgetMonth_;
+    QHash<QString, qint64> budgetMonthLimits_;
     QDate dateFilterFrom_;
     QDate dateFilterTo_;
 

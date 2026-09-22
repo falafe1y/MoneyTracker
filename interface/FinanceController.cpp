@@ -338,6 +338,15 @@ FinanceController::FinanceController(QObject* parent)
             emit capitalHistoryChanged();
         });
 
+    QObject::connect(this, &FinanceController::transactionsChanged,
+                     this, &FinanceController::budgetsChanged);
+    QObject::connect(this, &FinanceController::accountsChanged,
+                     this, &FinanceController::budgetsChanged);
+    QObject::connect(this, &FinanceController::categoriesChanged,
+                     this, &FinanceController::budgetsChanged);
+    QObject::connect(this, &FinanceController::appCurrencyChanged,
+                     this, &FinanceController::budgetsChanged);
+
     QObject::connect(
         &rateProvider_,
         &CbrCurrencyRateProvider::ratesUpdated,
@@ -349,6 +358,7 @@ FinanceController::FinanceController(QObject* parent)
             emit currencyRatesChanged();
             emit cryptoWalletsChanged();
             emit projectsChanged();
+            emit budgetsChanged();
         });
 
     QObject::connect(
@@ -579,6 +589,7 @@ FinanceController::FinanceController(QObject* parent)
     recurringTransactions_ = repository_.loadRecurringTransactions();
     categories_ = repository_.loadCategories();
     accounts_ = repository_.loadAccounts();
+    budgets_ = repository_.loadBudgets();
     cryptoWallets_ = repository_.loadCryptoWallets();
     cryptoTransactions_ = repository_.loadCryptoTransactions();
     investmentInstruments_ = repository_.loadInvestmentInstruments();
@@ -587,6 +598,12 @@ FinanceController::FinanceController(QObject* parent)
     if (!projects_.isEmpty()) {
         selectedProjectId_ = projects_.constFirst().id();
     }
+    selectedBudgetMonth_ = QDate(
+        QDate::currentDate().year(), QDate::currentDate().month(), 1);
+    if (!budgets_.isEmpty()) {
+        selectedBudgetId_ = budgets_.constFirst().id();
+    }
+    refreshBudgetMonthLimits();
     if (!cryptoWallets_.isEmpty()) {
         selectedCryptoWalletId_ = cryptoWallets_.constFirst().id();
     }
@@ -1804,6 +1821,171 @@ QVariantList FinanceController::projectTransactions() const
     return result;
 }
 
+QVariantList FinanceController::budgets() const
+{
+    QVariantList result;
+    const QDate monthStart(
+        selectedBudgetMonth_.year(), selectedBudgetMonth_.month(), 1);
+    const QDate monthEnd = monthStart.addMonths(1).addDays(-1);
+
+    for (const Budget& budget : budgets_) {
+        qint64 spentMinor = 0;
+        QHash<QString, qint64> spentByCategory;
+        bool rateMissing = false;
+        int operationCount = 0;
+        for (const Transaction& transaction : transactions_) {
+            const QDate date = transaction.date().toLocalTime().date();
+            if (date < monthStart || date > monthEnd ||
+                !transactionMatchesBudget(transaction, budget)) {
+                continue;
+            }
+            if (transaction.money().currency() != budget.currency() &&
+                (rateProvider_.rateToUsd(transaction.money().currency()) <= 0 ||
+                 rateProvider_.rateToUsd(budget.currency()) <= 0)) {
+                rateMissing = true;
+                continue;
+            }
+            const qint64 converted = currencyConverter_.convert(
+                transaction.money(), budget.currency()).minorUnits();
+            spentMinor = saturatedCapitalAdd(spentMinor, converted);
+            spentByCategory[transaction.categoryId()] = saturatedCapitalAdd(
+                spentByCategory.value(transaction.categoryId()), converted);
+            ++operationCount;
+        }
+
+        const qint64 limitMinor = budgetMonthLimits_.value(
+            budget.id(), budget.defaultLimitMinor());
+        const qint64 remainingMinor = limitMinor - spentMinor;
+        const bool appRateMissing = budget.currency() != appCurrency_ &&
+            (rateProvider_.rateToUsd(budget.currency()) <= 0 ||
+             rateProvider_.rateToUsd(appCurrency_) <= 0);
+        const qint64 displayLimitMinor = appRateMissing ? 0
+            : currencyConverter_.convert(
+                  Money(limitMinor, budget.currency()), appCurrency_).minorUnits();
+        const qint64 displaySpentMinor = appRateMissing ? 0
+            : currencyConverter_.convert(
+                  Money(spentMinor, budget.currency()), appCurrency_).minorUnits();
+
+        QHash<QString, qint64> configuredLimits;
+        for (const BudgetCategoryLimit& category : budget.categoryLimits()) {
+            configuredLimits.insert(category.categoryId, category.limitMinor);
+        }
+
+        QVariantList categoryRows;
+        for (const Category& category : categories_) {
+            if (category.type() != CategoryType::Expense ||
+                category.id() == QStringLiteral("transfer-in") ||
+                category.id() == QStringLiteral("transfer-out") ||
+                (!budget.allCategories() &&
+                 !configuredLimits.contains(category.id()))) {
+                continue;
+            }
+            const qint64 categoryLimit = configuredLimits.value(category.id());
+            const qint64 categorySpent = spentByCategory.value(category.id());
+            if (budget.allCategories() && categoryLimit == 0 &&
+                categorySpent == 0) {
+                continue;
+            }
+            QVariantMap row;
+            row[QStringLiteral("categoryId")] = category.id();
+            row[QStringLiteral("name")] = categoryDisplayName(category);
+            row[QStringLiteral("limitMinor")] = categoryLimit;
+            row[QStringLiteral("spentMinor")] = categorySpent;
+            row[QStringLiteral("configured")] =
+                configuredLimits.contains(category.id());
+            row[QStringLiteral("progress")] = categoryLimit > 0
+                ? static_cast<double>(categorySpent) / categoryLimit : 0.0;
+            categoryRows.append(row);
+        }
+
+        QVariantMap item;
+        item[QStringLiteral("id")] = budget.id();
+        item[QStringLiteral("name")] = budget.name();
+        item[QStringLiteral("currency")] = currencyCode(budget.currency());
+        item[QStringLiteral("limitMinor")] = limitMinor;
+        item[QStringLiteral("spentMinor")] = spentMinor;
+        item[QStringLiteral("remainingMinor")] = remainingMinor;
+        item[QStringLiteral("displayLimitMinor")] = displayLimitMinor;
+        item[QStringLiteral("displaySpentMinor")] = displaySpentMinor;
+        item[QStringLiteral("displayCurrency")] = currencyCode(appCurrency_);
+        item[QStringLiteral("progress")] = limitMinor > 0
+            ? static_cast<double>(spentMinor) / limitMinor : 0.0;
+        item[QStringLiteral("operationCount")] = operationCount;
+        item[QStringLiteral("rateMissing")] = rateMissing || appRateMissing;
+        item[QStringLiteral("allAccounts")] = budget.allAccounts();
+        item[QStringLiteral("allCategories")] = budget.allCategories();
+        item[QStringLiteral("accountIds")] = budget.accountIds();
+        item[QStringLiteral("categoryLimits")] = categoryRows;
+        result.append(item);
+    }
+    return result;
+}
+
+QString FinanceController::selectedBudgetId() const
+{
+    return selectedBudgetId_;
+}
+
+void FinanceController::setSelectedBudgetId(const QString& id)
+{
+    if (id == selectedBudgetId_ || (!id.isEmpty() && !hasBudget(id))) {
+        return;
+    }
+    selectedBudgetId_ = id;
+    emit selectedBudgetIdChanged();
+    emit budgetsChanged();
+}
+
+QString FinanceController::selectedBudgetMonth() const
+{
+    return selectedBudgetMonth_.toString(Qt::ISODate);
+}
+
+void FinanceController::setSelectedBudgetMonth(const QString& month)
+{
+    QDate parsed = QDate::fromString(month, Qt::ISODate);
+    if (!parsed.isValid()) {
+        return;
+    }
+    parsed = QDate(parsed.year(), parsed.month(), 1);
+    if (parsed == selectedBudgetMonth_) {
+        return;
+    }
+    selectedBudgetMonth_ = parsed;
+    refreshBudgetMonthLimits();
+    emit selectedBudgetMonthChanged();
+    emit budgetsChanged();
+}
+
+QVariantList FinanceController::budgetTransactions() const
+{
+    QVariantList result;
+    const auto budget = std::find_if(
+        budgets_.cbegin(), budgets_.cend(), [this](const Budget& candidate)
+        {
+            return candidate.id() == selectedBudgetId_;
+        });
+    if (budget == budgets_.cend()) {
+        return result;
+    }
+    const QDate monthStart(
+        selectedBudgetMonth_.year(), selectedBudgetMonth_.month(), 1);
+    const QDate monthEnd = monthStart.addMonths(1).addDays(-1);
+    for (const Transaction& transaction : transactions_) {
+        const QDate date = transaction.date().toLocalTime().date();
+        if (date < monthStart || date > monthEnd ||
+            !transactionMatchesBudget(transaction, *budget)) {
+            continue;
+        }
+        QVariantMap row = transactionToVariant(transaction);
+        row[QStringLiteral("budgetAmountMinor")] = currencyConverter_.convert(
+            transaction.money(), budget->currency()).minorUnits();
+        row[QStringLiteral("budgetCurrency")] = currencyCode(budget->currency());
+        result.append(row);
+    }
+    return result;
+}
+
 QVariantList FinanceController::categories() const
 {
     QVariantList result;
@@ -2578,6 +2760,166 @@ bool FinanceController::deleteProject(const QString& id)
         emit selectedProjectIdChanged();
     }
     emit projectsChanged();
+    return true;
+}
+
+QVariantMap FinanceController::saveBudget(const QVariantMap& values)
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    const QString id = values.value(QStringLiteral("id")).toString().trimmed();
+    const QString name = values.value(QStringLiteral("name")).toString().trimmed();
+    const QString currencyText = values.value(
+        QStringLiteral("currency")).toString().trimmed().toUpper();
+    const qint64 limitMinor = values.value(
+        QStringLiteral("limitMinor")).toLongLong();
+    const bool allAccounts = values.value(
+        QStringLiteral("allAccounts"), true).toBool();
+    const bool allCategories = values.value(
+        QStringLiteral("allCategories"), true).toBool();
+
+    if (name.isEmpty() || name.size() > 80) {
+        result[QStringLiteral("error")] = tr(
+            "Введите название бюджета длиной до 80 символов");
+        return result;
+    }
+    if (currencyText != QStringLiteral("RUB") &&
+        currencyText != QStringLiteral("USD") &&
+        currencyText != QStringLiteral("EUR")) {
+        result[QStringLiteral("error")] = tr("Выберите валюту бюджета");
+        return result;
+    }
+    if (limitMinor <= 0) {
+        result[QStringLiteral("error")] = tr(
+            "Месячный лимит должен быть больше нуля");
+        return result;
+    }
+
+    int editingIndex = -1;
+    for (int index = 0; index < budgets_.size(); ++index) {
+        const Budget& existing = budgets_.at(index);
+        if (existing.id() == id) {
+            editingIndex = index;
+        } else if (existing.name().compare(name, Qt::CaseInsensitive) == 0) {
+            result[QStringLiteral("error")] = tr(
+                "Бюджет с таким названием уже существует");
+            return result;
+        }
+    }
+    if (!id.isEmpty() && editingIndex < 0) {
+        result[QStringLiteral("error")] = tr("Бюджет не найден");
+        return result;
+    }
+
+    QStringList accountIds;
+    QSet<QString> uniqueAccountIds;
+    for (const QVariant& value : values.value(
+             QStringLiteral("accountIds")).toList()) {
+        const QString accountId = value.toString();
+        const bool exists = std::any_of(
+            accounts_.cbegin(), accounts_.cend(),
+            [&accountId](const Account& account)
+            {
+                return account.id() == accountId;
+            });
+        if (!accountId.isEmpty() && exists &&
+            !uniqueAccountIds.contains(accountId)) {
+            uniqueAccountIds.insert(accountId);
+            accountIds.append(accountId);
+        }
+    }
+    if (!allAccounts && accountIds.isEmpty()) {
+        result[QStringLiteral("error")] = tr(
+            "Выберите хотя бы один счёт");
+        return result;
+    }
+
+    QVector<BudgetCategoryLimit> categoryLimits;
+    QSet<QString> uniqueCategoryIds;
+    for (const QVariant& value : values.value(
+             QStringLiteral("categoryLimits")).toList()) {
+        const QVariantMap row = value.toMap();
+        const QString categoryId = row.value(
+            QStringLiteral("categoryId")).toString();
+        const qint64 categoryLimit = row.value(
+            QStringLiteral("limitMinor")).toLongLong();
+        const bool exists = std::any_of(
+            categories_.cbegin(), categories_.cend(),
+            [&categoryId](const Category& category)
+            {
+                return category.id() == categoryId &&
+                       category.type() == CategoryType::Expense;
+            });
+        if (categoryId.isEmpty() || !exists ||
+            categoryId == QStringLiteral("transfer-in") ||
+            categoryId == QStringLiteral("transfer-out") ||
+            uniqueCategoryIds.contains(categoryId) || categoryLimit < 0) {
+            continue;
+        }
+        uniqueCategoryIds.insert(categoryId);
+        categoryLimits.append({categoryId, categoryLimit});
+    }
+    if (!allCategories && categoryLimits.isEmpty()) {
+        result[QStringLiteral("error")] = tr(
+            "Выберите хотя бы одну категорию расходов");
+        return result;
+    }
+
+    const QString budgetId = id.isEmpty()
+        ? QUuid::createUuid().toString(QUuid::WithoutBraces) : id;
+    const QDate startsOn = editingIndex >= 0
+        ? budgets_.at(editingIndex).startsOn() : selectedBudgetMonth_;
+    const Budget budget(
+        budgetId, name, currencyFromString(currencyText), limitMinor,
+        allAccounts, allCategories, accountIds, categoryLimits, startsOn);
+    const bool saved = editingIndex >= 0
+        ? repository_.updateBudget(budget, selectedBudgetMonth_)
+        : repository_.insertBudget(budget, selectedBudgetMonth_);
+    if (!saved) {
+        qWarning() << "Failed to save budget:" << repository_.lastError();
+        result[QStringLiteral("error")] = tr("Не удалось сохранить бюджет");
+        return result;
+    }
+
+    if (editingIndex >= 0) {
+        budgets_[editingIndex] = budget;
+    } else {
+        budgets_.append(budget);
+        selectedBudgetId_ = budget.id();
+        emit selectedBudgetIdChanged();
+    }
+    budgetMonthLimits_[budget.id()] = limitMinor;
+    emit budgetsChanged();
+    result[QStringLiteral("ok")] = true;
+    result[QStringLiteral("id")] = budget.id();
+    return result;
+}
+
+bool FinanceController::deleteBudget(const QString& id)
+{
+    int budgetIndex = -1;
+    for (int index = 0; index < budgets_.size(); ++index) {
+        if (budgets_.at(index).id() == id) {
+            budgetIndex = index;
+            break;
+        }
+    }
+    if (budgetIndex < 0 || !repository_.archiveBudget(id)) {
+        if (budgetIndex >= 0) {
+            qWarning() << "Failed to archive budget:"
+                       << repository_.lastError();
+        }
+        return false;
+    }
+    budgets_.removeAt(budgetIndex);
+    budgetMonthLimits_.remove(id);
+    if (selectedBudgetId_ == id) {
+        const int count = static_cast<int>(budgets_.size());
+        const int nextIndex = budgetIndex < count ? budgetIndex : count - 1;
+        selectedBudgetId_ = budgets_.isEmpty()
+            ? QString() : budgets_.at(nextIndex).id();
+        emit selectedBudgetIdChanged();
+    }
+    emit budgetsChanged();
     return true;
 }
 
@@ -4431,6 +4773,58 @@ bool FinanceController::hasProject(const QString& id) const
     return std::any_of(
         projects_.cbegin(), projects_.cend(),
         [&id](const Project& project) { return project.id() == id; });
+}
+
+bool FinanceController::hasBudget(const QString& id) const
+{
+    return std::any_of(
+        budgets_.cbegin(), budgets_.cend(),
+        [&id](const Budget& budget) { return budget.id() == id; });
+}
+
+bool FinanceController::transactionMatchesBudget(
+    const Transaction& transaction,
+    const Budget& budget
+    ) const
+{
+    if (transaction.type() != TransactionType::Expense ||
+        isTransfer(transaction)) {
+        return false;
+    }
+    if (!budget.allAccounts() &&
+        !budget.accountIds().contains(transaction.accountId())) {
+        return false;
+    }
+    if (budget.allCategories()) {
+        return true;
+    }
+    return std::any_of(
+        budget.categoryLimits().cbegin(), budget.categoryLimits().cend(),
+        [&transaction](const BudgetCategoryLimit& limit)
+        {
+            return limit.categoryId == transaction.categoryId();
+        });
+}
+
+void FinanceController::refreshBudgetMonthLimits()
+{
+    budgetMonthLimits_.clear();
+    if (!selectedBudgetMonth_.isValid()) {
+        return;
+    }
+    for (const Budget& budget : budgets_) {
+        if (!repository_.ensureBudgetMonth(
+                budget.id(), selectedBudgetMonth_,
+                budget.defaultLimitMinor())) {
+            qWarning() << "Failed to materialize budget month:"
+                       << repository_.lastError();
+        }
+        budgetMonthLimits_.insert(
+            budget.id(),
+            repository_.loadBudgetLimit(
+                budget.id(), selectedBudgetMonth_,
+                budget.defaultLimitMinor()));
+    }
 }
 
 int FinanceController::currencyIndex(const Currency currency)
