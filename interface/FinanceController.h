@@ -9,6 +9,7 @@
 #include "../services/CurrencyConverter.h"
 #include "../services/CryptoProvider.h"
 #include "../services/MoexInvestmentProvider.h"
+#include "../services/FinancialGoalCalculator.h"
 
 #include <QDateTime>
 #include <QDate>
@@ -294,7 +295,15 @@ class FinanceController final : public QObject
                 NOTIFY projectsChanged
         )
 
+    Q_PROPERTY(QVariantList financialGoals READ financialGoals NOTIFY financialGoalsChanged)
+    Q_PROPERTY(QVariantList goalSources READ goalSources NOTIFY financialGoalsChanged)
+
 public:
+    QVariantList financialGoals() const;
+    QVariantList goalSources() const;
+    Q_INVOKABLE QVariantMap saveFinancialGoal(const QVariantMap& values);
+    Q_INVOKABLE bool deleteFinancialGoal(const QString& id);
+
     explicit FinanceController(QObject* parent = nullptr);
 
     qint64 balanceMinorUnits() const;
@@ -544,6 +553,7 @@ signals:
     void projectsChanged();
     void selectedProjectIdChanged();
     void budgetsChanged();
+    void financialGoalsChanged();
     void selectedBudgetIdChanged();
     void selectedBudgetMonthChanged();
 
@@ -633,6 +643,8 @@ private:
     QVector<RecurringTransaction> recurringTransactions_;
     QVector<Project> projects_;
     QVector<Budget> budgets_;
+    QVector<FinancialGoal> financialGoals_;
+    QVector<GoalAssetValue> goalAssetValues() const;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
     bool recurringMaterializationScheduled_ = false;

@@ -304,6 +304,7 @@
     <message><source>Операции останутся на своих счетах и продолжат учитываться в общем балансе. Проект будет скрыт из списка.</source><translation>Transactions will remain in their accounts and continue to affect the total balance. The project will be hidden from the list.</translation></message>
     <message><source>Не удалось удалить проект</source><translation>Could not delete the project</translation></message>
     <message><source>Новая операция проекта · %1</source><translation>New project transaction · %1</translation></message>
+      <message><source>Цели</source><translation>Goals</translation></message>
   </context>
   <context>
     <name>RecurringTransactionsDialog</name>
@@ -449,5 +450,53 @@
     <message><source>Выберите фиатный счёт</source><translation>Select a fiat account</translation></message>
     <message><source>Выберите подходящую категорию</source><translation>Select a matching category</translation></message>
     <message><source>Запланированная операция не найдена</source><translation>Scheduled transaction was not found</translation></message>
+      <message><source>Цель не найдена</source><translation>Goal not found</translation></message>
+    <message><source>Введите название длиной до 80 символов</source><translation>Enter a name of up to 80 characters</translation></message>
+    <message><source>Выберите валюту цели</source><translation>Select the goal currency</translation></message>
+    <message><source>Введите положительную сумму, не более двух знаков после запятой</source><translation>Enter a positive amount with at most two decimal places</translation></message>
+    <message><source>Сумма цели должна быть больше нуля</source><translation>The target amount must be greater than zero</translation></message>
+    <message><source>Введите дату в формате ГГГГ-ММ-ДД</source><translation>Enter a date in YYYY-MM-DD format</translation></message>
+    <message><source>Один из выбранных счетов больше не доступен</source><translation>One of the selected accounts is no longer available</translation></message>
+    <message><source>Выберите хотя бы один счёт или кошелёк</source><translation>Select at least one account or wallet</translation></message>
+    <message><source>Не удалось сохранить цель</source><translation>Could not save the goal</translation></message>
+  </context>
+  <context>
+    <name>FinancialGoalDialog</name>
+    <message><source>Недоступный счёт или кошелёк</source><translation>Unavailable account or wallet</translation></message>
+    <message><source>Редактирование цели</source><translation>Edit goal</translation></message>
+    <message><source>Новая финансовая цель</source><translation>New financial goal</translation></message>
+    <message><source>Название</source><translation>Name</translation></message>
+    <message><source>Например, финансовая независимость</source><translation>For example, financial independence</translation></message>
+    <message><source>Сумма и валюта цели</source><translation>Target amount and currency</translation></message>
+    <message><source>Указать срок</source><translation>Set a deadline</translation></message>
+    <message><source>ГГГГ-ММ-ДД</source><translation>YYYY-MM-DD</translation></message>
+    <message><source>Срок включительно. После него цель продолжит обновляться.</source><translation>The deadline is inclusive. The goal will continue updating afterwards.</translation></message>
+    <message><source>Учитывать весь текущий капитал</source><translation>Include all current net worth</translation></message>
+    <message><source>Фиат, инвестиции и криптовалюта за вычетом задолженности. Деньги не резервируются: несколько целей могут учитывать одни средства.</source><translation>Fiat, investments and crypto minus debt. Funds are not reserved: multiple goals may include the same money.</translation></message>
+    <message><source>Отмена</source><translation>Cancel</translation></message>
+    <message><source>Сохранить</source><translation>Save</translation></message>
+  </context>
+  <context>
+    <name>FinancialGoalsPage</name>
+    <message><source>Неполный расчёт</source><translation>Incomplete calculation</translation></message>
+    <message><source>Цель достигнута</source><translation>Goal reached</translation></message>
+    <message><source>Срок истёк</source><translation>Deadline passed</translation></message>
+    <message><source>В процессе</source><translation>In progress</translation></message>
+    <message><source>Текущий капитал по последним доступным курсам и котировкам</source><translation>Current net worth at the latest available exchange rates and quotes</translation></message>
+    <message><source>+ Цель</source><translation>+ Goal</translation></message>
+    <message><source>Известно: </source><translation>Known: </translation></message>
+    <message><source>%1% · Осталось: %2</source><translation>%1% · Remaining: %2</translation></message>
+    <message><source>Проверьте доступность счетов, балансов и котировок</source><translation>Check account, balance and quote availability</translation></message>
+    <message><source>До %1</source><translation>By %1</translation></message>
+    <message><source>Без срока</source><translation>No deadline</translation></message>
+    <message><source>Весь капитал</source><translation>All net worth</translation></message>
+    <message><source>Выбрано источников: %1</source><translation>Selected sources: %1</translation></message>
+    <message><source>Изменить</source><translation>Edit</translation></message>
+    <message><source>Удалить</source><translation>Delete</translation></message>
+    <message><source>Создайте цель: укажите нужную сумму, валюту и при желании срок.</source><translation>Create a goal with a target amount, currency and optional deadline.</translation></message>
+    <message><source>Удалить цель?</source><translation>Delete goal?</translation></message>
+    <message><source>Счета, деньги и операции останутся без изменений.</source><translation>Accounts, balances and transactions will remain unchanged.</translation></message>
+    <message><source>Отмена</source><translation>Cancel</translation></message>
+    <message><source>Не удалось удалить цель</source><translation>Could not delete the goal</translation></message>
   </context>
 </TS>

@@ -338,6 +338,21 @@ FinanceController::FinanceController(QObject* parent)
             emit capitalHistoryChanged();
         });
 
+    QObject::connect(this, &FinanceController::balanceChanged,
+                     this, &FinanceController::financialGoalsChanged);
+    QObject::connect(this, &FinanceController::accountsChanged,
+                     this, &FinanceController::financialGoalsChanged);
+    QObject::connect(this, &FinanceController::cryptoWalletsChanged,
+                     this, &FinanceController::financialGoalsChanged);
+    QObject::connect(this, &FinanceController::investmentPositionsChanged,
+                     this, &FinanceController::financialGoalsChanged);
+    QObject::connect(this, &FinanceController::uiLanguageChanged,
+                     this, &FinanceController::financialGoalsChanged);
+    auto* goalClock = new QTimer(this);
+    goalClock->setInterval(60'000);
+    connect(goalClock, &QTimer::timeout, this, &FinanceController::financialGoalsChanged);
+    goalClock->start(); // Deadlines and future-dated transactions can change while open.
+
     QObject::connect(this, &FinanceController::transactionsChanged,
                      this, &FinanceController::budgetsChanged);
     QObject::connect(this, &FinanceController::accountsChanged,
@@ -590,6 +605,7 @@ FinanceController::FinanceController(QObject* parent)
     categories_ = repository_.loadCategories();
     accounts_ = repository_.loadAccounts();
     budgets_ = repository_.loadBudgets();
+    financialGoals_ = repository_.loadFinancialGoals();
     cryptoWallets_ = repository_.loadCryptoWallets();
     cryptoTransactions_ = repository_.loadCryptoTransactions();
     investmentInstruments_ = repository_.loadInvestmentInstruments();
@@ -4918,4 +4934,154 @@ Currency FinanceController::currencyFromString(
     }
 
     return Currency::RUB;
+}
+
+QVariantList FinanceController::goalSources() const
+{
+    QVariantList result;
+    for (const auto& account : accounts_) {
+        result.append(QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("account:") + account.id()},
+            {QStringLiteral("name"), accountDisplayName(account) + QStringLiteral(" · ") + currencyCode(account.currency())}});
+    }
+    for (const auto& wallet : cryptoWallets_) {
+        result.append(QVariantMap{
+            {QStringLiteral("id"), QStringLiteral("wallet:") + wallet.id()},
+            {QStringLiteral("name"), wallet.symbol() + QStringLiteral(" · ") + wallet.address()}});
+    }
+    return result;
+}
+
+QVector<GoalAssetValue> FinanceController::goalAssetValues() const
+{
+    // Use all current balances, independent of the overview's selected asset/date.
+    QVector<GoalAssetValue> values;
+    const auto now = QDateTime::currentDateTimeUtc();
+    const __int128_t maximum = std::numeric_limits<qint64>::max();
+    const __int128_t minimum = std::numeric_limits<qint64>::min();
+    for (const auto& account : accounts_) {
+        const QString source = QStringLiteral("account:") + account.id();
+        __int128_t balance = account.initialBalanceMinor();
+        for (const auto& transaction : transactions_) {
+            if (transaction.accountId() == account.id() && transaction.date() <= now) {
+                const __int128_t amount = transaction.money().minorUnits();
+                balance += transaction.type() == TransactionType::Income ? amount : -amount;
+            }
+        }
+        values.append({source, Money(static_cast<qint64>(std::clamp(balance, minimum, maximum)),
+                                     account.currency()), balance >= minimum && balance <= maximum});
+        if (account.assetType() != AssetType::Investment) continue;
+        for (const auto& position : investmentPositions_) {
+            if (position.accountId() != account.id()) continue;
+            const auto instrument = std::find_if(investmentInstruments_.cbegin(), investmentInstruments_.cend(),
+                [&position](const auto& item) { return item.id() == position.instrumentId(); });
+            const auto quote = std::find_if(investmentQuotes_.cbegin(), investmentQuotes_.cend(),
+                [&position](const auto& item) { return item.instrumentId() == position.instrumentId(); });
+            const bool available = instrument != investmentInstruments_.cend() &&
+                quote != investmentQuotes_.cend() && quote->priceMicros() > 0;
+            values.append({source, Money(available ? scaledInvestmentValueMinor(
+                position.quantityMicros(), quote->priceMicros()) : 0,
+                instrument == investmentInstruments_.cend() ? account.currency() : instrument->currency()), available});
+        }
+    }
+    for (const auto& wallet : cryptoWallets_) {
+        const qint64 price = cryptoPricesUsdMicros_.value(wallet.symbol());
+        bool available = wallet.balanceFetchedAtUtc().isValid() &&
+            (wallet.balanceAtomic() == 0 || price > 0) && wallet.decimals() >= 0 && wallet.decimals() <= 18;
+        __int128_t usdMinor = 0;
+        if (available && wallet.balanceAtomic() > 0) {
+            __int128_t divisor = 10'000;
+            for (int i = 0; i < wallet.decimals(); ++i) divisor *= 10;
+            const __int128_t product = static_cast<__int128_t>(wallet.balanceAtomic()) * price;
+            usdMinor = (product + divisor / 2) / divisor;
+            if (usdMinor > maximum) { usdMinor = maximum; available = false; }
+        }
+        values.append({QStringLiteral("wallet:") + wallet.id(),
+                       Money(static_cast<qint64>(usdMinor), Currency::USD), available});
+    }
+    return values;
+}
+
+QVariantList FinanceController::financialGoals() const
+{
+    QVariantList result;
+    const auto assets = goalAssetValues();
+    for (const auto& goal : financialGoals_) {
+        const auto progress = FinancialGoalCalculator::calculate(goal, assets, rateProvider_, QDate::currentDate());
+        result.append(QVariantMap{
+            {QStringLiteral("id"), goal.id}, {QStringLiteral("name"), goal.name},
+            {QStringLiteral("currency"), currencyCode(goal.currency)},
+            {QStringLiteral("targetMinor"), goal.targetMinor},
+            {QStringLiteral("deadline"), goal.deadline.toString(Qt::ISODate)},
+            {QStringLiteral("allSources"), goal.allSources},
+            {QStringLiteral("sourceIds"), goal.sourceIds},
+            {QStringLiteral("currentMinor"), progress.currentMinor},
+            {QStringLiteral("remainingMinor"), progress.remainingMinor},
+            {QStringLiteral("ratio"), progress.ratio},
+            {QStringLiteral("complete"), progress.complete},
+            {QStringLiteral("achieved"), progress.achieved},
+            {QStringLiteral("overdue"), progress.overdue}});
+    }
+    return result;
+}
+
+QVariantMap FinanceController::saveFinancialGoal(const QVariantMap& values)
+{
+    auto error = [](const QString& text) { return QVariantMap{
+        {QStringLiteral("ok"), false}, {QStringLiteral("error"), text}}; };
+    FinancialGoal goal;
+    goal.id = values.value(QStringLiteral("id")).toString();
+    const bool editing = !goal.id.isEmpty();
+    const auto existing = std::find_if(financialGoals_.cbegin(), financialGoals_.cend(),
+        [&goal](const auto& item) { return item.id == goal.id; });
+    if (editing && existing == financialGoals_.cend()) return error(tr("Цель не найдена"));
+    goal.name = values.value(QStringLiteral("name")).toString().trimmed();
+    if (goal.name.isEmpty() || goal.name.size() > 80)
+        return error(tr("Введите название длиной до 80 символов"));
+    const auto code = values.value(QStringLiteral("currency")).toString();
+    if (code != QStringLiteral("RUB") && code != QStringLiteral("USD") && code != QStringLiteral("EUR"))
+        return error(tr("Выберите валюту цели"));
+    goal.currency = currencyFromString(code);
+    // Parse decimal text without floating-point rounding or silent truncation.
+    QString amount = values.value(QStringLiteral("amountText")).toString().trimmed();
+    amount.replace(QLatin1Char(','), QLatin1Char('.'));
+    const QRegularExpression pattern(QStringLiteral("^([0-9]{1,12})(?:[.]([0-9]{1,2}))?$"));
+    const auto match = pattern.match(amount);
+    if (!match.hasMatch()) return error(tr("Введите положительную сумму, не более двух знаков после запятой"));
+    goal.targetMinor = match.captured(1).toLongLong() * 100 +
+        match.captured(2).leftJustified(2, QLatin1Char('0')).toLongLong();
+    if (goal.targetMinor <= 0) return error(tr("Сумма цели должна быть больше нуля"));
+    const auto deadline = values.value(QStringLiteral("deadline")).toString().trimmed();
+    if (!deadline.isEmpty()) {
+        goal.deadline = QDate::fromString(deadline, Qt::ISODate);
+        if (!goal.deadline.isValid() || goal.deadline.toString(Qt::ISODate) != deadline)
+            return error(tr("Введите дату в формате ГГГГ-ММ-ДД"));
+    }
+    goal.allSources = values.value(QStringLiteral("allSources"), true).toBool();
+    if (!goal.allSources) {
+        const auto sources = goalSources();
+        for (const auto& value : values.value(QStringLiteral("sourceIds")).toList()) {
+            const auto id = value.toString();
+            const bool exists = std::any_of(sources.cbegin(), sources.cend(),
+                [&id](const auto& item) { return item.toMap().value(QStringLiteral("id")).toString() == id; });
+            // Keep selected archived sources visible as unavailable until user removes them.
+            if (!exists && !(editing && existing->sourceIds.contains(id)))
+                return error(tr("Один из выбранных счетов больше не доступен"));
+            if (!goal.sourceIds.contains(id)) goal.sourceIds.append(id);
+        }
+        if (goal.sourceIds.isEmpty()) return error(tr("Выберите хотя бы один счёт или кошелёк"));
+    }
+    if (!editing) goal.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (!repository_.saveFinancialGoal(goal, editing)) return error(tr("Не удалось сохранить цель"));
+    financialGoals_ = repository_.loadFinancialGoals();
+    emit financialGoalsChanged();
+    return {{QStringLiteral("ok"), true}};
+}
+
+bool FinanceController::deleteFinancialGoal(const QString& id)
+{
+    if (!repository_.deleteFinancialGoal(id)) return false;
+    financialGoals_ = repository_.loadFinancialGoals();
+    emit financialGoalsChanged();
+    return true;
 }

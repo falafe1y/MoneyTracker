@@ -845,6 +845,12 @@ ApplicationWindow {
                 }
                 NavButton {
                     Layout.fillWidth: true
+                    text: qsTr("Цели")
+                    glyph: "◎"
+                    target: "goals"
+                }
+                NavButton {
+                    Layout.fillWidth: true
                     text: qsTr("Бюджеты")
                     glyph: "▧"
                     target: "budgets"
@@ -892,6 +898,7 @@ ApplicationWindow {
                         : page === "categories" ? qsTr("Категории")
                         : page === "operations" ? qsTr("Операции")
                         : page === "budgets" ? qsTr("Бюджеты")
+                        : page === "goals" ? qsTr("Цели")
                         : page === "projects" ? qsTr("Проекты")
                         : page === "analytics" ? qsTr("Аналитика")
                         : qsTr("Настройки")
@@ -951,6 +958,7 @@ ApplicationWindow {
                                : page === "categories" ? categoriesPage
                                : page === "operations" ? operationsPage
                                : page === "budgets" ? budgetsPage
+                               : page === "goals" ? goalsPage
                                : page === "projects" ? projectsPage
                                : page === "analytics" ? analyticsPage
                                : settingsPage
@@ -2508,6 +2516,11 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    Component {
+        id: goalsPage
+        FinancialGoalsPage { controller: financeController; theme: root }
     }
 
     Component {

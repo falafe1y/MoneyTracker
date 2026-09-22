@@ -13,6 +13,7 @@ class FinanceRepositoryTest : public QObject
     Q_OBJECT
 
 private slots:
+    void financialGoalsCrudPersistsWithoutContributions();
     void preservesSelectedAccountAfterReopen();
     void storesUiLanguage();
     void storesCurrencyRateSettings();
@@ -34,6 +35,51 @@ private slots:
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
 };
+
+void FinanceRepositoryTest::financialGoalsCrudPersistsWithoutContributions()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("goals.sqlite3"));
+    FinancialGoal goal;
+    goal.id = QStringLiteral("goal"); goal.name = QStringLiteral("Capital");
+    goal.currency = Currency::USD; goal.targetMinor = 20'000'000;
+    {
+        FinanceRepository repository(path);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        QVERIFY(repository.saveFinancialGoal(goal, false));
+        QCOMPARE(repository.loadFinancialGoals().size(), 1);
+        QVERIFY(!repository.saveFinancialGoal(goal, false)); // duplicate ID
+        QVERIFY(repository.loadTransactions().isEmpty());
+    }
+    {
+        FinanceRepository repository(path);
+        const auto loaded = repository.loadFinancialGoals();
+        QCOMPARE(loaded.size(), 1);
+        QCOMPARE(loaded.first().targetMinor, goal.targetMinor);
+        QVERIFY(!loaded.first().deadline.isValid());
+        goal.name = QStringLiteral("Updated"); goal.currency = Currency::EUR;
+        goal.deadline = QDate(2027, 5, 20); goal.targetMinor = 30'000'000;
+        goal.allSources = false;
+        goal.sourceIds = {QStringLiteral("account:household-rub")};
+        QVERIFY(repository.saveFinancialGoal(goal, true));
+    }
+    {
+        FinanceRepository repository(path);
+        const auto loaded = repository.loadFinancialGoals().first();
+        QCOMPARE(loaded.name, goal.name);
+        QCOMPARE(loaded.currency, Currency::EUR);
+        QCOMPARE(loaded.deadline, goal.deadline);
+        QCOMPARE(loaded.sourceIds, goal.sourceIds);
+        QVERIFY(!loaded.allSources);
+        QVERIFY(repository.deleteFinancialGoal(goal.id));
+        QVERIFY(repository.loadFinancialGoals().isEmpty());
+        QVERIFY(!repository.deleteFinancialGoal(goal.id));
+        QVERIFY(!repository.saveFinancialGoal(goal, true));
+        QVERIFY(repository.loadTransactions().isEmpty());
+        QVERIFY(!repository.loadAccounts().isEmpty());
+    }
+}
 
 void FinanceRepositoryTest::migratesLegacyProjectTable()
 {

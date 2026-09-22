@@ -3,6 +3,8 @@
 #include "../core/Currency.h"
 
 #include <QDir>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -2171,6 +2173,12 @@ bool FinanceRepository::deleteBankCsvProfile(const QString& id)
 bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
+        QStringLiteral("CREATE TABLE IF NOT EXISTS financial_goals ("
+                       "id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 80), "
+                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "target_minor INTEGER NOT NULL CHECK(target_minor > 0), "
+                       "deadline TEXT, all_sources INTEGER NOT NULL CHECK(all_sources IN (0,1)), "
+                       "source_ids TEXT NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS accounts ("
                        "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
                        "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
@@ -2944,3 +2952,65 @@ bool FinanceRepository::seedDefaults()
 }
 
 void FinanceRepository::setLastError(const QString& error) { lastError_ = error; }
+
+QVector<FinancialGoal> FinanceRepository::loadFinancialGoals()
+{
+    QVector<FinancialGoal> goals;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT id,name,currency,target_minor,deadline,all_sources,source_ids "
+            "FROM financial_goals ORDER BY rowid"))) {
+        setLastError(query.lastError().text());
+        return goals;
+    }
+    while (query.next()) {
+        FinancialGoal goal;
+        goal.id = query.value(0).toString();
+        goal.name = query.value(1).toString();
+        goal.currency = currencyFromCode(query.value(2).toString());
+        goal.targetMinor = query.value(3).toLongLong();
+        goal.deadline = QDate::fromString(query.value(4).toString(), Qt::ISODate);
+        goal.allSources = query.value(5).toBool();
+        const auto sources = QJsonDocument::fromJson(query.value(6).toByteArray()).array();
+        for (const auto& source : sources) goal.sourceIds.append(source.toString());
+        goals.append(goal);
+    }
+    return goals;
+}
+
+bool FinanceRepository::saveFinancialGoal(const FinancialGoal& goal, bool editing)
+{
+    if (goal.id.isEmpty() || goal.name.trimmed().isEmpty() || goal.name.size() > 80 ||
+        goal.targetMinor <= 0 || (!goal.allSources && goal.sourceIds.isEmpty())) {
+        setLastError(QStringLiteral("Invalid financial goal"));
+        return false;
+    }
+    QSqlQuery query(database_);
+    query.prepare(editing ? QStringLiteral(
+        "UPDATE financial_goals SET name=?,currency=?,target_minor=?,deadline=?,"
+        "all_sources=?,source_ids=? WHERE id=?") : QStringLiteral(
+        "INSERT INTO financial_goals(name,currency,target_minor,deadline,all_sources,source_ids,id) "
+        "VALUES(?,?,?,?,?,?,?)"));
+    query.addBindValue(goal.name.trimmed());
+    query.addBindValue(currencyCode(goal.currency));
+    query.addBindValue(goal.targetMinor);
+    query.addBindValue(goal.deadline.isValid() ? QVariant(goal.deadline.toString(Qt::ISODate)) : QVariant());
+    query.addBindValue(goal.allSources ? 1 : 0);
+    query.addBindValue(QString::fromUtf8(QJsonDocument(
+        QJsonArray::fromStringList(goal.sourceIds)).toJson(QJsonDocument::Compact)));
+    query.addBindValue(goal.id);
+    if (!query.exec()) { setLastError(query.lastError().text()); return false; }
+    if (query.numRowsAffected() != 1) {
+        setLastError(QStringLiteral("Financial goal not found")); return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::deleteFinancialGoal(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("DELETE FROM financial_goals WHERE id=?"));
+    query.addBindValue(id);
+    if (!query.exec()) { setLastError(query.lastError().text()); return false; }
+    return query.numRowsAffected() == 1;
+}

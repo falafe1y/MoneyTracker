@@ -11,6 +11,7 @@
 #include "../core/InvestmentQuote.h"
 #include "../core/Project.h"
 #include "../core/Budget.h"
+#include "../core/FinancialGoal.h"
 
 #include <QSqlDatabase>
 #include <QDate>
@@ -48,6 +49,10 @@ public:
         QDate date;
         Transaction transaction;
     };
+
+    QVector<FinancialGoal> loadFinancialGoals();
+    bool saveFinancialGoal(const FinancialGoal& goal, bool editing);
+    bool deleteFinancialGoal(const QString& id);
 
     QVector<Budget> loadBudgets();
     qint64 loadBudgetLimit(
