@@ -12,6 +12,7 @@
 #include "../core/Project.h"
 #include "../core/Budget.h"
 #include "../core/FinancialGoal.h"
+#include "../core/FinancialTrajectory.h"
 
 #include <QSqlDatabase>
 #include <QDate>
@@ -53,6 +54,12 @@ public:
     QVector<FinancialGoal> loadFinancialGoals();
     bool saveFinancialGoal(const FinancialGoal& goal, bool editing);
     bool deleteFinancialGoal(const QString& id);
+
+    QVector<CapitalSnapshot> loadCapitalSnapshots();
+    bool saveCapitalSnapshot(const CapitalSnapshot& snapshot);
+    FinancialTrajectorySettings loadFinancialTrajectorySettings() const;
+    bool saveFinancialTrajectorySettings(
+        const FinancialTrajectorySettings& settings);
 
     QVector<Budget> loadBudgets();
     qint64 loadBudgetLimit(

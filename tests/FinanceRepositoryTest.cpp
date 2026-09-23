@@ -14,6 +14,7 @@ class FinanceRepositoryTest : public QObject
 
 private slots:
     void financialGoalsCrudPersistsWithoutContributions();
+    void storesCapitalSnapshotsAndTrajectorySettings();
     void preservesSelectedAccountAfterReopen();
     void storesUiLanguage();
     void storesCurrencyRateSettings();
@@ -35,6 +36,37 @@ private slots:
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
 };
+
+void FinanceRepositoryTest::storesCapitalSnapshotsAndTrajectorySettings()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("trajectory.sqlite3"));
+    {
+        FinanceRepository repository(path);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        QVERIFY(repository.saveCapitalSnapshot({QDate(2026, 9, 21), Currency::USD, 100'000}));
+        QVERIFY(repository.saveCapitalSnapshot({QDate(2026, 9, 22), Currency::RUB, 9'000'000}));
+        QVERIFY(repository.saveCapitalSnapshot({QDate(2026, 9, 22), Currency::RUB, 9'500'000}));
+        FinancialTrajectorySettings settings;
+        settings.analysisMonths = 12; settings.horizonMonths = 60;
+        settings.annualReturnPercent = 7.5; settings.purchaseMinor = 150'000;
+        settings.purchaseMonth = 6;
+        QVERIFY(repository.saveFinancialTrajectorySettings(settings));
+    }
+    {
+        FinanceRepository repository(path);
+        const auto snapshots = repository.loadCapitalSnapshots();
+        QCOMPARE(snapshots.size(), 2);
+        QCOMPARE(snapshots.last().totalMinor, 9'500'000);
+        const auto settings = repository.loadFinancialTrajectorySettings();
+        QCOMPARE(settings.analysisMonths, 12);
+        QCOMPARE(settings.horizonMonths, 60);
+        QCOMPARE(settings.annualReturnPercent, 7.5);
+        QCOMPARE(settings.purchaseMinor, 150'000);
+        QCOMPARE(settings.purchaseMonth, 6);
+    }
+}
 
 void FinanceRepositoryTest::financialGoalsCrudPersistsWithoutContributions()
 {

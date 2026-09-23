@@ -29,6 +29,7 @@ qt_add_qml_module(appMoneyTracker
         BudgetDialog.qml
         FinancialGoalsPage.qml
         FinancialGoalDialog.qml
+        FinancialTrajectoryPage.qml
         # BankComboBox.qml
         # CategoryPicker.qml
         SOURCES core/Account.h
@@ -41,6 +42,9 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/FinancialGoal.h
         SOURCES services/FinancialGoalCalculator.h
         SOURCES services/FinancialGoalCalculator.cpp
+        SOURCES core/FinancialTrajectory.h
+        SOURCES services/FinancialTrajectoryCalculator.h
+        SOURCES services/FinancialTrajectoryCalculator.cpp
         SOURCES core/Project.h
         SOURCES core/Transaction.h
         SOURCES core/RecurringTransaction.h
@@ -353,6 +357,13 @@ add_executable(FinancialGoalCalculatorTest
 )
 target_link_libraries(FinancialGoalCalculatorTest PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME FinancialGoalCalculatorTest COMMAND FinancialGoalCalculatorTest)
+
+add_executable(FinancialTrajectoryCalculatorTest
+    tests/FinancialTrajectoryCalculatorTest.cpp
+    services/FinancialTrajectoryCalculator.cpp
+)
+target_link_libraries(FinancialTrajectoryCalculatorTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME FinancialTrajectoryCalculatorTest COMMAND FinancialTrajectoryCalculatorTest)
 
 add_executable(RecurringScheduleCalculatorTest
     tests/RecurringScheduleCalculatorTest.cpp

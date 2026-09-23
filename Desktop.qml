@@ -851,6 +851,12 @@ ApplicationWindow {
                 }
                 NavButton {
                     Layout.fillWidth: true
+                    text: qsTr("Траектория")
+                    glyph: "↗"
+                    target: "trajectory"
+                }
+                NavButton {
+                    Layout.fillWidth: true
                     text: qsTr("Бюджеты")
                     glyph: "▧"
                     target: "budgets"
@@ -899,6 +905,7 @@ ApplicationWindow {
                         : page === "operations" ? qsTr("Операции")
                         : page === "budgets" ? qsTr("Бюджеты")
                         : page === "goals" ? qsTr("Цели")
+                        : page === "trajectory" ? qsTr("Финансовая траектория")
                         : page === "projects" ? qsTr("Проекты")
                         : page === "analytics" ? qsTr("Аналитика")
                         : qsTr("Настройки")
@@ -959,6 +966,7 @@ ApplicationWindow {
                                : page === "operations" ? operationsPage
                                : page === "budgets" ? budgetsPage
                                : page === "goals" ? goalsPage
+                               : page === "trajectory" ? trajectoryPage
                                : page === "projects" ? projectsPage
                                : page === "analytics" ? analyticsPage
                                : settingsPage
@@ -2521,6 +2529,11 @@ ApplicationWindow {
     Component {
         id: goalsPage
         FinancialGoalsPage { controller: financeController; theme: root }
+    }
+
+    Component {
+        id: trajectoryPage
+        FinancialTrajectoryPage { controller: financeController; theme: root }
     }
 
     Component {

@@ -2173,6 +2173,10 @@ bool FinanceRepository::deleteBankCsvProfile(const QString& id)
 bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
+        QStringLiteral("CREATE TABLE IF NOT EXISTS capital_snapshots ("
+                       "snapshot_date TEXT PRIMARY KEY CHECK(length(snapshot_date) = 10), "
+                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "total_minor INTEGER NOT NULL, updated_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS financial_goals ("
                        "id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 80), "
                        "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
@@ -3013,4 +3017,88 @@ bool FinanceRepository::deleteFinancialGoal(const QString& id)
     query.addBindValue(id);
     if (!query.exec()) { setLastError(query.lastError().text()); return false; }
     return query.numRowsAffected() == 1;
+}
+
+QVector<CapitalSnapshot> FinanceRepository::loadCapitalSnapshots()
+{
+    QVector<CapitalSnapshot> snapshots;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT snapshot_date,currency,total_minor FROM capital_snapshots "
+            "ORDER BY snapshot_date"))) {
+        setLastError(query.lastError().text());
+        return snapshots;
+    }
+    while (query.next()) {
+        snapshots.append({QDate::fromString(query.value(0).toString(), Qt::ISODate),
+                          currencyFromCode(query.value(1).toString()),
+                          query.value(2).toLongLong()});
+    }
+    return snapshots;
+}
+
+bool FinanceRepository::saveCapitalSnapshot(const CapitalSnapshot& snapshot)
+{
+    if (!snapshot.date.isValid()) {
+        setLastError(QStringLiteral("Invalid capital snapshot"));
+        return false;
+    }
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO capital_snapshots(snapshot_date,currency,total_minor,updated_at) "
+        "VALUES(?,?,?,?) ON CONFLICT(snapshot_date) DO UPDATE SET "
+        "currency=excluded.currency,total_minor=excluded.total_minor,updated_at=excluded.updated_at"));
+    query.addBindValue(snapshot.date.toString(Qt::ISODate));
+    query.addBindValue(currencyCode(snapshot.currency));
+    query.addBindValue(snapshot.totalMinor);
+    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+    if (!query.exec()) { setLastError(query.lastError().text()); return false; }
+    return true;
+}
+
+FinancialTrajectorySettings FinanceRepository::loadFinancialTrajectorySettings() const
+{
+    FinancialTrajectorySettings result;
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("SELECT value FROM settings WHERE key=?"));
+    const auto value = [&query](const QString& key, const QVariant& fallback) {
+        query.bindValue(0, key);
+        if (!query.exec() || !query.next()) { query.finish(); return fallback; }
+        const QVariant result = query.value(0); query.finish(); return result;
+    };
+    result.analysisMonths = value(QStringLiteral("trajectory_analysis_months"), 6).toInt();
+    result.horizonMonths = value(QStringLiteral("trajectory_horizon_months"), 12).toInt();
+    result.annualReturnPercent = value(QStringLiteral("trajectory_return"), 5.0).toDouble();
+    result.annualInflationPercent = value(QStringLiteral("trajectory_inflation"), 6.0).toDouble();
+    result.incomeChangePercent = value(QStringLiteral("trajectory_income_change"), 0.0).toDouble();
+    result.expenseChangePercent = value(QStringLiteral("trajectory_expense_change"), 0.0).toDouble();
+    result.purchaseMinor = value(QStringLiteral("trajectory_purchase_minor"), 0).toLongLong();
+    result.purchaseMonth = value(QStringLiteral("trajectory_purchase_month"), 0).toInt();
+    return result;
+}
+
+bool FinanceRepository::saveFinancialTrajectorySettings(
+    const FinancialTrajectorySettings& settings)
+{
+    if (!database_.transaction()) { setLastError(database_.lastError().text()); return false; }
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO settings(key,value) VALUES(?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value"));
+    const QVector<QPair<QString, QVariant>> values{
+        {QStringLiteral("trajectory_analysis_months"), settings.analysisMonths},
+        {QStringLiteral("trajectory_horizon_months"), settings.horizonMonths},
+        {QStringLiteral("trajectory_return"), settings.annualReturnPercent},
+        {QStringLiteral("trajectory_inflation"), settings.annualInflationPercent},
+        {QStringLiteral("trajectory_income_change"), settings.incomeChangePercent},
+        {QStringLiteral("trajectory_expense_change"), settings.expenseChangePercent},
+        {QStringLiteral("trajectory_purchase_minor"), settings.purchaseMinor},
+        {QStringLiteral("trajectory_purchase_month"), settings.purchaseMonth}};
+    for (const auto& item : values) {
+        query.bindValue(0, item.first); query.bindValue(1, item.second);
+        if (!query.exec()) { setLastError(query.lastError().text()); database_.rollback(); return false; }
+        query.finish();
+    }
+    if (!database_.commit()) { setLastError(database_.lastError().text()); return false; }
+    return true;
 }

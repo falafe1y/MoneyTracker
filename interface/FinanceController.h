@@ -10,6 +10,7 @@
 #include "../services/CryptoProvider.h"
 #include "../services/MoexInvestmentProvider.h"
 #include "../services/FinancialGoalCalculator.h"
+#include "../core/FinancialTrajectory.h"
 
 #include <QDateTime>
 #include <QDate>
@@ -297,12 +298,15 @@ class FinanceController final : public QObject
 
     Q_PROPERTY(QVariantList financialGoals READ financialGoals NOTIFY financialGoalsChanged)
     Q_PROPERTY(QVariantList goalSources READ goalSources NOTIFY financialGoalsChanged)
+    Q_PROPERTY(QVariantMap financialTrajectory READ financialTrajectory NOTIFY financialTrajectoryChanged)
 
 public:
     QVariantList financialGoals() const;
     QVariantList goalSources() const;
     Q_INVOKABLE QVariantMap saveFinancialGoal(const QVariantMap& values);
     Q_INVOKABLE bool deleteFinancialGoal(const QString& id);
+    QVariantMap financialTrajectory();
+    Q_INVOKABLE QVariantMap saveFinancialTrajectorySettings(const QVariantMap& values);
 
     explicit FinanceController(QObject* parent = nullptr);
 
@@ -554,6 +558,7 @@ signals:
     void selectedProjectIdChanged();
     void budgetsChanged();
     void financialGoalsChanged();
+    void financialTrajectoryChanged();
     void selectedBudgetIdChanged();
     void selectedBudgetMonthChanged();
 
@@ -645,6 +650,9 @@ private:
     QVector<Budget> budgets_;
     QVector<FinancialGoal> financialGoals_;
     QVector<GoalAssetValue> goalAssetValues() const;
+    void captureCapitalSnapshot(bool overwriteToday = true);
+    FinancialTrajectorySettings trajectorySettings_;
+    QDate lastCapitalSnapshotDate_;
     QSet<QString> archivedCategoryIds_;
     FinanceRepository::Summary summary_;
     bool recurringMaterializationScheduled_ = false;

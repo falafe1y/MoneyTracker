@@ -8,6 +8,18 @@
     <message><source>+ Добавить счёт</source><translation>+ Add account</translation></message>
     <message><source>+ Управление категориями</source><translation>+ Manage categories</translation></message>
     <message><source>Аналитика</source><translation>Analytics</translation></message>
+    <message><source>Траектория</source><translation>Trajectory</translation></message>
+    <message><source>Финансовая траектория</source><translation>Financial trajectory</translation></message>
+    <message><source>Прогноз капитала на основе ваших фактических доходов и расходов</source><translation>Capital forecast based on your actual income and expenses</translation></message>
+    <message><source>Осторожный</source><translation>Conservative</translation></message>
+    <message><source>Базовый</source><translation>Baseline</translation></message>
+    <message><source>Рост</source><translation>Growth</translation></message>
+    <message><source>Текущий капитал</source><translation>Current capital</translation></message>
+    <message><source>Среднее накопление в месяц</source><translation>Average monthly savings</translation></message>
+    <message><source>К концу прогноза</source><translation>At the end of forecast</translation></message>
+    <message><source>Доля накоплений</source><translation>Savings rate</translation></message>
+    <message><source>Параметры прогноза</source><translation>Forecast settings</translation></message>
+    <message><source>Пересчитать и сохранить</source><translation>Recalculate and save</translation></message>
     <message><source>Английский</source><translation>English</translation></message>
     <message><source>Автоматические запросы отключены. Для пересчёта используются сохранённые ниже значения.</source><translation>Automatic requests are disabled. The saved values below are used for conversion.</translation></message>
     <message><source>Без категории</source><translation>Uncategorized</translation></message>
@@ -459,6 +471,8 @@
     <message><source>Один из выбранных счетов больше не доступен</source><translation>One of the selected accounts is no longer available</translation></message>
     <message><source>Выберите хотя бы один счёт или кошелёк</source><translation>Select at least one account or wallet</translation></message>
     <message><source>Не удалось сохранить цель</source><translation>Could not save the goal</translation></message>
+    <message><source>Проверьте параметры прогноза</source><translation>Check the forecast settings</translation></message>
+    <message><source>Не удалось сохранить параметры прогноза</source><translation>Could not save the forecast settings</translation></message>
   </context>
   <context>
     <name>FinancialGoalDialog</name>
@@ -498,5 +512,38 @@
     <message><source>Счета, деньги и операции останутся без изменений.</source><translation>Accounts, balances and transactions will remain unchanged.</translation></message>
     <message><source>Отмена</source><translation>Cancel</translation></message>
     <message><source>Не удалось удалить цель</source><translation>Could not delete the goal</translation></message>
+  </context>
+  <context>
+    <name>FinancialTrajectoryPage</name>
+    <message><source>Прогноз капитала на основе ваших фактических доходов и расходов</source><translation>Capital forecast based on your actual income and expenses</translation></message>
+    <message><source>Осторожный</source><translation>Conservative</translation></message>
+    <message><source>Базовый</source><translation>Baseline</translation></message>
+    <message><source>Рост</source><translation>Growth</translation></message>
+    <message><source>Текущий капитал</source><translation>Current capital</translation></message>
+    <message><source>Среднее накопление в месяц</source><translation>Average monthly savings</translation></message>
+    <message><source>К концу прогноза</source><translation>At the end of forecast</translation></message>
+    <message><source>Доля накоплений</source><translation>Savings rate</translation></message>
+    <message><source>Финансовая траектория</source><translation>Financial trajectory</translation></message>
+    <message><source>— история   - - прогноз   ··· с учётом инфляции</source><translation>— history   - - forecast   ··· inflation-adjusted</translation></message>
+    <message><source>История начнёт расти со следующего дня: снимок капитала сохраняется один раз в день.</source><translation>History will grow from the next day: one capital snapshot is stored per day.</translation></message>
+    <message><source>Параметры прогноза</source><translation>Forecast settings</translation></message>
+    <message><source>Среднее за</source><translation>Average over</translation></message>
+    <message><source>Горизонт</source><translation>Horizon</translation></message>
+    <message><source>Доходность в год, %</source><translation>Annual return, %</translation></message>
+    <message><source>Инфляция в год, %</source><translation>Annual inflation, %</translation></message>
+    <message><source>Изменение доходов, %</source><translation>Income change, %</translation></message>
+    <message><source>Изменение расходов, %</source><translation>Expense change, %</translation></message>
+    <message><source>Разовая покупка</source><translation>One-time purchase</translation></message>
+    <message><source>Через</source><translation>After</translation></message>
+    <message><source>3 месяца</source><translation>3 months</translation></message>
+    <message><source>6 месяцев</source><translation>6 months</translation></message>
+    <message><source>12 месяцев</source><translation>12 months</translation></message>
+    <message><source>1 год</source><translation>1 year</translation></message>
+    <message><source>3 года</source><translation>3 years</translation></message>
+    <message><source>5 лет</source><translation>5 years</translation></message>
+    <message><source>1 месяц</source><translation>1 month</translation></message>
+    <message><source>Часть котировок недоступна: прогноз построен по известным активам, снимок за сегодня не сохранён.</source><translation>Some quotes are unavailable: the forecast uses known assets and today's snapshot was not saved.</translation></message>
+    <message><source>Пересчитать и сохранить</source><translation>Recalculate and save</translation></message>
+    <message><source>Прогноз не является инвестиционной рекомендацией. Доходность применяется только к текущей стоимости инвестиций; будущие накопления автоматически не считаются вложенными.</source><translation>The forecast is not investment advice. Returns apply only to current investments; future savings are not automatically treated as invested.</translation></message>
   </context>
 </TS>

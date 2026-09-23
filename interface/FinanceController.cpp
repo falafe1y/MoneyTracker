@@ -8,6 +8,7 @@
 #include "../services/CryptoParser.h"
 #include "../services/TransactionDateFilter.h"
 #include "../services/TronUsdtParser.h"
+#include "../services/FinancialTrajectoryCalculator.h"
 
 #include <QDebug>
 #include <QCoreApplication>
@@ -22,6 +23,7 @@
 #include <QRegularExpression>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 
@@ -340,6 +342,13 @@ FinanceController::FinanceController(QObject* parent)
 
     QObject::connect(this, &FinanceController::balanceChanged,
                      this, &FinanceController::financialGoalsChanged);
+    QObject::connect(this, &FinanceController::balanceChanged,
+                     this, [this]() {
+                         captureCapitalSnapshot();
+                         emit financialTrajectoryChanged();
+                     });
+    QObject::connect(this, &FinanceController::transactionsChanged,
+                     this, &FinanceController::financialTrajectoryChanged);
     QObject::connect(this, &FinanceController::accountsChanged,
                      this, &FinanceController::financialGoalsChanged);
     QObject::connect(this, &FinanceController::cryptoWalletsChanged,
@@ -352,6 +361,12 @@ FinanceController::FinanceController(QObject* parent)
     goalClock->setInterval(60'000);
     connect(goalClock, &QTimer::timeout, this, &FinanceController::financialGoalsChanged);
     goalClock->start(); // Deadlines and future-dated transactions can change while open.
+    auto* trajectoryClock = new QTimer(this);
+    trajectoryClock->setInterval(60'000);
+    connect(trajectoryClock, &QTimer::timeout, this, [this]() {
+        captureCapitalSnapshot(false);
+    });
+    trajectoryClock->start(); // Capture the next day even if no balance signal fires.
 
     QObject::connect(this, &FinanceController::transactionsChanged,
                      this, &FinanceController::budgetsChanged);
@@ -606,6 +621,7 @@ FinanceController::FinanceController(QObject* parent)
     accounts_ = repository_.loadAccounts();
     budgets_ = repository_.loadBudgets();
     financialGoals_ = repository_.loadFinancialGoals();
+    trajectorySettings_ = repository_.loadFinancialTrajectorySettings();
     cryptoWallets_ = repository_.loadCryptoWallets();
     cryptoTransactions_ = repository_.loadCryptoTransactions();
     investmentInstruments_ = repository_.loadInvestmentInstruments();
@@ -658,6 +674,7 @@ FinanceController::FinanceController(QObject* parent)
     }
 
     rebuildCapitalHistory();
+    captureCapitalSnapshot();
     scheduleRecurringMaterialization();
     QTimer::singleShot(
         0,
@@ -5084,4 +5101,141 @@ bool FinanceController::deleteFinancialGoal(const QString& id)
     financialGoals_ = repository_.loadFinancialGoals();
     emit financialGoalsChanged();
     return true;
+}
+
+void FinanceController::captureCapitalSnapshot(const bool overwriteToday)
+{
+    if (!repository_.isOpen()) return;
+    const QDate today = QDate::currentDate();
+    if (!overwriteToday && lastCapitalSnapshotDate_ == today) return;
+    qint64 total = 0;
+    for (const auto& asset : goalAssetValues()) {
+        if (!asset.available || rateProvider_.rateToUsd(asset.value.currency()) <= 0 ||
+            rateProvider_.rateToUsd(appCurrency_) <= 0) return;
+        total = saturatedCapitalAdd(total,
+            currencyConverter_.convert(asset.value, appCurrency_).minorUnits());
+    }
+    if (!repository_.saveCapitalSnapshot(
+            {today, appCurrency_, total})) {
+        qWarning() << "Failed to save capital snapshot:" << repository_.lastError();
+    } else {
+        lastCapitalSnapshotDate_ = today;
+    }
+}
+
+QVariantMap FinanceController::financialTrajectory()
+{
+    const QDate today = QDate::currentDate();
+    const QDate end = QDate(today.year(), today.month(), 1).addDays(-1);
+    const int months = (trajectorySettings_.analysisMonths == 3 ||
+                        trajectorySettings_.analysisMonths == 12)
+        ? trajectorySettings_.analysisMonths : 6;
+    const QDate firstIncludedMonth = end.addMonths(-(months - 1));
+    const QDate start(firstIncludedMonth.year(), firstIncludedMonth.month(), 1);
+    qint64 income = 0;
+    qint64 expense = 0;
+    for (const auto& transaction : transactions_) {
+        const QDate date = transaction.date().date();
+        if (date < start || date > end || isTransfer(transaction)) continue;
+        const qint64 amount = currencyConverter_.convert(
+            transaction.money(), appCurrency_).minorUnits();
+        if (transaction.type() == TransactionType::Income)
+            income = saturatedCapitalAdd(income, amount);
+        else
+            expense = saturatedCapitalAdd(expense, amount);
+    }
+    const qint64 averageIncome = income / months;
+    const qint64 averageExpense = expense / months;
+
+    qint64 currentCapital = 0;
+    qint64 investmentCapital = 0;
+    bool complete = true;
+    for (const auto& asset : goalAssetValues()) {
+        complete = complete && asset.available &&
+            rateProvider_.rateToUsd(asset.value.currency()) > 0;
+        if (!asset.available) continue;
+        const qint64 converted = currencyConverter_.convert(
+            asset.value, appCurrency_).minorUnits();
+        currentCapital = saturatedCapitalAdd(currentCapital, converted);
+        if (asset.sourceId.startsWith(QStringLiteral("account:"))) {
+            const QString accountId = asset.sourceId.mid(8);
+            const auto account = std::find_if(accounts_.cbegin(), accounts_.cend(),
+                [&accountId](const auto& item) { return item.id() == accountId; });
+            if (account != accounts_.cend() && account->assetType() == AssetType::Investment)
+                investmentCapital = saturatedCapitalAdd(investmentCapital, converted);
+        }
+    }
+
+    FinancialTrajectoryInput input;
+    input.currentCapitalMinor = currentCapital;
+    input.investmentCapitalMinor = std::max<qint64>(0, investmentCapital);
+    input.averageIncomeMinor = averageIncome;
+    input.averageExpenseMinor = averageExpense;
+    input.settings = trajectorySettings_;
+    input.currentDate = today;
+    const auto forecast = FinancialTrajectoryCalculator::calculate(input);
+
+    QVariantList historyRows;
+    for (const auto& snapshot : repository_.loadCapitalSnapshots()) {
+        historyRows.append(QVariantMap{
+            {QStringLiteral("date"), snapshot.date.toString(Qt::ISODate)},
+            {QStringLiteral("valueMinor"), currencyConverter_.convert(
+                Money(snapshot.totalMinor, snapshot.currency), appCurrency_).minorUnits()}});
+    }
+    QVariantList forecastRows;
+    for (const auto& point : forecast) {
+        forecastRows.append(QVariantMap{
+            {QStringLiteral("date"), point.date.toString(Qt::ISODate)},
+            {QStringLiteral("valueMinor"), point.nominalMinor},
+            {QStringLiteral("realMinor"), point.realMinor}});
+    }
+    const qint64 saving = saturatedCapitalSubtract(averageIncome, averageExpense);
+    return {
+        {QStringLiteral("currency"), currencyCode(appCurrency_)},
+        {QStringLiteral("complete"), complete},
+        {QStringLiteral("currentMinor"), currentCapital},
+        {QStringLiteral("averageIncomeMinor"), averageIncome},
+        {QStringLiteral("averageExpenseMinor"), averageExpense},
+        {QStringLiteral("averageSavingMinor"), saving},
+        {QStringLiteral("savingRate"), averageIncome > 0
+            ? static_cast<double>(saving) * 100.0 / averageIncome : 0.0},
+        {QStringLiteral("history"), historyRows},
+        {QStringLiteral("forecast"), forecastRows},
+        {QStringLiteral("analysisMonths"), trajectorySettings_.analysisMonths},
+        {QStringLiteral("horizonMonths"), trajectorySettings_.horizonMonths},
+        {QStringLiteral("annualReturnPercent"), trajectorySettings_.annualReturnPercent},
+        {QStringLiteral("annualInflationPercent"), trajectorySettings_.annualInflationPercent},
+        {QStringLiteral("incomeChangePercent"), trajectorySettings_.incomeChangePercent},
+        {QStringLiteral("expenseChangePercent"), trajectorySettings_.expenseChangePercent},
+        {QStringLiteral("purchaseMinor"), trajectorySettings_.purchaseMinor},
+        {QStringLiteral("purchaseMonth"), trajectorySettings_.purchaseMonth}};
+}
+
+QVariantMap FinanceController::saveFinancialTrajectorySettings(const QVariantMap& values)
+{
+    FinancialTrajectorySettings next = trajectorySettings_;
+    next.analysisMonths = values.value(QStringLiteral("analysisMonths"), next.analysisMonths).toInt();
+    next.horizonMonths = values.value(QStringLiteral("horizonMonths"), next.horizonMonths).toInt();
+    next.annualReturnPercent = values.value(QStringLiteral("annualReturnPercent"), next.annualReturnPercent).toDouble();
+    next.annualInflationPercent = values.value(QStringLiteral("annualInflationPercent"), next.annualInflationPercent).toDouble();
+    next.incomeChangePercent = values.value(QStringLiteral("incomeChangePercent"), next.incomeChangePercent).toDouble();
+    next.expenseChangePercent = values.value(QStringLiteral("expenseChangePercent"), next.expenseChangePercent).toDouble();
+    next.purchaseMinor = values.value(QStringLiteral("purchaseMinor"), next.purchaseMinor).toLongLong();
+    next.purchaseMonth = values.value(QStringLiteral("purchaseMonth"), next.purchaseMonth).toInt();
+    const auto finite = [](double value) { return std::isfinite(value) && value > -100.0 && value <= 1000.0; };
+    if ((next.analysisMonths != 3 && next.analysisMonths != 6 && next.analysisMonths != 12) ||
+        (next.horizonMonths != 6 && next.horizonMonths != 12 && next.horizonMonths != 36 && next.horizonMonths != 60) ||
+        !finite(next.annualReturnPercent) || !finite(next.annualInflationPercent) ||
+        !finite(next.incomeChangePercent) || !finite(next.expenseChangePercent) ||
+        next.purchaseMinor < 0 || next.purchaseMonth < 0 || next.purchaseMonth > next.horizonMonths) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("error"), tr("Проверьте параметры прогноза")}};
+    }
+    if (!repository_.saveFinancialTrajectorySettings(next)) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("error"), tr("Не удалось сохранить параметры прогноза")}};
+    }
+    trajectorySettings_ = next;
+    emit financialTrajectoryChanged();
+    return {{QStringLiteral("ok"), true}};
 }
