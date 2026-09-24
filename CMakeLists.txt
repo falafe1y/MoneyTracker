@@ -5,6 +5,7 @@ project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network LinguistTools)
+find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -66,6 +67,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CsvCodec.cpp
         SOURCES services/BankCsvImporter.h
         SOURCES services/BankCsvImporter.cpp
+        SOURCES services/XlsxReader.h
+        SOURCES services/XlsxReader.cpp
         SOURCES services/CapitalHistoryCalculator.h
         SOURCES services/CapitalHistoryCalculator.cpp
         SOURCES services/RecurringScheduleCalculator.h
@@ -115,6 +118,7 @@ target_link_libraries(appMoneyTracker
         Qt6::QuickControls2
         Qt6::Sql
         Qt6::Network
+        ZLIB::ZLIB
 )
 
 install(TARGETS appMoneyTracker
@@ -288,12 +292,14 @@ add_executable(BankCsvImporterTest
     tests/BankCsvImporterTest.cpp
     services/BankCsvImporter.cpp
     services/CsvCodec.cpp
+    services/XlsxReader.cpp
 )
 
 target_link_libraries(BankCsvImporterTest
     PRIVATE
         Qt6::Core
         Qt6::Test
+        ZLIB::ZLIB
 )
 
 add_test(

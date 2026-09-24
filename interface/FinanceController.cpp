@@ -105,6 +105,44 @@ qint64 positiveMinorMagnitude(const qint64 value)
         : static_cast<qint64>(magnitude);
 }
 
+QString bankCsvTransactionId(
+    const QString& accountId,
+    const BankCsvOperation& operation,
+    const int fingerprintOccurrence)
+{
+    const QString identity = !operation.externalId.isEmpty()
+        ? QStringLiteral("external|") + accountId + QLatin1Char('|') +
+            operation.externalId.trimmed()
+        : QStringLiteral("row|") + accountId + QLatin1Char('|') +
+            operation.fingerprint + QLatin1Char('|') +
+            QString::number(fingerprintOccurrence);
+    return QStringLiteral("bankcsv-") + QString::fromLatin1(
+        QCryptographicHash::hash(identity.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+QString legacyBankCsvTransactionId(
+    const QString& accountId,
+    const BankCsvOperation& operation,
+    const int fingerprintOccurrence)
+{
+    if (!operation.externalId.isEmpty())
+        return bankCsvTransactionId(accountId, operation, fingerprintOccurrence);
+    const QString identity = QStringLiteral("row|") + accountId + QLatin1Char('|') +
+        operation.legacyFingerprint + QLatin1Char('|') +
+        QString::number(fingerprintOccurrence);
+    return QStringLiteral("bankcsv-") + QString::fromLatin1(
+        QCryptographicHash::hash(identity.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+bool looksLikeTransfer(const QString& description)
+{
+    const QString value = description.toLower();
+    return value.contains(QStringLiteral("перевод")) ||
+        value.contains(QStringLiteral("сбп")) ||
+        value.contains(QStringLiteral("transfer")) ||
+        value.contains(QStringLiteral("пополнение карты"));
+}
+
 QVariantMap bankCsvProfileToVariant(const BankCsvProfile& profile)
 {
     return {
@@ -125,6 +163,8 @@ QVariantMap bankCsvProfileToVariant(const BankCsvProfile& profile)
         {QStringLiteral("descriptionColumn"), profile.descriptionColumn},
         {QStringLiteral("idColumn"), profile.idColumn},
         {QStringLiteral("categoryColumn"), profile.categoryColumn},
+        {QStringLiteral("directionColumn"), profile.directionColumn},
+        {QStringLiteral("currencyColumn"), profile.currencyColumn},
         {QStringLiteral("positiveMeansIncome"), profile.positiveMeansIncome}
     };
 }
@@ -162,6 +202,10 @@ BankCsvProfile bankCsvProfileFromVariant(const QVariantMap& values)
     profile.idColumn = values.value(QStringLiteral("idColumn"), -1).toInt();
     profile.categoryColumn = values.value(
         QStringLiteral("categoryColumn"), -1).toInt();
+    profile.directionColumn = values.value(
+        QStringLiteral("directionColumn"), -1).toInt();
+    profile.currencyColumn = values.value(
+        QStringLiteral("currencyColumn"), -1).toInt();
     profile.positiveMeansIncome = values.value(
         QStringLiteral("positiveMeansIncome"), true).toBool();
     return profile;
@@ -1244,15 +1288,15 @@ QVariantMap FinanceController::inspectBankCsv(
     QVariantMap result{{QStringLiteral("ok"), false}};
     const QString filePath = fileUrl.toLocalFile();
     if (filePath.isEmpty()) {
-        result[QStringLiteral("error")] = tr("Не выбран CSV-файл");
+        result[QStringLiteral("error")] = tr("Не выбран файл выписки");
         return result;
     }
 
     BankCsvProfile optionsProfile;
     optionsProfile.delimiter = delimiter;
     optionsProfile.encoding = encoding;
-    const CsvCodec::ReadResult csv = CsvCodec::readFile(
-        filePath, BankCsvImporter::readOptions(optionsProfile));
+    const CsvCodec::ReadResult csv = BankCsvImporter::readTable(
+        filePath, optionsProfile);
     if (!csv.error.isEmpty()) {
         result[QStringLiteral("error")] = csv.error;
         return result;
@@ -1291,13 +1335,14 @@ QVariantMap FinanceController::inspectBankCsv(
         }
     }
 
-    QString detectedDelimiter = QStringLiteral("semicolon");
+    QString detectedDelimiter = QStringLiteral("auto");
     if (csv.delimiter == QLatin1Char(',')) {
         detectedDelimiter = QStringLiteral("comma");
     } else if (csv.delimiter == QLatin1Char('\t')) {
         detectedDelimiter = QStringLiteral("tab");
     }
-    QString detectedEncoding = QStringLiteral("utf8");
+    QString detectedEncoding = csv.encoding == QStringLiteral("XLSX")
+        ? QStringLiteral("auto") : QStringLiteral("utf8");
     if (csv.encoding == QStringLiteral("Windows-1251")) {
         detectedEncoding = QStringLiteral("windows1251");
     } else if (csv.encoding == QStringLiteral("UTF-16LE")) {
@@ -1313,9 +1358,109 @@ QVariantMap FinanceController::inspectBankCsv(
     result[QStringLiteral("detectedDelimiter")] = detectedDelimiter;
     result[QStringLiteral("detectedEncoding")] = detectedEncoding;
     result[QStringLiteral("encodingLabel")] = csv.encoding;
-    result[QStringLiteral("delimiterLabel")] = csv.delimiter == QLatin1Char('\t')
-        ? tr("табуляция")
-        : QString(csv.delimiter);
+    result[QStringLiteral("delimiterLabel")] = csv.encoding == QStringLiteral("XLSX")
+        ? tr("не используется")
+        : csv.delimiter == QLatin1Char('\t') ? tr("табуляция")
+                                             : QString(csv.delimiter);
+    return result;
+}
+
+QVariantMap FinanceController::previewBankImport(
+    const QUrl& fileUrl,
+    const QVariantMap& values) const
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
+    const QString filePath = fileUrl.toLocalFile();
+    const BankCsvProfile profile = bankCsvProfileFromVariant(values);
+    if (filePath.isEmpty() || profile.dateColumn < 0 ||
+        (profile.amountMode == QStringLiteral("signed") && profile.amountColumn < 0) ||
+        (profile.amountMode == QStringLiteral("separate") &&
+         (profile.incomeColumn < 0 || profile.expenseColumn < 0))) {
+        result[QStringLiteral("error")] = tr("Сначала сопоставьте дату и сумму");
+        return result;
+    }
+    const auto account = std::find_if(accounts_.cbegin(), accounts_.cend(),
+        [&profile](const Account& candidate) {
+            return candidate.id() == profile.accountId &&
+                candidate.assetType() == AssetType::Fiat;
+        });
+    if (account == accounts_.cend()) {
+        result[QStringLiteral("error")] = tr("Выбранный фиатный счёт не найден");
+        return result;
+    }
+    const BankCsvParseResult parsed = BankCsvImporter::parse(filePath, profile);
+    if (parsed.operations.isEmpty()) {
+        result[QStringLiteral("error")] = parsed.errors.isEmpty()
+            ? tr("В файле не найдено операций")
+            : parsed.errors.join(QStringLiteral("; "));
+        return result;
+    }
+    qint64 incomeMinor = 0;
+    qint64 expenseMinor = 0;
+    int currencyMismatches = 0;
+    int duplicates = 0;
+    int possibleTransfers = 0;
+    QDate firstDate;
+    QDate lastDate;
+    const QString accountCurrency = currencyCode(account->currency());
+    QSet<QString> existingIds;
+    for (const auto& transaction : transactions_) existingIds.insert(transaction.id());
+    QHash<QString, int> fingerprintOccurrences;
+    QHash<QString, int> legacyFingerprintOccurrences;
+    for (const auto& operation : parsed.operations) {
+        if (!operation.currencyCode.isEmpty() &&
+            operation.currencyCode != accountCurrency) {
+            ++currencyMismatches;
+            continue;
+        }
+        const int occurrence = operation.externalId.isEmpty()
+            ? fingerprintOccurrences[operation.fingerprint]++ : 0;
+        const int legacyOccurrence = operation.externalId.isEmpty()
+            ? legacyFingerprintOccurrences[operation.legacyFingerprint]++ : 0;
+        if (existingIds.contains(bankCsvTransactionId(
+                account->id(), operation, occurrence)) ||
+            existingIds.contains(legacyBankCsvTransactionId(
+                account->id(), operation, legacyOccurrence))) ++duplicates;
+        if (looksLikeTransfer(operation.description)) {
+            const auto match = std::find_if(
+                transactions_.cbegin(), transactions_.cend(),
+                [&operation, &account](const Transaction& candidate) {
+                    return candidate.accountId() != account->id() &&
+                        !isTransfer(candidate) &&
+                        candidate.money().currency() == account->currency() &&
+                        candidate.money().minorUnits() ==
+                            positiveMinorMagnitude(operation.signedMinor) &&
+                        ((operation.signedMinor > 0) !=
+                         (candidate.type() == TransactionType::Income)) &&
+                        std::abs(candidate.date().date().daysTo(
+                            operation.occurredAt.date())) <= 2 &&
+                        looksLikeTransfer(candidate.description());
+                });
+            if (match != transactions_.cend()) ++possibleTransfers;
+        }
+        if (operation.signedMinor > 0)
+            incomeMinor = saturatedCapitalAdd(incomeMinor, operation.signedMinor);
+        else
+            expenseMinor = saturatedCapitalAdd(
+                expenseMinor, positiveMinorMagnitude(operation.signedMinor));
+        const QDate date = operation.occurredAt.date();
+        if (!firstDate.isValid() || date < firstDate) firstDate = date;
+        if (!lastDate.isValid() || date > lastDate) lastDate = date;
+    }
+    result[QStringLiteral("ok")] = true;
+    result[QStringLiteral("operationCount")] = parsed.operations.size() - currencyMismatches;
+    result[QStringLiteral("newCount")] = parsed.operations.size() -
+        currencyMismatches - duplicates;
+    result[QStringLiteral("duplicateCount")] = duplicates;
+    result[QStringLiteral("possibleTransfers")] = possibleTransfers;
+    result[QStringLiteral("incomeMinor")] = incomeMinor;
+    result[QStringLiteral("expenseMinor")] = expenseMinor;
+    result[QStringLiteral("currencyMismatches")] = currencyMismatches;
+    result[QStringLiteral("rejected")] = parsed.rejected;
+    result[QStringLiteral("firstDate")] = firstDate.toString(Qt::ISODate);
+    result[QStringLiteral("lastDate")] = lastDate.toString(Qt::ISODate);
+    result[QStringLiteral("currency")] = accountCurrency;
+    result[QStringLiteral("warnings")] = parsed.errors;
     return result;
 }
 
@@ -1624,7 +1769,7 @@ QVariantMap FinanceController::importBankCsv(
     };
     const QString filePath = fileUrl.toLocalFile();
     if (filePath.isEmpty()) {
-        result[QStringLiteral("error")] = tr("Не выбран CSV-файл");
+        result[QStringLiteral("error")] = tr("Не выбран файл выписки");
         return result;
     }
     const auto profile = std::find_if(
@@ -1654,7 +1799,7 @@ QVariantMap FinanceController::importBankCsv(
     result[QStringLiteral("rejected")] = parsed.rejected;
     if (parsed.operations.isEmpty()) {
         result[QStringLiteral("error")] = parsed.errors.isEmpty()
-            ? tr("В CSV не найдено операций")
+            ? tr("В выписке не найдено операций")
             : parsed.errors.join(QStringLiteral("; "));
         return result;
     }
@@ -1712,9 +1857,17 @@ QVariantMap FinanceController::importBankCsv(
     }
     QSet<QString> pendingIds;
     QHash<QString, int> fingerprintOccurrences;
+    QHash<QString, int> legacyFingerprintOccurrences;
     QVector<Transaction> imported;
     int skipped = 0;
+    int currencyRejected = 0;
+    const QString accountCurrency = currencyCode(account->currency());
     for (const BankCsvOperation& operation : parsed.operations) {
+        if (!operation.currencyCode.isEmpty() &&
+            operation.currencyCode != accountCurrency) {
+            ++currencyRejected;
+            continue;
+        }
         const bool income = operation.signedMinor > 0;
         const CategoryType categoryType = income
             ? CategoryType::Income
@@ -1727,21 +1880,15 @@ QVariantMap FinanceController::importBankCsv(
             return result;
         }
 
-        QString identity;
-        if (!operation.externalId.isEmpty()) {
-            identity = QStringLiteral("external|") + account->id() +
-                QLatin1Char('|') + operation.externalId;
-        } else {
-            const int occurrence = fingerprintOccurrences[
-                operation.fingerprint]++;
-            identity = QStringLiteral("row|") + account->id() +
-                QLatin1Char('|') + operation.fingerprint + QLatin1Char('|') +
-                QString::number(occurrence);
-        }
-        const QString transactionId = QStringLiteral("bankcsv-") +
-            QString::fromLatin1(QCryptographicHash::hash(
-                identity.toUtf8(), QCryptographicHash::Sha256).toHex());
+        const int occurrence = operation.externalId.isEmpty()
+            ? fingerprintOccurrences[operation.fingerprint]++ : 0;
+        const int legacyOccurrence = operation.externalId.isEmpty()
+            ? legacyFingerprintOccurrences[operation.legacyFingerprint]++ : 0;
+        const QString transactionId = bankCsvTransactionId(
+            account->id(), operation, occurrence);
         if (existingIds.contains(transactionId) ||
+            existingIds.contains(legacyBankCsvTransactionId(
+                account->id(), operation, legacyOccurrence)) ||
             pendingIds.contains(transactionId)) {
             ++skipped;
             continue;
@@ -1757,9 +1904,16 @@ QVariantMap FinanceController::importBankCsv(
             income ? TransactionType::Income : TransactionType::Expense,
             operation.occurredAt,
             operation.description.isEmpty()
-                ? tr("Импорт из банковского CSV")
+                ? tr("Импорт из банковской выписки")
                 : operation.description));
         pendingIds.insert(transactionId);
+    }
+
+    if (imported.isEmpty() && currencyRejected > 0 && skipped == 0) {
+        result[QStringLiteral("error")] = tr(
+            "Все операции имеют валюту, отличную от валюты выбранного счёта");
+        result[QStringLiteral("rejected")] = parsed.rejected + currencyRejected;
+        return result;
     }
 
     if (!repository_.insertTransactions(imported)) {
@@ -1775,7 +1929,13 @@ QVariantMap FinanceController::importBankCsv(
     result[QStringLiteral("ok")] = true;
     result[QStringLiteral("imported")] = imported.size();
     result[QStringLiteral("skipped")] = skipped;
-    result[QStringLiteral("warnings")] = parsed.errors;
+    result[QStringLiteral("rejected")] = parsed.rejected + currencyRejected;
+    QStringList warnings = parsed.errors;
+    if (currencyRejected > 0) {
+        warnings.append(tr("Пропущено строк с валютой, отличной от валюты счёта: %1")
+            .arg(currencyRejected));
+    }
+    result[QStringLiteral("warnings")] = warnings;
     return result;
 }
 

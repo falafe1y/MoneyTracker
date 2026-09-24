@@ -135,6 +135,19 @@ it is restored as the application's atomic outgoing/incoming pair. Import
 validates every row before changing SQLite, inserts the complete file in one
 database transaction, and skips operation identifiers that already exist.
 
+Bank statement import accepts CSV and XLSX files. CSV delimiter and encoding
+are detected automatically; UTF-8, Windows-1251 and UTF-16 are supported. A
+saved profile maps the statement date, amount, direction, account currency,
+description, external identifier and optional category. Before writing to the
+database the UI shows the date range, income and expense totals, malformed rows
+and rows whose currency differs from the selected account. Rows without a bank
+identifier use a stable fingerprint based on date, amount, description and
+currency, so overlapping statement periods do not create duplicates.
+
+The Ledgera CSV is a portable operation exchange format, not a complete
+application backup. Imported bank operations become ordinary Ledgera data and
+will be included when full database backup and restore is added.
+
 ## Финансовые цели
 
 Цель сравнивает текущий капитал с суммой в своей валюте (RUB/USD/EUR).

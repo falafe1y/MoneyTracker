@@ -28,6 +28,7 @@ Dialog {
     property string detectedInfo: ""
     property string statusText: ""
     property bool statusOk: true
+    property string previewSummary: ""
 
     signal importFinished(var result)
 
@@ -88,9 +89,9 @@ Dialog {
     }
 
     function findHeader(words) {
-        for (let i = 0; i < headers.length; ++i) {
-            const label = normalizedHeader(headers[i].label);
-            for (let word = 0; word < words.length; ++word) {
+        for (let word = 0; word < words.length; ++word) {
+            for (let i = 0; i < headers.length; ++i) {
+                const label = normalizedHeader(headers[i].label);
                 if (label.indexOf(normalizedHeader(words[word])) >= 0)
                     return headers[i].value;
             }
@@ -110,7 +111,7 @@ Dialog {
         } else {
             setValue(amountModeBox, "signed");
             setValue(amountColumnBox,
-                     findHeader(["суммаоперации", "сумма", "amount"]));
+                     findHeader(["суммаплатежа", "суммаввалютесчета", "суммаоперации", "сумма", "amount"]));
         }
         setValue(descriptionColumnBox,
                  findHeader(["описание", "назначение", "merchant", "description"]));
@@ -118,6 +119,10 @@ Dialog {
                  findHeader(["идентификатороперации", "номероперации", "operationid", "transactionid"]));
         setValue(categoryColumnBox,
                  findHeader(["категория", "category"]));
+        setValue(directionColumnBox,
+                 findHeader(["приходрасход", "дебеткредит", "направление", "direction"]));
+        setValue(currencyColumnBox,
+                 findHeader(["валютаплатежа", "валютасчета", "currency"]));
     }
 
     function inspectFile(profile) {
@@ -145,6 +150,8 @@ Dialog {
             setValue(descriptionColumnBox, profile.descriptionColumn);
             setValue(idColumnBox, profile.idColumn);
             setValue(categoryColumnBox, profile.categoryColumn);
+            setValue(directionColumnBox, profile.directionColumn);
+            setValue(currencyColumnBox, profile.currencyColumn);
         } else {
             autoMapColumns();
         }
@@ -213,8 +220,37 @@ Dialog {
             descriptionColumn: descriptionColumnBox.currentValue,
             idColumn: idColumnBox.currentValue,
             categoryColumn: categoryColumnBox.currentValue,
+            directionColumn: directionColumnBox.currentValue,
+            currencyColumn: currencyColumnBox.currentValue,
             positiveMeansIncome: positiveIncomeCheck.checked
         };
+    }
+
+    function formatMinor(value, currency) {
+        return (Number(value) / 100).toLocaleString(Qt.locale(), "f", 2) + " " + currency;
+    }
+
+    function previewImport() {
+        const result = controller.previewBankImport(csvFile, currentProfileValues());
+        statusOk = result.ok;
+        if (!result.ok) {
+            previewSummary = "";
+            statusText = result.error;
+            return false;
+        }
+        statusText = "";
+        previewSummary = qsTr("Найдено: %1 · Новых: %2 · Дубликатов: %3 · Возможных переводов: %4 · %5 — %6 · Доходы: %7 · Расходы: %8 · Ошибок: %9 · Другая валюта: %10")
+            .arg(result.operationCount)
+            .arg(result.newCount)
+            .arg(result.duplicateCount)
+            .arg(result.possibleTransfers)
+            .arg(result.firstDate)
+            .arg(result.lastDate)
+            .arg(formatMinor(result.incomeMinor, result.currency))
+            .arg(formatMinor(result.expenseMinor, result.currency))
+            .arg(result.rejected)
+            .arg(result.currencyMismatches);
+        return result.operationCount > 0;
     }
 
     function saveProfile() {
@@ -232,6 +268,7 @@ Dialog {
         csvFile = fileUrl;
         statusText = "";
         detectedInfo = "";
+        previewSummary = "";
         profileBox.currentIndex = 0;
         resetForNewProfile();
         open();
@@ -303,7 +340,7 @@ Dialog {
             Layout.fillWidth: true
             Layout.margins: 22
             Text {
-                text: qsTr("Импорт банковского CSV")
+                text: qsTr("Импорт банковской выписки")
                 color: dialog.textColor
                 font.pixelSize: 21
                 font.weight: Font.Bold
@@ -442,6 +479,7 @@ Dialog {
 
                     Text {
                         visible: amountModeBox.currentValue === "signed"
+                                 && directionColumnBox.currentValue < 0
                         text: qsTr("Столбец суммы")
                         color: dialog.mutedColor
                     }
@@ -501,6 +539,18 @@ Dialog {
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
+                    Text { text: qsTr("Направление операции"); color: dialog.mutedColor }
+                    FormCombo {
+                        id: directionColumnBox
+                        Layout.fillWidth: true
+                        model: dialog.columnItems(true)
+                    }
+                    Text { text: qsTr("Валюта строки"); color: dialog.mutedColor }
+                    FormCombo {
+                        id: currencyColumnBox
+                        Layout.fillWidth: true
+                        model: dialog.columnItems(true)
+                    }
                     Text { text: qsTr("Категория дохода по умолчанию"); color: dialog.mutedColor }
                     FormCombo {
                         id: incomeCategoryBox
@@ -539,6 +589,14 @@ Dialog {
 
                 Text {
                     Layout.fillWidth: true
+                    visible: dialog.previewSummary.length > 0
+                    text: dialog.previewSummary
+                    color: dialog.textColor
+                    wrapMode: Text.WordWrap
+                }
+
+                Text {
+                    Layout.fillWidth: true
                     visible: dialog.statusText.length > 0
                     text: dialog.statusText
                     color: dialog.statusOk ? dialog.successColor : dialog.errorColor
@@ -567,6 +625,10 @@ Dialog {
             }
             Item { Layout.fillWidth: true }
             FormButton {
+                text: qsTr("Проверить")
+                onClicked: dialog.previewImport()
+            }
+            FormButton {
                 text: qsTr("Сохранить профиль")
                 onClicked: dialog.saveProfile()
             }
@@ -574,6 +636,8 @@ Dialog {
                 text: qsTr("Импортировать")
                 primary: true
                 onClicked: {
+                    if (!dialog.previewImport())
+                        return;
                     const saved = dialog.saveProfile();
                     if (!saved.ok)
                         return;

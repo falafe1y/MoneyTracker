@@ -3689,7 +3689,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("Экспорт Ledgera сохраняет полную резервную копию операций. Банковский импорт поддерживает сопоставление столбцов и сохранённые профили.")
+                    text: qsTr("CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX, сопоставление столбцов и сохранённые профили. Полный архив приложения будет отдельной функцией.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -3702,7 +3702,7 @@ ApplicationWindow {
                         onClicked: exportCsvDialog.open()
                     }
                     SoftButton {
-                        text: qsTr("CSV банка")
+                        text: qsTr("Выписка банка")
                         implicitWidth: 160
                         onClicked: bankCsvFileDialog.open()
                     }
@@ -3770,9 +3770,9 @@ ApplicationWindow {
 
     FileDialog {
         id: bankCsvFileDialog
-        title: qsTr("Выберите банковский CSV")
+        title: qsTr("Выберите банковскую выписку")
         fileMode: FileDialog.OpenFile
-        nameFilters: [qsTr("CSV-файлы (*.csv)"), qsTr("Все файлы (*)")]
+        nameFilters: [qsTr("Банковские выписки (*.csv *.xlsx)"), qsTr("Все файлы (*)")]
         onAccepted: bankCsvImportDialog.openForFile(selectedFile)
     }
 

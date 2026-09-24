@@ -141,12 +141,15 @@
     <message><source>CSV содержит операции, переводы, даты, исходные суммы, счета и категории.</source><translation>CSV includes transactions, transfers, dates, original amounts, accounts, and categories.</translation></message>
     <message><source>Экспортировать CSV</source><translation>Export CSV</translation></message>
     <message><source>Импортировать CSV</source><translation>Import CSV</translation></message>
-    <message><source>CSV банка</source><translation>Bank CSV</translation></message>
+    <message><source>Выписка банка</source><translation>Bank statement</translation></message>
     <message><source>Импорт Ledgera</source><translation>Import Ledgera</translation></message>
     <message><source>Выберите банковский CSV</source><translation>Select a bank CSV</translation></message>
+    <message><source>Выберите банковскую выписку</source><translation>Select a bank statement</translation></message>
+    <message><source>Банковские выписки (*.csv *.xlsx)</source><translation>Bank statements (*.csv *.xlsx)</translation></message>
     <message><source>Все файлы (*)</source><translation>All files (*)</translation></message>
     <message><source>Импорт резервной копии Ledgera</source><translation>Import Ledgera backup</translation></message>
     <message><source>Экспорт Ledgera сохраняет полную резервную копию операций. Банковский импорт поддерживает сопоставление столбцов и сохранённые профили.</source><translation>Ledgera export creates a full transaction backup. Bank import supports column mapping and saved profiles.</translation></message>
+    <message><source>CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX, сопоставление столбцов и сохранённые профили. Полный архив приложения будет отдельной функцией.</source><translation>Ledgera CSV transfers operations. Bank import supports CSV, XLSX, column mapping and saved profiles. A full application archive will be a separate feature.</translation></message>
     <message><source>Импортировано: %1, пропущено дубликатов: %2, отклонено строк: %3</source><translation>Imported: %1, duplicates skipped: %2, rows rejected: %3</translation></message>
     <message><source>Экспорт операций в CSV</source><translation>Export transactions to CSV</translation></message>
     <message><source>Импорт операций из CSV</source><translation>Import transactions from CSV</translation></message>
@@ -221,6 +224,7 @@
   <context>
     <name>BankCsvImportDialog</name>
     <message><source>Импорт банковского CSV</source><translation>Import bank CSV</translation></message>
+    <message><source>Импорт банковской выписки</source><translation>Import bank statement</translation></message>
     <message><source>Новый профиль</source><translation>New profile</translation></message>
     <message><source>Не используется</source><translation>Not used</translation></message>
     <message><source>Выберите столбец</source><translation>Select a column</translation></message>
@@ -251,9 +255,15 @@
     <message><source>Описание</source><translation>Description</translation></message>
     <message><source>Идентификатор операции</source><translation>Transaction ID</translation></message>
     <message><source>Категория из CSV</source><translation>Category from CSV</translation></message>
+    <message><source>Направление операции</source><translation>Transaction direction</translation></message>
+    <message><source>Валюта строки</source><translation>Row currency</translation></message>
     <message><source>Категория дохода по умолчанию</source><translation>Default income category</translation></message>
     <message><source>Категория расхода по умолчанию</source><translation>Default expense category</translation></message>
     <message><source>Предварительный просмотр</source><translation>Preview</translation></message>
+    <message><source>Проверить</source><translation>Check</translation></message>
+    <message><source>Найдено: %1 · %2 — %3 · Доходы: %4 · Расходы: %5 · Ошибок: %6 · Другая валюта: %7</source><translation>Found: %1 · %2 — %3 · Income: %4 · Expenses: %5 · Errors: %6 · Other currency: %7</translation></message>
+    <message><source>Найдено: %1 · Новых: %2 · Дубликатов: %3 · %4 — %5 · Доходы: %6 · Расходы: %7 · Ошибок: %8 · Другая валюта: %9</source><translation>Found: %1 · New: %2 · Duplicates: %3 · %4 — %5 · Income: %6 · Expenses: %7 · Errors: %8 · Other currency: %9</translation></message>
+    <message><source>Найдено: %1 · Новых: %2 · Дубликатов: %3 · Возможных переводов: %4 · %5 — %6 · Доходы: %7 · Расходы: %8 · Ошибок: %9 · Другая валюта: %10</source><translation>Found: %1 · New: %2 · Duplicates: %3 · Possible transfers: %4 · %5 — %6 · Income: %7 · Expenses: %8 · Errors: %9 · Other currency: %10</translation></message>
     <message><source>Удалить профиль</source><translation>Delete profile</translation></message>
     <message><source>Сохранить профиль</source><translation>Save profile</translation></message>
     <message><source>Импортировать</source><translation>Import</translation></message>
@@ -395,6 +405,7 @@
     <message><source>Фриланс</source><translation>Freelance</translation></message>
     <message><source>Не выбран файл для экспорта</source><translation>No export file selected</translation></message>
     <message><source>Не выбран CSV-файл</source><translation>No CSV file selected</translation></message>
+    <message><source>Не выбран файл выписки</source><translation>No statement file selected</translation></message>
     <message><source>Неверный формат CSV Ledgera</source><translation>Invalid Ledgera CSV format</translation></message>
     <message><source>Ошибка в строке %1: неверное число столбцов или версия</source><translation>Error on row %1: invalid column count or version</translation></message>
     <message><source>Ошибка в строке %1: неверная дата или сумма</source><translation>Error on row %1: invalid date or amount</translation></message>
@@ -417,8 +428,14 @@
     <message><source>Профиль импорта не найден</source><translation>Import profile was not found</translation></message>
     <message><source>Счёт из профиля не найден</source><translation>The account stored in the profile was not found</translation></message>
     <message><source>В CSV не найдено операций</source><translation>No transactions were found in the CSV</translation></message>
+    <message><source>В выписке не найдено операций</source><translation>No transactions were found in the statement</translation></message>
+    <message><source>В файле не найдено операций</source><translation>No transactions were found in the file</translation></message>
     <message><source>Не найдена категория для строки %1</source><translation>No category was found for row %1</translation></message>
     <message><source>Импорт из банковского CSV</source><translation>Imported from bank CSV</translation></message>
+    <message><source>Импорт из банковской выписки</source><translation>Imported from bank statement</translation></message>
+    <message><source>Сначала сопоставьте дату и сумму</source><translation>Map the date and amount first</translation></message>
+    <message><source>Все операции имеют валюту, отличную от валюты выбранного счёта</source><translation>All transactions use a currency different from the selected account</translation></message>
+    <message><source>Пропущено строк с валютой, отличной от валюты счёта: %1</source><translation>Rows skipped because their currency differs from the account: %1</translation></message>
     <message><source>Введите корректный публичный адрес TRON, начинающийся с T</source><translation>Enter a valid public TRON address starting with T</translation></message>
     <message><source>Введите корректный адрес Bitcoin Mainnet</source><translation>Enter a valid Bitcoin Mainnet address</translation></message>
     <message><source>Введите корректный адрес Ethereum Mainnet, начинающийся с 0x</source><translation>Enter a valid Ethereum Mainnet address starting with 0x</translation></message>

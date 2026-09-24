@@ -1,4 +1,5 @@
 #include "BankCsvImporter.h"
+#include "XlsxReader.h"
 
 #include <QCryptographicHash>
 #include <QLocale>
@@ -24,6 +25,16 @@ bool rowIsEmpty(const QStringList& row)
     return true;
 }
 
+QString legacyFingerprint(const QStringList& row)
+{
+    QStringList normalized;
+    normalized.reserve(row.size());
+    for (const QString& field : row) normalized.append(field.simplified());
+    return QString::fromLatin1(QCryptographicHash::hash(
+        normalized.join(QChar(0x001F)).toUtf8(),
+        QCryptographicHash::Sha256).toHex());
+}
+
 QDateTime dateAtNoon(const QDate& date)
 {
     return date.isValid()
@@ -31,16 +42,40 @@ QDateTime dateAtNoon(const QDate& date)
         : QDateTime();
 }
 
-QString normalizedFingerprint(const QStringList& row)
+QString normalizedCurrency(QString value)
 {
-    QStringList normalized;
-    normalized.reserve(row.size());
-    for (const QString& field : row) {
-        normalized.append(field.simplified());
-    }
-    return QString::fromLatin1(QCryptographicHash::hash(
-        normalized.join(QChar(0x001F)).toUtf8(),
-        QCryptographicHash::Sha256).toHex());
+    value = value.trimmed().toUpper();
+    value.remove(QLatin1Char(' '));
+    if (value == QStringLiteral("₽") || value == QStringLiteral("RUR") ||
+        value == QStringLiteral("RUB") || value == QStringLiteral("643") ||
+        value.contains(QStringLiteral("РУБ")))
+        return QStringLiteral("RUB");
+    if (value == QStringLiteral("$") || value == QStringLiteral("USD") ||
+        value == QStringLiteral("840")) return QStringLiteral("USD");
+    if (value == QStringLiteral("€") || value == QStringLiteral("EUR") ||
+        value == QStringLiteral("978")) return QStringLiteral("EUR");
+    return value;
+}
+
+int directionSign(QString value)
+{
+    value = value.simplified().toLower();
+    value.remove(QLatin1Char(' '));
+    const QStringList income{QStringLiteral("доход"), QStringLiteral("приход"),
+        QStringLiteral("поступление"), QStringLiteral("зачисление"),
+        QStringLiteral("входящий"),
+        QStringLiteral("credit"), QStringLiteral("кредит"),
+        QStringLiteral("income"), QStringLiteral("cr"), QStringLiteral("c")};
+    const QStringList expense{QStringLiteral("расход"), QStringLiteral("списание"),
+        QStringLiteral("покупка"), QStringLiteral("debit"),
+        QStringLiteral("исходящий"),
+        QStringLiteral("дебет"), QStringLiteral("expense"),
+        QStringLiteral("dr"), QStringLiteral("d")};
+    for (const auto& marker : income)
+        if (value == marker || value.contains(marker)) return 1;
+    for (const auto& marker : expense)
+        if (value == marker || value.contains(marker)) return -1;
+    return 0;
 }
 
 qint64 positiveMagnitude(const qint64 value)
@@ -75,6 +110,8 @@ QJsonObject BankCsvProfile::toJson() const
         {QStringLiteral("descriptionColumn"), descriptionColumn},
         {QStringLiteral("idColumn"), idColumn},
         {QStringLiteral("categoryColumn"), categoryColumn},
+        {QStringLiteral("directionColumn"), directionColumn},
+        {QStringLiteral("currencyColumn"), currencyColumn},
         {QStringLiteral("positiveMeansIncome"), positiveMeansIncome}
     };
 }
@@ -107,9 +144,24 @@ BankCsvProfile BankCsvProfile::fromJson(const QJsonObject& object)
     profile.idColumn = object.value(QStringLiteral("idColumn")).toInt(-1);
     profile.categoryColumn = object.value(
         QStringLiteral("categoryColumn")).toInt(-1);
+    profile.directionColumn = object.value(
+        QStringLiteral("directionColumn")).toInt(-1);
+    profile.currencyColumn = object.value(
+        QStringLiteral("currencyColumn")).toInt(-1);
     profile.positiveMeansIncome = object.value(
         QStringLiteral("positiveMeansIncome")).toBool(true);
     return profile;
+}
+
+CsvCodec::ReadResult BankCsvImporter::readTable(
+    const QString& filePath,
+    const BankCsvProfile& profile)
+{
+    if (filePath.endsWith(QStringLiteral(".xlsx"), Qt::CaseInsensitive)) {
+        const auto xlsx = XlsxReader::readFirstSheet(filePath);
+        return {xlsx.rows, xlsx.error, {}, QStringLiteral("XLSX")};
+    }
+    return CsvCodec::readFile(filePath, readOptions(profile));
 }
 
 CsvCodec::ReadOptions BankCsvImporter::readOptions(
@@ -262,8 +314,7 @@ BankCsvParseResult BankCsvImporter::parse(
     )
 {
     BankCsvParseResult result;
-    const CsvCodec::ReadResult csv = CsvCodec::readFile(
-        filePath, readOptions(profile));
+    const CsvCodec::ReadResult csv = readTable(filePath, profile);
     result.delimiter = csv.delimiter;
     result.encoding = csv.encoding;
     if (!csv.error.isEmpty()) {
@@ -311,8 +362,15 @@ BankCsvParseResult BankCsvImporter::parse(
         } else {
             amountOk = parseAmountMinor(signedAmountText, signedMinor) &&
                 signedMinor != 0;
-            if (amountOk && !profile.positiveMeansIncome) {
-                signedMinor = -signedMinor;
+            if (amountOk) {
+                const int direction = directionSign(
+                    fieldAt(row, profile.directionColumn));
+                if (profile.directionColumn >= 0) {
+                    if (direction == 0) amountOk = false;
+                    else signedMinor = direction * positiveMagnitude(signedMinor);
+                } else if (!profile.positiveMeansIncome) {
+                    signedMinor = -signedMinor;
+                }
             }
         }
 
@@ -331,7 +389,15 @@ BankCsvParseResult BankCsvImporter::parse(
         operation.description = fieldAt(row, profile.descriptionColumn);
         operation.externalId = fieldAt(row, profile.idColumn);
         operation.categoryName = fieldAt(row, profile.categoryColumn);
-        operation.fingerprint = normalizedFingerprint(row);
+        operation.currencyCode = normalizedCurrency(
+            fieldAt(row, profile.currencyColumn));
+        operation.fingerprint = QString::fromLatin1(QCryptographicHash::hash(
+            QStringList{operation.occurredAt.toUTC().toString(Qt::ISODateWithMs),
+                        QString::number(operation.signedMinor),
+                        operation.description.simplified().toLower(),
+                        operation.currencyCode}.join(QChar(0x001F)).toUtf8(),
+            QCryptographicHash::Sha256).toHex());
+        operation.legacyFingerprint = legacyFingerprint(row);
         operation.sourceRow = static_cast<int>(rowIndex + 1);
         result.operations.append(operation);
     }

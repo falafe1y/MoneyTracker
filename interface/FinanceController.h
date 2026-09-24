@@ -514,6 +514,10 @@ public:
         const QString& encoding = QStringLiteral("auto")
         ) const;
     Q_INVOKABLE QVariantMap saveBankCsvProfile(const QVariantMap& values);
+    Q_INVOKABLE QVariantMap previewBankImport(
+        const QUrl& fileUrl,
+        const QVariantMap& values
+        ) const;
     Q_INVOKABLE bool deleteBankCsvProfile(const QString& id);
     Q_INVOKABLE QVariantMap importBankCsv(
         const QUrl& fileUrl,

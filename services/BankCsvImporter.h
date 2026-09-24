@@ -27,6 +27,8 @@ struct BankCsvProfile
     int descriptionColumn = -1;
     int idColumn = -1;
     int categoryColumn = -1;
+    int directionColumn = -1;
+    int currencyColumn = -1;
     bool positiveMeansIncome = true;
 
     QJsonObject toJson() const;
@@ -40,7 +42,9 @@ struct BankCsvOperation
     QString description;
     QString externalId;
     QString categoryName;
+    QString currencyCode;
     QString fingerprint;
+    QString legacyFingerprint;
     int sourceRow = 0;
 };
 
@@ -57,6 +61,10 @@ class BankCsvImporter final
 {
 public:
     static CsvCodec::ReadOptions readOptions(const BankCsvProfile& profile);
+    static CsvCodec::ReadResult readTable(
+        const QString& filePath,
+        const BankCsvProfile& profile
+        );
     static BankCsvParseResult parse(
         const QString& filePath,
         const BankCsvProfile& profile
