@@ -827,21 +827,9 @@ ApplicationWindow {
                 }
                 NavButton {
                     Layout.fillWidth: true
-                    text: qsTr("Счета")
-                    glyph: "▣"
-                    target: "accounts"
-                }
-                NavButton {
-                    Layout.fillWidth: true
                     text: qsTr("Категории")
                     glyph: "◇"
                     target: "categories"
-                }
-                NavButton {
-                    Layout.fillWidth: true
-                    text: qsTr("Операции")
-                    glyph: "⇄"
-                    target: "operations"
                 }
                 NavButton {
                     Layout.fillWidth: true
@@ -948,13 +936,6 @@ ApplicationWindow {
                     implicitHeight: 42
                     text: qsTr("Плановые операции")
                     onClicked: recurringTransactionsDialog.openManager()
-                }
-                AppTextField {
-                    visible: page === "overview" || page === "operations"
-                    Layout.preferredWidth: 265
-                    implicitHeight: 42
-                    placeholderText: qsTr("Поиск по операциям...")
-                    onTextChanged: root.searchText = text
                 }
             }
             Loader {
@@ -1535,6 +1516,7 @@ ApplicationWindow {
                     expandToContent: true
                     title: qsTr("История операций")
                     rows: root.dashboardHistoryRows()
+                    showSearch: true
                     addInvestmentPositionAction:
                         financeController.selectedAsset === "investment"
                 }
@@ -1746,6 +1728,7 @@ ApplicationWindow {
         property var rows: []
         property bool expandToContent: false
         property bool addInvestmentPositionAction: false
+        property bool showSearch: false
         property string projectId: ""
 
         // 68 px block header + 34 px table header + 38 px per transaction + 2 px frame inset.
@@ -1773,6 +1756,15 @@ ApplicationWindow {
 
                 Item {
                     Layout.fillWidth: true
+                }
+
+                AppTextField {
+                    visible: transactionBlock.showSearch
+                    Layout.preferredWidth: 265
+                    implicitHeight: 38
+                    placeholderText: qsTr("Поиск по операциям...")
+                    text: root.searchText
+                    onTextEdited: root.searchText = text
                 }
 
                 SoftButton {
@@ -3719,34 +3711,6 @@ ApplicationWindow {
                     color: root.csvStatusOk ? root.income : root.red
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
-                }
-                Rectangle {
-                    Layout.topMargin: 12
-                    Layout.preferredWidth: 360
-                    height: 1
-                    color: root.line
-                }
-                Text {
-                    Layout.topMargin: 8
-                    text: qsTr("Язык интерфейса")
-                    color: root.accent
-                    font.pixelSize: 17
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    text: qsTr("Пользовательские названия счетов и категорий не переводятся.")
-                    color: root.muted
-                }
-                AppComboBox {
-                    id: languageBox
-                    model: [
-                        { label: qsTr("Русский"), value: "ru" },
-                        { label: qsTr("Английский"), value: "en" }
-                    ]
-                    textRole: "label"
-                    currentIndex: root.indexByRole(model, "value", financeController.uiLanguage)
-                    onActivated: financeController.uiLanguage = model[currentIndex].value
-                    implicitWidth: 180
                 }
             }
         }
