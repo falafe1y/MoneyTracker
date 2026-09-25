@@ -484,7 +484,7 @@
     <message><source>Выберите валюту цели</source><translation>Select the goal currency</translation></message>
     <message><source>Введите положительную сумму, не более двух знаков после запятой</source><translation>Enter a positive amount with at most two decimal places</translation></message>
     <message><source>Сумма цели должна быть больше нуля</source><translation>The target amount must be greater than zero</translation></message>
-    <message><source>Введите дату в формате ГГГГ-ММ-ДД</source><translation>Enter a date in YYYY-MM-DD format</translation></message>
+    <message><source>Введите дату в формате ДД.ММ.ГГГГ</source><translation>Enter a date in DD.MM.YYYY format</translation></message>
     <message><source>Один из выбранных счетов больше не доступен</source><translation>One of the selected accounts is no longer available</translation></message>
     <message><source>Выберите хотя бы один счёт или кошелёк</source><translation>Select at least one account or wallet</translation></message>
     <message><source>Не удалось сохранить цель</source><translation>Could not save the goal</translation></message>
@@ -500,7 +500,7 @@
     <message><source>Например, финансовая независимость</source><translation>For example, financial independence</translation></message>
     <message><source>Сумма и валюта цели</source><translation>Target amount and currency</translation></message>
     <message><source>Указать срок</source><translation>Set a deadline</translation></message>
-    <message><source>ГГГГ-ММ-ДД</source><translation>YYYY-MM-DD</translation></message>
+    <message><source>ДД.ММ.ГГГГ</source><translation>DD.MM.YYYY</translation></message>
     <message><source>Срок включительно. После него цель продолжит обновляться.</source><translation>The deadline is inclusive. The goal will continue updating afterwards.</translation></message>
     <message><source>Учитывать весь текущий капитал</source><translation>Include all current net worth</translation></message>
     <message><source>Фиат, инвестиции и криптовалюта за вычетом задолженности. Деньги не резервируются: несколько целей могут учитывать одни средства.</source><translation>Fiat, investments and crypto minus debt. Funds are not reserved: multiple goals may include the same money.</translation></message>

@@ -3539,9 +3539,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     implicitHeight: 44
                     hoverEnabled: true
-                    text: operationDialog.selectedDate.toLocaleDateString(
-                        root.uiLocale(),
-                        Locale.LongFormat
+                    text: Qt.formatDate(
+                        operationDialog.selectedDate,
+                        "dd.MM.yyyy"
                     )
                     onClicked: operationDateDialog.openFor(operationDialog.selectedDate)
 

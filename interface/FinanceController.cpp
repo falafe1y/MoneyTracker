@@ -1457,8 +1457,10 @@ QVariantMap FinanceController::previewBankImport(
     result[QStringLiteral("expenseMinor")] = expenseMinor;
     result[QStringLiteral("currencyMismatches")] = currencyMismatches;
     result[QStringLiteral("rejected")] = parsed.rejected;
-    result[QStringLiteral("firstDate")] = firstDate.toString(Qt::ISODate);
-    result[QStringLiteral("lastDate")] = lastDate.toString(Qt::ISODate);
+    result[QStringLiteral("firstDate")] =
+        firstDate.toString(QStringLiteral("dd.MM.yyyy"));
+    result[QStringLiteral("lastDate")] =
+        lastDate.toString(QStringLiteral("dd.MM.yyyy"));
     result[QStringLiteral("currency")] = accountCurrency;
     result[QStringLiteral("warnings")] = parsed.errors;
     return result;
@@ -5230,9 +5232,10 @@ QVariantMap FinanceController::saveFinancialGoal(const QVariantMap& values)
     if (goal.targetMinor <= 0) return error(tr("Сумма цели должна быть больше нуля"));
     const auto deadline = values.value(QStringLiteral("deadline")).toString().trimmed();
     if (!deadline.isEmpty()) {
-        goal.deadline = QDate::fromString(deadline, Qt::ISODate);
-        if (!goal.deadline.isValid() || goal.deadline.toString(Qt::ISODate) != deadline)
-            return error(tr("Введите дату в формате ГГГГ-ММ-ДД"));
+        const QString format = QStringLiteral("dd.MM.yyyy");
+        goal.deadline = QDate::fromString(deadline, format);
+        if (!goal.deadline.isValid() || goal.deadline.toString(format) != deadline)
+            return error(tr("Введите дату в формате ДД.ММ.ГГГГ"));
     }
     goal.allSources = values.value(QStringLiteral("allSources"), true).toBool();
     if (!goal.allSources) {

@@ -16,6 +16,13 @@ Dialog {
     closePolicy: Popup.CloseOnEscape
     ListModel { id: sources }
 
+    function russianDateFromIso(value) {
+        const parts = String(value || "").split("-");
+        return parts.length === 3
+             ? parts[2] + "." + parts[1] + "." + parts[0]
+             : "";
+    }
+
     function openForm(row) {
         editingId = row ? row.id : "";
         errorText = "";
@@ -24,7 +31,9 @@ Dialog {
         currencyBox.currentIndex = Math.max(0, currencyBox.model.indexOf(
             row ? row.currency : controller.appCurrency));
         limited.checked = row ? row.deadline.length > 0 : false;
-        deadlineField.text = row && row.deadline.length > 0 ? row.deadline : Qt.formatDate(new Date(), "yyyy-MM-dd");
+        deadlineField.text = row && row.deadline.length > 0
+                           ? russianDateFromIso(row.deadline)
+                           : Qt.formatDate(new Date(), "dd.MM.yyyy");
         allSources.checked = row ? row.allSources : true;
         sources.clear();
         const selected = row ? row.sourceIds : [];
@@ -106,7 +115,7 @@ Dialog {
                 }
                 CheckBox { id: limited; text: qsTr("Указать срок"); palette.windowText: theme.accent }
                 Field { id: deadlineField; visible: limited.checked; Layout.fillWidth: true
-                    placeholderText: qsTr("ГГГГ-ММ-ДД"); maximumLength: 10 }
+                    placeholderText: qsTr("ДД.ММ.ГГГГ"); maximumLength: 10 }
                 Text { visible: limited.checked; Layout.fillWidth: true
                     text: qsTr("Срок включительно. После него цель продолжит обновляться.")
                     color: theme.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }

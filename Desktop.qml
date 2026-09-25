@@ -376,11 +376,7 @@ ApplicationWindow {
         const date = root.dateFromIso(row.date);
         if (!date)
             return "";
-        if (row.resolution === "year")
-            return Qt.formatDate(date, "yyyy");
-        if (row.resolution === "month")
-            return Qt.formatDate(date, "MMM yyyy");
-        return Qt.formatDate(date, "dd.MM");
+        return Qt.formatDate(date, "dd.MM.yyyy");
     }
 
     function visibleTransactions() {
@@ -5218,9 +5214,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     implicitHeight: 44
                     hoverEnabled: true
-                    text: operationDialog.selectedDate.toLocaleDateString(
-                        root.uiLocale(),
-                        Locale.LongFormat
+                    text: Qt.formatDate(
+                        operationDialog.selectedDate,
+                        "dd.MM.yyyy"
                     )
                     onClicked: operationDateDialog.openFor(operationDialog.selectedDate)
 
