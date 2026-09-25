@@ -562,35 +562,18 @@ ApplicationWindow {
             ctx.fill();
         }
     }
-    component SoftButton: Button {
-        id: control
-        property bool destructive: false
-        activeFocusOnTab: true
-        hoverEnabled: true
-        implicitHeight: 42
-        contentItem: Text {
-            text: control.text
-            color: control.destructive || control.highlighted ? root.white : root.accent
-            font.pixelSize: 14
-            font.weight: Font.Medium
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 10
-            color: control.destructive
-                   ? (control.down || control.hovered ? Qt.darker(root.red, 1.08) : root.red)
-                   : control.highlighted
-                     ? (control.down ? root.navHovered : root.accent)
-                     : (control.hovered ? root.soft : root.panel)
-            border.width: control.activeFocus
-                        ? 2
-                        : control.destructive || control.highlighted ? 0 : 1
-            border.color: control.activeFocus
-                        ? (control.destructive || control.highlighted
-                           ? root.pale : root.navSelected)
-                        : root.line
-        }
+    component SoftButton: StyledButton {
+        primary: highlighted
+        controlHeight: 42
+        appTextColor: root.accent
+        appMutedColor: root.muted
+        appPanelColor: root.panel
+        appSoftColor: root.soft
+        appLineColor: root.line
+        appAccentColor: root.accent
+        appHoverColor: root.controlHovered
+        appOnAccentColor: root.white
+        appErrorColor: root.red
     }
 
     component AppMenuItem: MenuItem {
@@ -616,139 +599,32 @@ ApplicationWindow {
                    : root.transparentColor
         }
     }
-    component AppTextField: TextField {
-        id: field
-        implicitHeight: 44
-        leftPadding: 14
-        rightPadding: 14
-        color: root.accent
-        placeholderTextColor: root.muted
-        selectionColor: root.accentSoft
-        selectedTextColor: root.white
-        font.pixelSize: 14
-
-        background: Rectangle {
-            radius: 11
-            color: field.activeFocus ? root.panel : root.soft
-            border.width: field.activeFocus ? 2 : 1
-            border.color: field.activeFocus ? root.navSelected : root.line
-        }
+    component AppTextField: StyledTextField {
+        appTextColor: root.accent
+        appMutedColor: root.muted
+        appPanelColor: root.panel
+        appSoftColor: root.soft
+        appLineColor: root.line
+        appAccentColor: root.navSelected
+        appOnAccentColor: root.white
     }
-    component AppCheckBox: CheckBox {
-        id: check
-        hoverEnabled: true
-        spacing: 10
-        implicitHeight: 32
-
-        indicator: Rectangle {
-            implicitWidth: 22
-            implicitHeight: 22
-            x: check.leftPadding
-            y: (check.height - height) / 2
-            radius: 6
-            color: check.checked
-                   ? (check.hovered ? root.navSelected : root.accent)
-                   : (check.hovered ? root.controlHovered : root.soft)
-            border.width: check.checked ? 0 : 1
-            border.color: root.line
-
-            Text {
-                anchors.centerIn: parent
-                visible: check.checked
-                text: "✓"
-                color: root.white
-                font.pixelSize: 15
-                font.weight: Font.Bold
-            }
-        }
-
-        contentItem: Text {
-            leftPadding: check.indicator.width + check.spacing
-            text: check.text
-            color: check.enabled ? root.accent : root.muted
-            font.pixelSize: 14
-            verticalAlignment: Text.AlignVCenter
-        }
+    component AppCheckBox: StyledCheckBox {
+        appTextColor: root.accent
+        appMutedColor: root.muted
+        appSoftColor: root.soft
+        appLineColor: root.line
+        appAccentColor: root.accent
+        appHoverColor: root.controlHovered
+        appOnAccentColor: root.white
     }
-    component AppComboBox: ComboBox {
-        id: combo
-        hoverEnabled: true
-        implicitHeight: 44
-        leftPadding: 14
-        rightPadding: 42
-        font.pixelSize: 14
-
-        contentItem: Text {
-            leftPadding: 0
-            rightPadding: 0
-            text: combo.displayText
-            color: root.accent
-            font: combo.font
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-        }
-
-        indicator: Text {
-            x: combo.width - width - 15
-            y: (combo.height - height) / 2 - 1
-            text: combo.popup.visible ? "⌃" : "⌄"
-            color: root.navSelected
-            font.pixelSize: 18
-            font.weight: Font.DemiBold
-        }
-
-        background: Rectangle {
-            radius: 11
-            color: combo.pressed || combo.popup.visible ? root.panel : combo.hovered ? root.controlHovered : root.soft
-            border.width: combo.activeFocus || combo.popup.visible ? 2 : 1
-            border.color: combo.activeFocus || combo.popup.visible
-                        ? root.navSelected : root.line
-        }
-
-        delegate: ItemDelegate {
-            id: optionDelegate
-            required property var modelData
-            width: combo.width - 12
-            height: 40
-            leftPadding: 12
-            hoverEnabled: true
-            highlighted: combo.highlightedIndex === index
-            contentItem: Text {
-                text: combo.textRole ? modelData[combo.textRole] : modelData
-                color: root.accent
-                font.pixelSize: 14
-                verticalAlignment: Text.AlignVCenter
-                elide: Text.ElideRight
-            }
-            background: Rectangle {
-                radius: 8
-                color: optionDelegate.hovered ? root.controlHovered : root.transparentColor
-            }
-        }
-
-        popup: Popup {
-            y: combo.height + 6
-            width: combo.width
-            implicitHeight: Math.min(contentItem.implicitHeight + 12, 260)
-            padding: 6
-            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-
-            contentItem: ListView {
-                clip: true
-                implicitHeight: contentHeight
-                model: combo.popup.visible ? combo.delegateModel : null
-                currentIndex: combo.highlightedIndex
-                spacing: 2
-                ScrollIndicator.vertical: ScrollIndicator { }
-            }
-
-            background: Rectangle {
-                radius: 12
-                color: root.panel
-                border.width: 1
-                border.color: root.line
-            }
-        }
+    component AppComboBox: StyledComboBox {
+        appTextColor: root.accent
+        appMutedColor: root.muted
+        appPanelColor: root.panel
+        appSoftColor: root.soft
+        appLineColor: root.line
+        appAccentColor: root.navSelected
+        appHoverColor: root.controlHovered
     }
     component NavButton: Button {
         id: nav
@@ -1099,7 +975,7 @@ ApplicationWindow {
                             Item {
                                 Layout.fillWidth: true
                             }
-                            Button {
+                            SoftButton {
                                 id: addAccountButton
                                 flat: true
                                 text: financeController.selectedAsset === "crypto"
@@ -3483,12 +3359,10 @@ ApplicationWindow {
                 }
                 Rectangle {
                     id: currentRatesBlock
-                    property bool expanded: false
 
                     Layout.topMargin: 4
                     Layout.preferredWidth: 460
-                    implicitHeight: ratesHeader.height
-                                  + (expanded ? ratesList.implicitHeight : 0)
+                    implicitHeight: ratesHeader.height + ratesList.implicitHeight
                     radius: 10
                     color: root.soft
                     border.color: root.line
@@ -3498,9 +3372,7 @@ ApplicationWindow {
                         id: ratesHeader
                         width: parent.width
                         height: 44
-                        color: ratesMouse.containsMouse
-                               ? root.controlHovered
-                               : root.transparentColor
+                        color: root.transparentColor
 
                         RowLayout {
                             anchors.fill: parent
@@ -3510,24 +3382,10 @@ ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: qsTr("Текущие курсы в %1")
-                                    .arg(financeController.appCurrency)
+                                    .arg("RUB")
                                 color: root.accent
                                 font.weight: Font.DemiBold
                             }
-                            Text {
-                                text: currentRatesBlock.expanded ? "⌃" : "⌄"
-                                color: root.muted
-                                font.pixelSize: 16
-                            }
-                        }
-
-                        MouseArea {
-                            id: ratesMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: currentRatesBlock.expanded =
-                                           !currentRatesBlock.expanded
                         }
                     }
 
@@ -3535,7 +3393,6 @@ ApplicationWindow {
                         id: ratesList
                         anchors.top: ratesHeader.bottom
                         width: parent.width
-                        visible: currentRatesBlock.expanded
 
                         Repeater {
                             model: financeController.currentCurrencyRates
@@ -3573,7 +3430,7 @@ ApplicationWindow {
                                         text: Number(modelData.rate).toLocaleString(
                                                   root.uiLocale(), "f", decimals)
                                               + " "
-                                              + root.symbol(financeController.appCurrency)
+                                              + root.symbol("RUB")
                                         color: root.accent
                                         font.weight: Font.DemiBold
                                     }
@@ -3597,6 +3454,16 @@ ApplicationWindow {
                     rowSpacing: 10
                     enabled: !automaticRatesCheck.checked
                     opacity: enabled ? 1.0 : 0.55
+
+                    Text {
+                        text: qsTr("1 RUB в рублях")
+                        color: root.accent
+                    }
+                    AppTextField {
+                        implicitWidth: 180
+                        text: Number(1).toLocaleString(root.uiLocale(), "f", 4)
+                        readOnly: true
+                    }
 
                     Text {
                         text: qsTr("1 USD в рублях")
@@ -5801,14 +5668,21 @@ ApplicationWindow {
                             color: root.muted
                             font.pixelSize: 11
                         }
-                        Button {
+                        SoftButton {
                             flat: true
                             text: "✎"
+                            controlHeight: 32
+                            leftPadding: 8
+                            rightPadding: 8
                             onClicked: categoryDialog.startEdit(modelData)
                         }
-                        Button {
+                        SoftButton {
                             flat: true
+                            destructive: true
                             text: "×"
+                            controlHeight: 32
+                            leftPadding: 8
+                            rightPadding: 8
                             onClicked: {
                                 financeController.deleteCategory(modelData.value);
                                 if (categoryDialog.editingId === modelData.value) {

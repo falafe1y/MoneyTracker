@@ -854,8 +854,8 @@ double FinanceController::manualEurToRubRate() const
 QVariantList FinanceController::currentCurrencyRates() const
 {
     QVariantList result;
-    const qint64 targetRate = rateProvider_.rateToUsd(appCurrency_);
-    if (targetRate <= 0) {
+    const qint64 rubRate = rateProvider_.rateToUsd(Currency::RUB);
+    if (rubRate <= 0) {
         return result;
     }
 
@@ -864,7 +864,7 @@ QVariantList FinanceController::currentCurrencyRates() const
         item[QStringLiteral("code")] = currencyCode(currency);
         item[QStringLiteral("rate")] =
             static_cast<double>(rateProvider_.rateToUsd(currency)) /
-            static_cast<double>(targetRate);
+            static_cast<double>(rubRate);
         result.append(item);
     }
     return result;

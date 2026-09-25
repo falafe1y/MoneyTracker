@@ -162,40 +162,46 @@ Dialog {
         border.color: dialog.lineColor
     }
 
-    component Field: TextField {
-        id: field
-        implicitHeight: 44
-        leftPadding: 13
-        rightPadding: 13
-        color: dialog.textColor
-        placeholderTextColor: dialog.mutedColor
-        background: Rectangle {
-            radius: 10
-            color: field.activeFocus ? dialog.panelColor : dialog.softColor
-            border.width: field.activeFocus ? 2 : 1
-            border.color: field.activeFocus
-                        ? dialog.accentColor : dialog.lineColor
-        }
+    component Field: StyledTextField {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appOnAccentColor: dialog.panelColor
     }
 
-    component ActionButton: Button {
-        id: button
-        property bool primary: false
-        implicitHeight: 40
-        leftPadding: 16
-        rightPadding: 16
-        contentItem: Text {
-            text: button.text
-            color: button.primary ? dialog.panelColor : dialog.textColor
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 9
-            color: button.primary ? dialog.accentColor : dialog.panelColor
-            border.width: button.primary ? 0 : 1
-            border.color: dialog.lineColor
-        }
+    component FormCombo: StyledComboBox {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
+    }
+
+    component FormCheckBox: StyledCheckBox {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
+        appOnAccentColor: dialog.panelColor
+    }
+
+    component ActionButton: StyledButton {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
+        appOnAccentColor: dialog.panelColor
+        appErrorColor: dialog.errorColor
     }
 
     contentItem: ColumnLayout {
@@ -253,7 +259,7 @@ Dialog {
                     ColumnLayout {
                         Layout.preferredWidth: 130
                         Text { text: qsTr("Валюта"); color: dialog.mutedColor }
-                        ComboBox {
+                        FormCombo {
                             id: currencyBox
                             Layout.fillWidth: true
                             implicitHeight: 44
@@ -263,7 +269,7 @@ Dialog {
                 }
 
                 Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
-                CheckBox {
+                FormCheckBox {
                     id: allAccountsBox
                     text: qsTr("Учитывать все счета")
                     palette.text: dialog.textColor
@@ -275,7 +281,7 @@ Dialog {
                 }
                 Repeater {
                     model: accountSelection
-                    delegate: CheckBox {
+                    delegate: FormCheckBox {
                         required property int index
                         required property string label
                         required property bool selected
@@ -288,7 +294,7 @@ Dialog {
                 }
 
                 Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
-                CheckBox {
+                FormCheckBox {
                     id: allCategoriesBox
                     text: qsTr("Учитывать все категории расходов")
                     palette.text: dialog.textColor
@@ -310,7 +316,7 @@ Dialog {
                         required property bool selected
                         required property string limitText
                         Layout.fillWidth: true
-                        CheckBox {
+                        FormCheckBox {
                             checked: parent.selected
                             text: parent.label
                             palette.text: dialog.textColor

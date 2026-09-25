@@ -39,21 +39,46 @@ ScrollView {
         radius: 16; color: theme.panel; border.color: theme.line
     }
     component Caption: Text { color: theme.muted; font.pixelSize: 13 }
-    component Field: TextField {
-        color: theme.accent; selectByMouse: true; horizontalAlignment: Text.AlignRight
+    component Field: StyledTextField {
+        horizontalAlignment: Text.AlignRight
         validator: DoubleValidator { bottom: -99; top: 1000; decimals: 2 }
-        background: Rectangle { radius: 8; color: theme.soft; border.color: theme.line }
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appPanelColor: theme.panel
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accentSoft
+        appOnAccentColor: theme.white
     }
-    component Choice: ComboBox {
+    component Choice: StyledComboBox {
         textRole: "text"; valueRole: "value"
-        contentItem: Text { leftPadding: 10; text: parent.displayText; color: theme.accent
-            verticalAlignment: Text.AlignVCenter }
-        background: Rectangle { radius: 8; color: theme.soft; border.color: theme.line }
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appPanelColor: theme.panel
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accentSoft
+        appHoverColor: theme.controlHovered
     }
-    component ScenarioButton: Button {
-        contentItem: Text { text: parent.text; color: theme.accent; horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter }
-        background: Rectangle { radius: 9; color: theme.soft; border.color: theme.line }
+    component FormCheckBox: StyledCheckBox {
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accent
+        appHoverColor: theme.controlHovered
+        appOnAccentColor: theme.white
+    }
+    component ScenarioButton: StyledButton {
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appPanelColor: theme.panel
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accent
+        appHoverColor: theme.controlHovered
+        appOnAccentColor: theme.white
+        appErrorColor: theme.red
     }
 
     ColumnLayout {
@@ -158,7 +183,7 @@ ScrollView {
                 Caption { text: qsTr("Через") }
                 Field { id: incomeField; Layout.fillWidth: true; text: trajectory.incomeChangePercent }
                 Field { id: expenseField; Layout.fillWidth: true; text: trajectory.expenseChangePercent }
-                RowLayout { CheckBox { id: purchaseEnabled; checked: trajectory.purchaseMonth > 0 }
+                RowLayout { FormCheckBox { id: purchaseEnabled; checked: trajectory.purchaseMonth > 0 }
                     Field { id: purchaseField; Layout.fillWidth: true; enabled: purchaseEnabled.checked
                         text: (trajectory.purchaseMinor / 100).toFixed(2) } }
                 Choice { id: purchaseMonth; Layout.fillWidth: true; enabled: purchaseEnabled.checked
@@ -166,9 +191,8 @@ ScrollView {
                     Component.onCompleted: { var vals=[1,3,6,12,36]; currentIndex=Math.max(0, vals.indexOf(trajectory.purchaseMonth)); } }
                 Text { id: errorText; Layout.columnSpan: 3; Layout.fillWidth: true; color: theme.red; wrapMode: Text.WordWrap
                     text: !trajectory.complete ? qsTr("Часть котировок недоступна: прогноз построен по известным активам, снимок за сегодня не сохранён.") : "" }
-                Button { text: qsTr("Пересчитать и сохранить"); onClicked: page.applySettings()
-                    contentItem: Text { text: parent.text; color: theme.white; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                    background: Rectangle { radius: 9; color: theme.accent } }
+                ScenarioButton { text: qsTr("Пересчитать и сохранить"); primary: true
+                    onClicked: page.applySettings() }
             }
         }
         Caption { Layout.fillWidth: true; wrapMode: Text.WordWrap

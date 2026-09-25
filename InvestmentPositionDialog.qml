@@ -6,10 +6,12 @@ Dialog {
     id: dialog
     property var controller
     property color panelColor: "#FFFFF8"
+    property color softColor: "#FFFFF0"
     property color textColor: "#031528"
     property color mutedColor: "#687483"
     property color lineColor: "#D8D7C7"
     property color accentColor: "#031528"
+    property color hoverColor: "#E4E8F1"
     property color errorColor: "#B94F48"
     property int selectedResult: -1
     property string localError: ""
@@ -129,6 +131,38 @@ Dialog {
         border.color: dialog.lineColor
     }
 
+    component FormField: StyledTextField {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appOnAccentColor: dialog.panelColor
+    }
+
+    component FormCombo: StyledComboBox {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: dialog.hoverColor
+    }
+
+    component FormButton: StyledButton {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: dialog.hoverColor
+        appOnAccentColor: dialog.panelColor
+        appErrorColor: dialog.errorColor
+    }
+
     contentItem: ColumnLayout {
         spacing: 12
 
@@ -137,7 +171,7 @@ Dialog {
             color: dialog.mutedColor
             font.pixelSize: 12
         }
-        ComboBox {
+        FormCombo {
             id: accountBox
             Layout.fillWidth: true
             model: dialog.controller ? dialog.controller.investmentAccounts : []
@@ -153,13 +187,13 @@ Dialog {
         }
         RowLayout {
             Layout.fillWidth: true
-            TextField {
+            FormField {
                 id: searchField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Например, SBER или RU0009029540")
                 onAccepted: searchButton.clicked()
             }
-            Button {
+            FormButton {
                 id: searchButton
                 text: dialog.controller && dialog.controller.investmentSearchBusy
                       ? qsTr("Ищем…") : qsTr("Найти")
@@ -268,13 +302,13 @@ Dialog {
 
         RowLayout {
             Layout.fillWidth: true
-            TextField {
+            FormField {
                 id: quantityField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Количество")
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
             }
-            TextField {
+            FormField {
                 id: averagePriceField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Средняя цена (необязательно)")
@@ -296,13 +330,14 @@ Dialog {
         RowLayout {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
-            Button {
+            FormButton {
                 id: cancelButton
                 text: qsTr("Отмена")
                 onClicked: dialog.close()
             }
-            Button {
+            FormButton {
                 id: saveButton
+                primary: true
                 text: dialog.editingPositionId.length > 0
                     ? qsTr("Сохранить") : qsTr("Добавить")
                 enabled: dialog.controller

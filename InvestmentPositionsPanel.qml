@@ -15,6 +15,18 @@ Rectangle {
     property color lineColor: "#D8D7C7"
     property color errorColor: "#B94F48"
 
+    component PanelButton: StyledButton {
+        appTextColor: panel.textColor
+        appMutedColor: panel.mutedColor
+        appPanelColor: panel.panelColor
+        appSoftColor: "#FFFFF0"
+        appLineColor: panel.lineColor
+        appAccentColor: panel.textColor
+        appHoverColor: "#E4E8F1"
+        appOnAccentColor: panel.panelColor
+        appErrorColor: panel.errorColor
+    }
+
     color: panelColor
     radius: 14
     border.color: lineColor
@@ -33,7 +45,7 @@ Rectangle {
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
             }
-            Button {
+            PanelButton {
                 text: panel.controller && panel.controller.investmentRefreshing
                       ? qsTr("Обновляем…") : qsTr("Обновить цены")
                 enabled: panel.controller && !panel.controller.investmentRefreshing
@@ -101,9 +113,10 @@ Rectangle {
                             font.pixelSize: 11
                         }
                     }
-                    Button {
+                    PanelButton {
                         text: "×"
                         flat: true
+                        destructive: true
                         ToolTip.visible: hovered
                         ToolTip.text: qsTr("Удалить позицию")
                         onClicked: {

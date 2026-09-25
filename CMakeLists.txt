@@ -31,6 +31,11 @@ qt_add_qml_module(appMoneyTracker
         FinancialGoalsPage.qml
         FinancialGoalDialog.qml
         FinancialTrajectoryPage.qml
+        StyledTextField.qml
+        StyledCheckBox.qml
+        StyledComboBox.qml
+        StyledButton.qml
+        StyledScrollBar.qml
         # BankComboBox.qml
         # CategoryPicker.qml
         SOURCES core/Account.h

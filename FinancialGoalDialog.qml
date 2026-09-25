@@ -8,6 +8,7 @@ Dialog {
     required property var theme
     property string editingId: ""
     property string errorText: ""
+    property bool syncingSourceSelection: false
     width: Math.min(620, parent ? parent.width - 40 : 620)
     height: Math.min(720, parent ? parent.height - 40 : 720)
     anchors.centerIn: parent
@@ -23,6 +24,22 @@ Dialog {
              : "";
     }
 
+    function setAllSourcesSelected(selected) {
+        syncingSourceSelection = true;
+        for (let i = 0; i < sources.count; ++i)
+            sources.setProperty(i, "selected", selected);
+        syncingSourceSelection = false;
+    }
+
+    function syncAllSourcesCheckBox() {
+        let everySourceSelected = sources.count > 0;
+        for (let i = 0; i < sources.count && everySourceSelected; ++i)
+            everySourceSelected = sources.get(i).selected;
+        syncingSourceSelection = true;
+        allSources.checked = everySourceSelected;
+        syncingSourceSelection = false;
+    }
+
     function openForm(row) {
         editingId = row ? row.id : "";
         errorText = "";
@@ -34,7 +51,7 @@ Dialog {
         deadlineField.text = row && row.deadline.length > 0
                            ? russianDateFromIso(row.deadline)
                            : Qt.formatDate(new Date(), "dd.MM.yyyy");
-        allSources.checked = row ? row.allSources : true;
+        const useAllSources = row ? row.allSources : true;
         sources.clear();
         const selected = row ? row.sourceIds : [];
         const available = controller.goalSources;
@@ -43,13 +60,16 @@ Dialog {
             const item = available[i];
             seen.push(item.id);
             sources.append({sourceId: item.id, label: item.name,
-                selected: selected.indexOf(item.id) >= 0});
+                selected: useAllSources || selected.indexOf(item.id) >= 0});
         }
         for (let j = 0; j < selected.length; ++j) {
             if (seen.indexOf(selected[j]) < 0)
                 sources.append({sourceId: selected[j],
                     label: qsTr("Недоступный счёт или кошелёк"), selected: true});
         }
+        syncingSourceSelection = true;
+        allSources.checked = useAllSources;
+        syncingSourceSelection = false;
         open();
         Qt.callLater(function() { nameField.forceActiveFocus(); });
     }
@@ -66,25 +86,43 @@ Dialog {
         else errorText = result.error;
     }
     background: Rectangle { radius: 18; color: theme.panel; border.color: theme.line }
-    component Field: TextField {
-        id: field
-        implicitHeight: 44
-        color: theme.accent
-        placeholderTextColor: theme.muted
-        leftPadding: 12
-        background: Rectangle {
-            radius: 10; color: theme.soft
-            border.color: field.activeFocus ? theme.accentSoft : theme.line
-        }
+    component Field: StyledTextField {
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appPanelColor: theme.panel
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accentSoft
+        appOnAccentColor: theme.white
     }
-    component Action: Button {
-        id: action
-        property bool primary: false
-        implicitHeight: 40
-        leftPadding: 16; rightPadding: 16
-        contentItem: Text { text: action.text; color: action.primary ? theme.white : theme.accent
-            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-        background: Rectangle { radius: 9; color: action.primary ? theme.accent : theme.soft; border.color: theme.line }
+    component Choice: StyledComboBox {
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appPanelColor: theme.panel
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accentSoft
+        appHoverColor: theme.controlHovered
+    }
+    component FormCheckBox: StyledCheckBox {
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accent
+        appHoverColor: theme.controlHovered
+        appOnAccentColor: theme.white
+    }
+    component Action: StyledButton {
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appPanelColor: theme.panel
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accent
+        appHoverColor: theme.controlHovered
+        appOnAccentColor: theme.white
+        appErrorColor: theme.red
     }
     contentItem: ColumnLayout {
         spacing: 14
@@ -105,37 +143,43 @@ Dialog {
                     Layout.fillWidth: true
                     Field { id: amountField; Layout.fillWidth: true; maximumLength: 15
                         placeholderText: "200000,00"; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                    ComboBox {
+                    Choice {
                         id: currencyBox; model: ["RUB", "USD", "EUR"]
                         implicitHeight: 44; Layout.preferredWidth: 110
-                        contentItem: Text { text: currencyBox.displayText; color: theme.accent
-                            verticalAlignment: Text.AlignVCenter; leftPadding: 12 }
-                        background: Rectangle { radius: 10; color: theme.soft; border.color: theme.line }
                     }
                 }
-                CheckBox { id: limited; text: qsTr("Указать срок"); palette.windowText: theme.accent }
+                FormCheckBox { id: limited; text: qsTr("Указать срок") }
                 Field { id: deadlineField; visible: limited.checked; Layout.fillWidth: true
                     placeholderText: qsTr("ДД.ММ.ГГГГ"); maximumLength: 10 }
                 Text { visible: limited.checked; Layout.fillWidth: true
                     text: qsTr("Срок включительно. После него цель продолжит обновляться.")
                     color: theme.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
-                CheckBox { id: allSources; text: qsTr("Учитывать весь текущий капитал"); palette.windowText: theme.accent }
+                FormCheckBox {
+                    id: allSources
+                    text: qsTr("Учитывать весь текущий капитал")
+                    palette.windowText: theme.accent
+                    onToggled: {
+                        if (!dialog.syncingSourceSelection)
+                            dialog.setAllSourcesSelected(checked);
+                    }
+                }
                 Text { Layout.fillWidth: true; text: qsTr("Фиат, инвестиции и криптовалюта за вычетом задолженности. Деньги не резервируются: несколько целей могут учитывать одни средства.")
                     color: theme.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
                 Repeater {
                     model: sources
-                    delegate: CheckBox {
+                    delegate: FormCheckBox {
                         required property int index
                         required property string label
                         required property bool selected
                         Layout.fillWidth: true
-                        visible: !allSources.checked
                         checked: selected
                         text: label
-                        palette.windowText: theme.accent
-                        contentItem: Text { text: parent.text; color: theme.accent; elide: Text.ElideMiddle
-                            leftPadding: parent.indicator.width + parent.spacing; verticalAlignment: Text.AlignVCenter }
-                        onToggled: sources.setProperty(index, "selected", checked)
+                        onToggled: {
+                            if (dialog.syncingSourceSelection)
+                                return;
+                            sources.setProperty(index, "selected", checked);
+                            dialog.syncAllSourcesCheckBox();
+                        }
                     }
                 }
             }

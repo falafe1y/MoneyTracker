@@ -199,67 +199,40 @@ Dialog {
         onActivated: dialog.submit()
     }
 
-    component FormField: TextField {
-        id: field
-        implicitHeight: 44
-        leftPadding: 13
-        rightPadding: 13
-        color: dialog.textColor
-        placeholderTextColor: dialog.mutedColor
-        background: Rectangle {
-            radius: 10
-            color: field.activeFocus ? dialog.panelColor : dialog.softColor
-            border.width: field.activeFocus ? 2 : 1
-            border.color: field.activeFocus
-                        ? dialog.accentColor : dialog.lineColor
-        }
+    component FormField: StyledTextField {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appOnAccentColor: dialog.panelColor
     }
 
-    component FormCombo: ComboBox {
-        id: combo
-        implicitHeight: 44
+    component FormCombo: StyledComboBox {
         textRole: "label"
         valueRole: "value"
-        leftPadding: 13
-        rightPadding: 36
-        contentItem: Text {
-            text: combo.displayText
-            color: dialog.textColor
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-        }
-        background: Rectangle {
-            radius: 10
-            color: dialog.softColor
-            border.width: combo.activeFocus || combo.popup.visible ? 2 : 1
-            border.color: combo.activeFocus || combo.popup.visible
-                        ? dialog.accentColor : dialog.lineColor
-        }
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
     }
 
-    component FormButton: Button {
-        id: button
-        property bool primary: false
-        property bool destructive: false
-        implicitHeight: 40
+    component FormButton: StyledButton {
         leftPadding: 14
         rightPadding: 14
-        contentItem: Text {
-            text: button.text
-            color: button.primary || button.destructive
-                 ? dialog.panelColor : dialog.textColor
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 9
-            color: button.destructive ? dialog.errorColor
-                 : button.primary ? dialog.accentColor : dialog.panelColor
-            border.width: button.activeFocus ? 2
-                        : button.primary || button.destructive ? 0 : 1
-            border.color: button.activeFocus
-                        ? dialog.mutedColor : dialog.lineColor
-        }
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
+        appOnAccentColor: dialog.panelColor
+        appErrorColor: dialog.errorColor
     }
 
     background: Rectangle {

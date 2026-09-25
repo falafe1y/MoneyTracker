@@ -160,6 +160,7 @@
     <message><source>Не удалось импортировать CSV: %1</source><translation>Could not import CSV: %1</translation></message>
     <message><source>1 USD в рублях</source><translation>1 USD in rubles</translation></message>
     <message><source>1 EUR в рублях</source><translation>1 EUR in rubles</translation></message>
+    <message><source>1 RUB в рублях</source><translation>1 RUB in rubles</translation></message>
     <message><source>30 дней</source><translation>30 days</translation></message>
     <message><source>операций: </source><translation>transactions: </translation></message>
     <message><source>+ Счёт</source><translation>+ Account</translation></message>

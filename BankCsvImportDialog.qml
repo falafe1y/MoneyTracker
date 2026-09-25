@@ -274,56 +274,49 @@ Dialog {
         open();
     }
 
-    component FormField: TextField {
-        id: formField
-        implicitHeight: 42
-        color: dialog.textColor
-        placeholderTextColor: dialog.mutedColor
-        background: Rectangle {
-            radius: 9
-            color: dialog.softColor
-            border.width: 1
-            border.color: formField.activeFocus ? dialog.accentColor : dialog.lineColor
-        }
+    component FormField: StyledTextField {
+        controlHeight: 42
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appOnAccentColor: dialog.panelColor
     }
 
-    component FormCombo: ComboBox {
-        id: formCombo
-        implicitHeight: 42
+    component FormCombo: StyledComboBox {
+        controlHeight: 42
         textRole: "label"
         valueRole: "value"
-        contentItem: Text {
-            leftPadding: 10
-            rightPadding: 28
-            text: formCombo.displayText
-            color: dialog.textColor
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
-        }
-        background: Rectangle {
-            radius: 9
-            color: dialog.softColor
-            border.width: 1
-            border.color: dialog.lineColor
-        }
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
     }
 
-    component FormButton: Button {
-        id: formButton
-        implicitHeight: 40
-        property bool primary: false
-        contentItem: Text {
-            text: formButton.text
-            color: formButton.primary ? "#fffff0" : dialog.textColor
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        background: Rectangle {
-            radius: 9
-            color: formButton.primary ? dialog.accentColor : dialog.softColor
-            border.width: formButton.primary ? 0 : 1
-            border.color: dialog.lineColor
-        }
+    component FormCheckBox: StyledCheckBox {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
+        appOnAccentColor: dialog.panelColor
+    }
+
+    component FormButton: StyledButton {
+        appTextColor: dialog.textColor
+        appMutedColor: dialog.mutedColor
+        appPanelColor: dialog.panelColor
+        appSoftColor: dialog.softColor
+        appLineColor: dialog.lineColor
+        appAccentColor: dialog.accentColor
+        appHoverColor: "#E4E8F1"
+        appOnAccentColor: dialog.panelColor
     }
 
     background: Rectangle {
@@ -489,7 +482,7 @@ Dialog {
                         Layout.fillWidth: true
                         model: dialog.columnItems(false)
                     }
-                    CheckBox {
+                    FormCheckBox {
                         id: positiveIncomeCheck
                         visible: amountModeBox.currentValue === "signed"
                         Layout.columnSpan: 2

@@ -14,16 +14,17 @@ ColumnLayout {
         if (row.achieved) return qsTr("Цель достигнута");
         return row.overdue ? qsTr("Срок истёк") : qsTr("В процессе");
     }
-    component Action: Button {
-        id: action
-        property bool primary: false
-        property bool destructive: false
-        implicitHeight: 40
+    component Action: StyledButton {
         leftPadding: 14; rightPadding: 14
-        contentItem: Text { text: action.text; color: action.primary || action.destructive ? theme.white : theme.accent
-            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-        background: Rectangle { radius: 9; color: action.destructive ? theme.red : action.primary ? theme.accent : theme.soft
-            border.color: theme.line }
+        appTextColor: theme.accent
+        appMutedColor: theme.muted
+        appPanelColor: theme.panel
+        appSoftColor: theme.soft
+        appLineColor: theme.line
+        appAccentColor: theme.accent
+        appHoverColor: theme.controlHovered
+        appOnAccentColor: theme.white
+        appErrorColor: theme.red
     }
     RowLayout {
         Layout.fillWidth: true
@@ -91,7 +92,10 @@ ColumnLayout {
             width: Math.min(430, parent.width - 40); horizontalAlignment: Text.AlignHCenter
             text: qsTr("Создайте цель: укажите нужную сумму, валюту и при желании срок.")
             color: theme.muted; font.pixelSize: 18; wrapMode: Text.WordWrap }
-        ScrollBar.vertical: ScrollBar {}
+        ScrollBar.vertical: StyledScrollBar {
+            appAccentColor: theme.accentSoft
+            appTrackColor: theme.line
+        }
     }
     FinancialGoalDialog { id: editor; controller: page.controller; theme: page.theme; parent: Overlay.overlay }
     Dialog {
