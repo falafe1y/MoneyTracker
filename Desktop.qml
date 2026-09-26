@@ -38,14 +38,7 @@ ApplicationWindow {
     readonly property color chartAccent3: "#3a8eee"
     readonly property color chartAccent4: "#31c7ed"
     readonly property color chartAccent5: "#70d6f0"
-    readonly property var chartColors: [
-        chartAccent1,
-        chartAccent2,
-        chartAccent3,
-        chartAccent4,
-        chartAccent5
-    ]
-
+    readonly property var chartColors: [chartAccent1, chartAccent2, chartAccent3, chartAccent4, chartAccent5]
     readonly property color tableHeader: "#F1F0DF"
     readonly property color tableRowAlt: "#FAF9EC"
     readonly property color categoryRow: "#FFFFF0"
@@ -629,18 +622,36 @@ ApplicationWindow {
     component NavButton: Button {
         id: nav
         property string glyph: ""
+        property string iconSource: ""
         property string target: ""
         flat: true
         hoverEnabled: true
         implicitHeight: 54
         contentItem: RowLayout {
             spacing: 14
-            Text {
-                text: nav.glyph
-                color: root.page === nav.target ? root.white : root.paleText
-                font.pixelSize: 20
+            Item {
                 Layout.preferredWidth: 26
-                horizontalAlignment: Text.AlignHCenter
+                Layout.preferredHeight: 26
+
+                Text {
+                    anchors.fill: parent
+                    visible: nav.iconSource.length === 0
+                    text: nav.glyph
+                    color: root.page === nav.target ? root.white : root.paleText
+                    font.pixelSize: 20
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Image {
+                    id: navIconImage
+                    anchors.centerIn: parent
+                    width: 22
+                    height: 22
+                    visible: nav.iconSource.length > 0
+                    source: nav.iconSource
+                    sourceSize: Qt.size(22, 22)
+                    fillMode: Image.PreserveAspectFit
+                }
             }
             Text {
                 text: nav.text
@@ -694,7 +705,7 @@ ApplicationWindow {
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Обзор")
-                    glyph: "▦"
+                    iconSource: "qrc:/icons/dashboard.svg"
                     target: "overview"
                 }
                 NavButton {
@@ -706,7 +717,7 @@ ApplicationWindow {
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Цели")
-                    glyph: "◎"
+                    iconSource: "qrc:/icons/goals.svg"
                     target: "goals"
                 }
                 NavButton {
@@ -730,7 +741,7 @@ ApplicationWindow {
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Аналитика")
-                    glyph: "▥"
+                    iconSource: "qrc:/icons/analytics.svg"
                     target: "analytics"
                 }
                 Item {

@@ -3,8 +3,9 @@ cmake_minimum_required(VERSION 3.16)
 project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network LinguistTools)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network LinguistTools Svg)
 find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.10)
@@ -16,6 +17,7 @@ endif()
 
 qt_add_executable(appMoneyTracker
     main.cpp
+    resources.qrc
 )
 
 qt_add_qml_module(appMoneyTracker
@@ -97,7 +99,6 @@ qt_add_qml_module(appMoneyTracker
         SOURCES interface/FinanceController.cpp
         SOURCES persistence/FinanceRepository.h
         SOURCES persistence/FinanceRepository.cpp
-        RESOURCES resources.qrc
 )
 
 qt_add_translations(
@@ -124,6 +125,7 @@ target_link_libraries(appMoneyTracker
         Qt6::QuickControls2
         Qt6::Sql
         Qt6::Network
+        Qt6::Svg
         ZLIB::ZLIB
 )
 

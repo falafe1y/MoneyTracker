@@ -414,6 +414,7 @@ ApplicationWindow {
     component NavButton: Button {
         id: nav
         property string glyph: ""
+        property string iconSource: ""
         property string target: ""
         flat: true
         hoverEnabled: true
@@ -421,12 +422,29 @@ ApplicationWindow {
         implicitWidth: 56
         contentItem: ColumnLayout {
             spacing: 2
-            Text {
-                text: nav.glyph
-                color: root.page === nav.target ? root.white : root.paleText
-                font.pixelSize: 19
+            Item {
                 Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
+                Layout.preferredHeight: 24
+
+                Text {
+                    anchors.fill: parent
+                    visible: nav.iconSource.length === 0
+                    text: nav.glyph
+                    color: root.page === nav.target ? root.white : root.paleText
+                    font.pixelSize: 19
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Image {
+                    id: navIconImage
+                    anchors.centerIn: parent
+                    width: 21
+                    height: 21
+                    visible: nav.iconSource.length > 0
+                    source: nav.iconSource
+                    sourceSize: Qt.size(21, 21)
+                    fillMode: Image.PreserveAspectFit
+                }
             }
             Text {
                 text: nav.text
@@ -556,7 +574,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Обзор")
-                    glyph: "▦"
+                    iconSource: "qrc:/icons/dashboard.svg"
                     target: "overview"
                 }
                 NavButton {
@@ -584,7 +602,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Аналитика")
-                    glyph: "▥"
+                    iconSource: "qrc:/icons/analytics.svg"
                     target: "analytics"
                 }
                 NavButton {
