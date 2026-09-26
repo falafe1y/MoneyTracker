@@ -23,7 +23,11 @@ public:
     qint64 rateToUsd(Currency currency) const override;
     bool automaticUpdatesEnabled() const;
     void setAutomaticUpdatesEnabled(bool enabled);
-    bool setManualRates(double rublesPerUsd, double rublesPerEur);
+    bool setManualRates(
+        double rublesPerRub,
+        double rublesPerUsd,
+        double rublesPerEur
+        );
 
 signals:
     void ratesUpdated();
@@ -36,6 +40,7 @@ private:
 
     static QString defaultCacheFilePath();
     static bool buildRatesToUsd(
+        double rublesPerRub,
         double rublesPerUsd,
         double rublesPerEur,
         std::array<qint64, 3>& ratesToUsd

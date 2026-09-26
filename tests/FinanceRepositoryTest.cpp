@@ -688,12 +688,13 @@ void FinanceRepositoryTest::storesCurrencyRateSettings()
         QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
         QVERIFY(repository.loadAutomaticCurrencyRates());
         QVERIFY(repository.saveAutomaticCurrencyRates(false));
-        QVERIFY(repository.saveManualCurrencyRates(86.54, 100.12));
+        QVERIFY(repository.saveManualCurrencyRates(1.02, 86.54, 100.12));
     }
 
     FinanceRepository reopened(databasePath);
     QVERIFY2(reopened.isOpen(), qPrintable(reopened.lastError()));
     QVERIFY(!reopened.loadAutomaticCurrencyRates());
+    QCOMPARE(reopened.loadManualRubToRubRate(), 1.02);
     QCOMPARE(reopened.loadManualUsdToRubRate(), 86.54);
     QCOMPARE(reopened.loadManualEurToRubRate(), 100.12);
 }

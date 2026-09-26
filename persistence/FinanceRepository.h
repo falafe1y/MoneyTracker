@@ -170,10 +170,12 @@ public:
     QString loadUiLanguage() const;
     bool saveUiLanguage(const QString& language);
     bool loadAutomaticCurrencyRates() const;
+    double loadManualRubToRubRate() const;
     double loadManualUsdToRubRate() const;
     double loadManualEurToRubRate() const;
     bool saveAutomaticCurrencyRates(bool enabled);
     bool saveManualCurrencyRates(
+        double rublesPerRub,
         double rublesPerUsd,
         double rublesPerEur
         );

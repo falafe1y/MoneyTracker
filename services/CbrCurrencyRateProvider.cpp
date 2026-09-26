@@ -82,12 +82,14 @@ void CbrCurrencyRateProvider::setAutomaticUpdatesEnabled(const bool enabled)
 }
 
 bool CbrCurrencyRateProvider::setManualRates(
+    const double rublesPerRub,
     const double rublesPerUsd,
     const double rublesPerEur
     )
 {
     std::array<qint64, 3> candidate;
-    if (!buildRatesToUsd(rublesPerUsd, rublesPerEur, candidate)) {
+    if (!buildRatesToUsd(
+            rublesPerRub, rublesPerUsd, rublesPerEur, candidate)) {
         return false;
     }
 
@@ -211,18 +213,21 @@ QString CbrCurrencyRateProvider::defaultCacheFilePath()
 }
 
 bool CbrCurrencyRateProvider::buildRatesToUsd(
+    const double rublesPerRub,
     const double rublesPerUsd,
     const double rublesPerEur,
     std::array<qint64, 3>& ratesToUsd
     )
 {
-    if (!std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
+    if (!std::isfinite(rublesPerRub) || rublesPerRub <= 0.0 ||
+        !std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
         !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0) {
         return false;
     }
 
     const double rubRate =
-        static_cast<double>(kCurrencyRateScale) / rublesPerUsd;
+        static_cast<double>(kCurrencyRateScale) *
+        rublesPerRub / rublesPerUsd;
     const double eurRate =
         static_cast<double>(kCurrencyRateScale) *
         rublesPerEur / rublesPerUsd;

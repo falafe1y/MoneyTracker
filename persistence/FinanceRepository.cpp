@@ -2033,6 +2033,22 @@ double FinanceRepository::loadManualUsdToRubRate() const
     return 90.909090909;
 }
 
+double FinanceRepository::loadManualRubToRubRate() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings "
+            "WHERE key = 'manual_rub_to_rub_rate'")) &&
+        query.next()) {
+        bool valid = false;
+        const double value = query.value(0).toString().toDouble(&valid);
+        if (valid && std::isfinite(value) && value > 0.0) {
+            return value;
+        }
+    }
+    return 1.0;
+}
+
 double FinanceRepository::loadManualEurToRubRate() const
 {
     QSqlQuery query(database_);
@@ -2065,11 +2081,13 @@ bool FinanceRepository::saveAutomaticCurrencyRates(const bool enabled)
 }
 
 bool FinanceRepository::saveManualCurrencyRates(
+    const double rublesPerRub,
     const double rublesPerUsd,
     const double rublesPerEur
     )
 {
-    if (!std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
+    if (!std::isfinite(rublesPerRub) || rublesPerRub <= 0.0 ||
+        !std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
         !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0) {
         setLastError(QStringLiteral("Currency rates must be positive numbers"));
         return false;
@@ -2089,7 +2107,8 @@ bool FinanceRepository::saveManualCurrencyRates(
         query.bindValue(1, QString::number(value, 'g', 15));
         return query.exec();
     };
-    if (!saveRate(QStringLiteral("manual_usd_to_rub_rate"), rublesPerUsd) ||
+    if (!saveRate(QStringLiteral("manual_rub_to_rub_rate"), rublesPerRub) ||
+        !saveRate(QStringLiteral("manual_usd_to_rub_rate"), rublesPerUsd) ||
         !saveRate(QStringLiteral("manual_eur_to_rub_rate"), rublesPerEur)) {
         setLastError(query.lastError().text());
         database_.rollback();
@@ -2939,6 +2958,9 @@ bool FinanceRepository::seedDefaults()
         !setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) "
             "VALUES('automatic_currency_rates','1')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) "
+            "VALUES('manual_rub_to_rub_rate','1')")) ||
         !setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) "
             "VALUES('manual_usd_to_rub_rate','90.909090909')")) ||

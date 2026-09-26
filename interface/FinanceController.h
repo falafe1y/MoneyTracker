@@ -75,6 +75,12 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        double manualRubToRubRate
+            READ manualRubToRubRate
+                NOTIFY manualCurrencyRatesChanged
+        )
+
+    Q_PROPERTY(
         double manualUsdToRubRate
             READ manualUsdToRubRate
                 NOTIFY manualCurrencyRatesChanged
@@ -325,10 +331,12 @@ public:
 
     bool automaticCurrencyRates() const;
     void setAutomaticCurrencyRates(bool enabled);
+    double manualRubToRubRate() const;
     double manualUsdToRubRate() const;
     double manualEurToRubRate() const;
     QVariantList currentCurrencyRates() const;
     Q_INVOKABLE bool saveManualCurrencyRates(
+        double rublesPerRub,
         double rublesPerUsd,
         double rublesPerEur
         );
@@ -664,6 +672,7 @@ private:
     Currency appCurrency_ = Currency::RUB;
     QString uiLanguage_ = QStringLiteral("ru");
     bool automaticCurrencyRates_ = true;
+    double manualRubToRubRate_ = 1.0;
     double manualUsdToRubRate_ = 90.909090909;
     double manualEurToRubRate_ = 106.363636364;
     AssetType selectedAsset_ = AssetType::Fiat;

@@ -3460,9 +3460,18 @@ ApplicationWindow {
                         color: root.accent
                     }
                     AppTextField {
+                        id: manualRubRateField
                         implicitWidth: 180
-                        text: Number(1).toLocaleString(root.uiLocale(), "f", 4)
-                        readOnly: true
+                        text: financeController.manualRubToRubRate.toLocaleString(
+                            root.uiLocale(), "f", 4)
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        validator: DoubleValidator {
+                            bottom: 0.0001
+                            top: 999999999
+                            decimals: 4
+                            locale: root.uiLocale().name
+                        }
+                        onTextEdited: rateSaveStatus.text = ""
                     }
 
                     Text {
@@ -3510,13 +3519,15 @@ ApplicationWindow {
                     SoftButton {
                         text: qsTr("Сохранить курсы")
                         highlighted: true
-                        enabled: manualUsdRateField.acceptableInput
+                        enabled: manualRubRateField.acceptableInput
+                              && manualUsdRateField.acceptableInput
                               && manualEurRateField.acceptableInput
                         onClicked: {
+                            const rubRate = Number(manualRubRateField.text.replace(",", "."));
                             const usdRate = Number(manualUsdRateField.text.replace(",", "."));
                             const eurRate = Number(manualEurRateField.text.replace(",", "."));
                             const saved = financeController.saveManualCurrencyRates(
-                                usdRate, eurRate);
+                                rubRate, usdRate, eurRate);
                             rateSaveStatus.color = saved ? root.income : root.red;
                             rateSaveStatus.text = saved
                                 ? qsTr("Курсы сохранены")

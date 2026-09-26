@@ -274,7 +274,7 @@ void CurrencyRateCacheTest::manualRatesAreUsedWhenAutomaticUpdatesAreDisabled()
 {
     CbrCurrencyRateProvider provider;
     provider.setAutomaticUpdatesEnabled(false);
-    QVERIFY(provider.setManualRates(86.54, 100.0));
+    QVERIFY(provider.setManualRates(1.0, 86.54, 100.0));
 
     const CurrencyConverter converter(provider);
     QCOMPARE(
@@ -291,11 +291,12 @@ void CurrencyRateCacheTest::invalidManualRatesAreRejected()
 {
     CbrCurrencyRateProvider provider;
     provider.setAutomaticUpdatesEnabled(false);
-    QVERIFY(provider.setManualRates(86.54, 100.0));
+    QVERIFY(provider.setManualRates(1.0, 86.54, 100.0));
     const qint64 previousRubRate = provider.rateToUsd(Currency::RUB);
 
-    QVERIFY(!provider.setManualRates(0.0, 100.0));
-    QVERIFY(!provider.setManualRates(86.54, -1.0));
+    QVERIFY(!provider.setManualRates(0.0, 86.54, 100.0));
+    QVERIFY(!provider.setManualRates(1.0, 0.0, 100.0));
+    QVERIFY(!provider.setManualRates(1.0, 86.54, -1.0));
     QCOMPARE(provider.rateToUsd(Currency::RUB), previousRubRate);
 }
 

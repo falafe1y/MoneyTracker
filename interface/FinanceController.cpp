@@ -649,10 +649,13 @@ FinanceController::FinanceController(QObject* parent)
     uiLanguage_ = repository_.loadUiLanguage() == QStringLiteral("en")
         ? QStringLiteral("en")
         : QStringLiteral("ru");
+    manualRubToRubRate_ = repository_.loadManualRubToRubRate();
     manualUsdToRubRate_ = repository_.loadManualUsdToRubRate();
     manualEurToRubRate_ = repository_.loadManualEurToRubRate();
     if (!rateProvider_.setManualRates(
-            manualUsdToRubRate_, manualEurToRubRate_)) {
+            manualRubToRubRate_,
+            manualUsdToRubRate_,
+            manualEurToRubRate_)) {
         qWarning() << "Failed to apply stored manual currency rates";
     }
     automaticCurrencyRates_ = repository_.loadAutomaticCurrencyRates();
@@ -841,6 +844,11 @@ void FinanceController::setAutomaticCurrencyRates(const bool enabled)
     emit automaticCurrencyRatesChanged();
 }
 
+double FinanceController::manualRubToRubRate() const
+{
+    return manualRubToRubRate_;
+}
+
 double FinanceController::manualUsdToRubRate() const
 {
     return manualUsdToRubRate_;
@@ -871,22 +879,28 @@ QVariantList FinanceController::currentCurrencyRates() const
 }
 
 bool FinanceController::saveManualCurrencyRates(
+    const double rublesPerRub,
     const double rublesPerUsd,
     const double rublesPerEur
     )
 {
-    if (!rateProvider_.setManualRates(rublesPerUsd, rublesPerEur)) {
+    if (!rateProvider_.setManualRates(
+            rublesPerRub, rublesPerUsd, rublesPerEur)) {
         return false;
     }
     if (repository_.isOpen() &&
-        !repository_.saveManualCurrencyRates(rublesPerUsd, rublesPerEur)) {
+        !repository_.saveManualCurrencyRates(
+            rublesPerRub, rublesPerUsd, rublesPerEur)) {
         qWarning() << "Failed to save manual currency rates:"
                    << repository_.lastError();
         rateProvider_.setManualRates(
-            manualUsdToRubRate_, manualEurToRubRate_);
+            manualRubToRubRate_,
+            manualUsdToRubRate_,
+            manualEurToRubRate_);
         return false;
     }
 
+    manualRubToRubRate_ = rublesPerRub;
     manualUsdToRubRate_ = rublesPerUsd;
     manualEurToRubRate_ = rublesPerEur;
     emit manualCurrencyRatesChanged();
