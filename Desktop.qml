@@ -5590,34 +5590,20 @@ ApplicationWindow {
     Dialog {
         id: categoryDialog
         width: 560
-        height: 620
         modal: true
         anchors.centerIn: parent
         padding: 22
-        property string editingId: ""
         function openForManagement() {
-            editingId = "";
             categoryNameField.clear();
             categoryError.text = "";
             open();
         }
-        function startEdit(row) {
-            editingId = row.value;
-            categoryNameField.text = row.label;
-            categoryType.currentIndex = row.type === "income" ? 0 : 1;
-        }
         function submit() {
-            const ok = editingId
-                     ? financeController.renameCategory(
-                         editingId,
-                         categoryNameField.text
-                     )
-                     : financeController.addCategory(
-                         categoryNameField.text,
-                         categoryType.currentIndex === 0 ? "income" : "expense"
-                     );
+            const ok = financeController.addCategory(
+                categoryNameField.text,
+                categoryType.currentIndex === 0 ? "income" : "expense"
+            );
             if (ok) {
-                editingId = "";
                 categoryNameField.clear();
                 categoryError.text = "";
             } else {
@@ -5649,10 +5635,9 @@ ApplicationWindow {
                 AppComboBox {
                     id: categoryType
                     model: [qsTr("Доход"), qsTr("Расход")]
-                    enabled: !categoryDialog.editingId
                 }
                 SoftButton {
-                    text: categoryDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
+                    text: qsTr("Сохранить")
                     highlighted: true
                     onClicked: categoryDialog.submit()
                 }
@@ -5661,60 +5646,6 @@ ApplicationWindow {
                 id: categoryError
                 color: root.red
                 font.pixelSize: 12
-            }
-            ListView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                spacing: 5
-                // Scrollbars intentionally hidden application-wide.
-                ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-                model: financeController.categories
-                delegate: Rectangle {
-                    required property var modelData
-                    width: ListView.view.width
-                    height: 48
-                    radius: 9
-                    color: root.categoryEditRow
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        Text {
-                            text: modelData.label
-                            color: root.accent
-                            Layout.fillWidth: true
-                        }
-                        Text {
-                            text: modelData.type === "income" ? qsTr("Доход") : qsTr("Расход")
-                            color: root.muted
-                            font.pixelSize: 11
-                        }
-                        SoftButton {
-                            flat: true
-                            text: "✎"
-                            controlHeight: 32
-                            leftPadding: 8
-                            rightPadding: 8
-                            onClicked: categoryDialog.startEdit(modelData)
-                        }
-                        SoftButton {
-                            flat: true
-                            destructive: true
-                            text: "×"
-                            controlHeight: 32
-                            leftPadding: 8
-                            rightPadding: 8
-                            onClicked: {
-                                financeController.deleteCategory(modelData.value);
-                                if (categoryDialog.editingId === modelData.value) {
-                                    categoryDialog.editingId = "";
-                                    categoryNameField.clear();
-                                }
-                            }
-                        }
-                    }
-                }
             }
             RowLayout {
                 Item {
