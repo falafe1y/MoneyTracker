@@ -711,7 +711,7 @@ ApplicationWindow {
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Категории")
-                    glyph: "◇"
+                    iconSource: "qrc:/icons/categories.svg"
                     target: "categories"
                 }
                 NavButton {
@@ -723,19 +723,19 @@ ApplicationWindow {
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Траектория")
-                    glyph: "↗"
+                    iconSource: "qrc:/icons/trajectory.svg"
                     target: "trajectory"
                 }
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Бюджеты")
-                    glyph: "▧"
+                    iconSource: "qrc:/icons/budgets.svg"
                     target: "budgets"
                 }
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Проекты")
-                    glyph: "▤"
+                    iconSource: "qrc:/icons/projects.svg"
                     target: "projects"
                 }
                 NavButton {
@@ -755,7 +755,7 @@ ApplicationWindow {
                 NavButton {
                     Layout.fillWidth: true
                     text: qsTr("Настройки")
-                    glyph: "⚙"
+                    iconSource: "qrc:/icons/settings.svg"
                     target: "settings"
                 }
             }

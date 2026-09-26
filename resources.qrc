@@ -2,6 +2,11 @@
     <qresource prefix="/icons">
         <file alias="analytics.svg">assets/icons/sidebar/chart-2-svgrepo-com.svg</file>
         <file alias="goals.svg">assets/icons/sidebar/checklist-svgrepo-com.svg</file>
-        <file alias="dashboard.svg">assets/icons/sidebar/ghost-smile-svgrepo-com.svg</file>
+        <file alias="dashboard.svg">assets/icons/sidebar/code-scan-svgrepo-com.svg</file>
+        <file alias="settings.svg">assets/icons/sidebar/settings-svgrepo-com.svg</file>
+        <file alias="categories.svg">assets/icons/sidebar/widget-4-svgrepo-com.svg</file>
+        <file alias="trajectory.svg">assets/icons/sidebar/diagram-up-svgrepo-com.svg</file>
+        <file alias="budgets.svg">assets/icons/sidebar/money-bag-svgrepo-com.svg</file>
+        <file alias="projects.svg">assets/icons/sidebar/server-svgrepo-com.svg</file>
     </qresource>
 </RCC>
