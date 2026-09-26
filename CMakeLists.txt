@@ -97,6 +97,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES interface/FinanceController.cpp
         SOURCES persistence/FinanceRepository.h
         SOURCES persistence/FinanceRepository.cpp
+        RESOURCES resources.qrc
 )
 
 qt_add_translations(
