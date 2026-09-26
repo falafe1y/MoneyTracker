@@ -1,1 +1,7 @@
-<RCC/>
+<RCC>
+    <qresource prefix="/icons">
+        <file alias="analytics.svg">assets/icons/sidebar/chart-2-svgrepo-com.svg</file>
+        <file alias="goals.svg">assets/icons/sidebar/checklist-svgrepo-com.svg</file>
+        <file alias="dashboard.svg">assets/icons/sidebar/ghost-smile-svgrepo-com.svg</file>
+    </qresource>
+</RCC>
