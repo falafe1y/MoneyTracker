@@ -333,9 +333,21 @@ ApplicationWindow {
         const amount = Number(minor) / 100;
         const absolute = Math.abs(amount);
         let divisor = 1, suffix = "";
-        if (absolute >= 1000000000) { divisor = 1000000000; suffix = qsTr("млрд"); }
-        else if (absolute >= 1000000) { divisor = 1000000; suffix = qsTr("млн"); }
-        else if (absolute >= 1000) { divisor = 1000; suffix = qsTr("тыс."); }
+        const westernStyle = code !== "RUB";
+        if (absolute >= 1000000000) { divisor = 1000000000; suffix = westernStyle ? "B" : qsTr("млрд"); }
+        else if (absolute >= 1000000) { divisor = 1000000; suffix = westernStyle ? "M" : qsTr("млн"); }
+        else if (absolute >= 1000) { divisor = 1000; suffix = westernStyle ? "K" : qsTr("тыс."); }
+        if (westernStyle) {
+            const scaledWestern = amount / divisor;
+            const roundedWestern = Math.round(scaledWestern);
+            const wholeWestern = Math.abs(scaledWestern - roundedWestern) < 0.000001;
+            const westernDigits = wholeWestern || Math.abs(scaledWestern) >= 100 ? 0
+                                : Math.abs(scaledWestern) >= 10 ? 1 : 2;
+            const westernNumber = Math.abs(scaledWestern).toFixed(westernDigits)
+                .replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
+            return (scaledWestern < 0 ? "−" : "")
+                + root.symbol(code) + westernNumber + suffix;
+        }
         if (divisor === 1) return root.money(Math.round(Number(minor)), code, false);
         const scaled = amount / divisor;
         const roundedScaled = Math.round(scaled);

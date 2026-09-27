@@ -490,15 +490,27 @@ ApplicationWindow {
         const absolute = Math.abs(amount);
         let divisor = 1;
         let suffix = "";
+        const westernStyle = code !== "RUB";
         if (absolute >= 1000000000) {
             divisor = 1000000000;
-            suffix = qsTr("млрд");
+            suffix = westernStyle ? "B" : qsTr("млрд");
         } else if (absolute >= 1000000) {
             divisor = 1000000;
-            suffix = qsTr("млн");
+            suffix = westernStyle ? "M" : qsTr("млн");
         } else if (absolute >= 1000) {
             divisor = 1000;
-            suffix = qsTr("тыс.");
+            suffix = westernStyle ? "K" : qsTr("тыс.");
+        }
+        if (westernStyle) {
+            const scaledWestern = amount / divisor;
+            const roundedWestern = Math.round(scaledWestern);
+            const wholeWestern = Math.abs(scaledWestern - roundedWestern) < 0.000001;
+            const westernDigits = wholeWestern || Math.abs(scaledWestern) >= 100 ? 0
+                                : Math.abs(scaledWestern) >= 10 ? 1 : 2;
+            const westernNumber = Math.abs(scaledWestern).toFixed(westernDigits)
+                .replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
+            return (scaledWestern < 0 ? "−" : "")
+                 + root.symbol(code) + westernNumber + suffix;
         }
         if (divisor === 1)
             return root.money(Math.round(Number(minor)), code, false);
@@ -755,16 +767,52 @@ ApplicationWindow {
                 ctx.stroke();
                 const labelCount = Math.min(5, data.length);
                 const used = {};
+                const labels = [];
                 for (let label = 0; label < labelCount; ++label) {
                     const index = labelCount === 1 ? 0
                         : Math.round(label * (data.length - 1) / (labelCount - 1));
                     if (used[index]) continue;
                     used[index] = true;
+                    const text = root.capitalDateLabel(data[index]);
+                    const x = xFor(data[index]);
+                    const textWidth = ctx.measureText(text).width;
+                    labels.push({
+                        index: index,
+                        text: text,
+                        x: x,
+                        left: index === 0 ? x
+                            : index === data.length - 1 ? x - textWidth
+                            : x - textWidth / 2,
+                        right: index === 0 ? x + textWidth
+                             : index === data.length - 1 ? x
+                             : x + textWidth / 2
+                    });
+                }
+                const visibleLabels = [];
+                function addIfFits(candidate) {
+                    const gap = 8;
+                    for (let i = 0; i < visibleLabels.length; ++i) {
+                        const other = visibleLabels[i];
+                        if (candidate.left < other.right + gap
+                            && candidate.right > other.left - gap)
+                            return;
+                    }
+                    visibleLabels.push(candidate);
+                }
+                if (labels.length > 0)
+                    addIfFits(labels[0]);
+                if (labels.length > 1)
+                    addIfFits(labels[labels.length - 1]);
+                for (let i = 1; i < labels.length - 1; ++i)
+                    addIfFits(labels[i]);
+                visibleLabels.sort(function(a, b) { return a.index - b.index; });
+                for (let label = 0; label < visibleLabels.length; ++label) {
+                    const item = visibleLabels[label];
                     ctx.fillStyle = root.muted;
-                    ctx.textAlign = index === 0 ? "left"
-                        : index === data.length - 1 ? "right" : "center";
+                    ctx.textAlign = item.index === 0 ? "left"
+                        : item.index === data.length - 1 ? "right" : "center";
                     ctx.textBaseline = "top";
-                    ctx.fillText(root.capitalDateLabel(data[index]), xFor(data[index]), top + plotHeight + 8);
+                    ctx.fillText(item.text, item.x, top + plotHeight + 8);
                 }
             }
         }
