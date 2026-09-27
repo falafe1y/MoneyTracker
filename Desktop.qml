@@ -5752,17 +5752,6 @@ ApplicationWindow {
                 spacing: 6
 
                 SoftButton {
-                    Layout.fillWidth: true
-                    text: qsTr("30 дней")
-                    onClicked: {
-                        const to = dateFilterDialog.normalizedDate(new Date());
-                        const from = new Date(to);
-                        from.setDate(from.getDate() - 29);
-                        dateFilterDialog.applyRange(from, to);
-                    }
-                }
-                SoftButton {
-                    Layout.fillWidth: true
                     text: qsTr("Этот месяц")
                     onClicked: {
                         const to = dateFilterDialog.normalizedDate(new Date());
@@ -5773,7 +5762,6 @@ ApplicationWindow {
                     }
                 }
                 SoftButton {
-                    Layout.fillWidth: true
                     text: qsTr("Этот год")
                     onClicked: {
                         const to = dateFilterDialog.normalizedDate(new Date());
@@ -5781,6 +5769,14 @@ ApplicationWindow {
                             new Date(to.getFullYear(), 0, 1, 12),
                             to
                         );
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                SoftButton {
+                    text: qsTr("Все время")
+                    onClicked: {
+                        financeController.clearDateFilter();
+                        dateFilterDialog.close();
                     }
                 }
             }
@@ -5883,13 +5879,6 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
 
-                SoftButton {
-                    text: qsTr("Все время")
-                    onClicked: {
-                        financeController.clearDateFilter();
-                        dateFilterDialog.close();
-                    }
-                }
                 Item {
                     Layout.fillWidth: true
                 }

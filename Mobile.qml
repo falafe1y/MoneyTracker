@@ -4032,20 +4032,11 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 6
+                spacing: 4
 
                 SoftButton {
-                    Layout.fillWidth: true
-                    text: qsTr("30 дней")
-                    onClicked: {
-                        const to = dateFilterDialog.normalizedDate(new Date());
-                        const from = new Date(to);
-                        from.setDate(from.getDate() - 29);
-                        dateFilterDialog.applyRange(from, to);
-                    }
-                }
-                SoftButton {
-                    Layout.fillWidth: true
+                    leftPadding: 8
+                    rightPadding: 8
                     text: qsTr("Этот месяц")
                     onClicked: {
                         const to = dateFilterDialog.normalizedDate(new Date());
@@ -4056,7 +4047,8 @@ ApplicationWindow {
                     }
                 }
                 SoftButton {
-                    Layout.fillWidth: true
+                    leftPadding: 8
+                    rightPadding: 8
                     text: qsTr("Этот год")
                     onClicked: {
                         const to = dateFilterDialog.normalizedDate(new Date());
@@ -4064,6 +4056,16 @@ ApplicationWindow {
                             new Date(to.getFullYear(), 0, 1, 12),
                             to
                         );
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                SoftButton {
+                    leftPadding: 8
+                    rightPadding: 8
+                    text: qsTr("Все время")
+                    onClicked: {
+                        financeController.clearDateFilter();
+                        dateFilterDialog.close();
                     }
                 }
             }
@@ -4167,29 +4169,15 @@ ApplicationWindow {
                 horizontalAlignment: Text.AlignHCenter
             }
 
-            GridLayout {
+            RowLayout {
                 Layout.fillWidth: true
-                columns: 3
-                columnSpacing: 6
 
+                Item { Layout.fillWidth: true }
                 SoftButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: qsTr("Все время")
-                    onClicked: {
-                        financeController.clearDateFilter();
-                        dateFilterDialog.close();
-                    }
-                }
-                SoftButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
                     text: qsTr("Отмена")
                     onClicked: dateFilterDialog.close()
                 }
                 SoftButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
                     text: qsTr("Применить")
                     highlighted: true
                     enabled: dateFilterDialog.pendingFrom !== null
