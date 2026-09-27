@@ -86,7 +86,7 @@ Rectangle {
                             text: modelData.accountName + " · "
                                   + qsTr("Количество: %1").arg(modelData.quantityText)
                             color: panel.mutedColor
-                            font.pixelSize: 11
+                            font.pixelSize: 14
                             elide: Text.ElideRight
                         }
                     }
@@ -110,7 +110,7 @@ Rectangle {
                                   : ""
                             color: panel.mutedColor
                             horizontalAlignment: Text.AlignRight
-                            font.pixelSize: 11
+                            font.pixelSize: 14
                         }
                     }
                     PanelButton {

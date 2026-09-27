@@ -305,7 +305,7 @@ Dialog {
                         ? qsTr("Отметьте категории, если хотите задать им отдельные лимиты")
                         : qsTr("Отметьте категории, которые входят в бюджет")
                     color: dialog.mutedColor
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                     wrapMode: Text.WordWrap
                 }
                 Repeater {
@@ -340,7 +340,7 @@ Dialog {
                     id: formError
                     Layout.fillWidth: true
                     color: dialog.errorColor
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                     wrapMode: Text.WordWrap
                 }
                 Item { Layout.preferredHeight: 8 }

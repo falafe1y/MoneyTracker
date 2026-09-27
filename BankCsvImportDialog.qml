@@ -422,7 +422,7 @@ Dialog {
                     Layout.fillWidth: true
                     text: dialog.detectedInfo
                     color: dialog.mutedColor
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                 }
 
                 Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
@@ -575,7 +575,7 @@ Dialog {
                         text: modelData
                         color: dialog.mutedColor
                         font.family: "monospace"
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         elide: Text.ElideRight
                     }
                 }

@@ -169,7 +169,7 @@ Dialog {
         Label {
             text: qsTr("Инвестиционный счёт")
             color: dialog.mutedColor
-            font.pixelSize: 12
+            font.pixelSize: 14
         }
         FormCombo {
             id: accountBox
@@ -183,7 +183,7 @@ Dialog {
         Label {
             text: qsTr("Тикер или ISIN")
             color: dialog.mutedColor
-            font.pixelSize: 12
+            font.pixelSize: 14
         }
         RowLayout {
             Layout.fillWidth: true
@@ -254,7 +254,7 @@ Dialog {
                             text: modelData.typeName
                                   + (modelData.isin ? " · " + modelData.isin : "")
                             color: dialog.mutedColor
-                            font.pixelSize: 11
+                            font.pixelSize: 14
                             elide: Text.ElideRight
                         }
                     }
@@ -273,7 +273,7 @@ Dialog {
                                 && dialog.controller.investmentQuoteBusy
                                 ? qsTr("Получаем цену…") : qsTr("Выбрать")
                         color: dialog.textColor
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -324,7 +324,7 @@ Dialog {
                   : dialog.controller ? dialog.controller.investmentLastError : ""
             color: dialog.errorColor
             wrapMode: Text.WordWrap
-            font.pixelSize: 12
+            font.pixelSize: 14
         }
 
         RowLayout {

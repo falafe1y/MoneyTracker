@@ -12,6 +12,7 @@ ApplicationWindow {
     visible: true
     title: "Ledgera"
     color: root.canvas
+    font.pixelSize: 14
 
     // Color palette
     // Ivory + indigo foundation. Indigo is the only primary accent;
@@ -496,7 +497,9 @@ ApplicationWindow {
         if (divisor === 1)
             return root.money(Math.round(Number(minor)), code, false);
         const scaled = amount / divisor;
-        const digits = Math.abs(scaled) >= 100 ? 0
+        const roundedScaled = Math.round(scaled);
+        const whole = Math.abs(scaled - roundedScaled) < 0.000001;
+        const digits = whole || Math.abs(scaled) >= 100 ? 0
                      : Math.abs(scaled) >= 10 ? 1 : 2;
         return scaled.toLocaleString(root.uiLocale(), "f", digits)
              + " " + suffix + " " + root.symbol(code);
@@ -976,7 +979,7 @@ ApplicationWindow {
             Text {
                 text: nav.text
                 color: root.page === nav.target ? root.white : root.paleText
-                font.pixelSize: 15
+                font.pixelSize: 16
                 Layout.fillWidth: true
             }
         }
@@ -1300,7 +1303,7 @@ ApplicationWindow {
                                        : qsTr("Счета"))
                                       + " · " + root.assetTitle(financeController.selectedAsset)
                                 color: root.accent
-                                font.pixelSize: 15
+                                font.pixelSize: 16
                                 font.weight: Font.DemiBold
                             }
                             Item {
@@ -1413,7 +1416,7 @@ ApplicationWindow {
                                             color: root.overviewAccountSelected(modelData)
                                                  ? root.paleText
                                                  : root.muted
-                                            font.pixelSize: 12
+                                            font.pixelSize: 14
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
                                         }
@@ -1445,14 +1448,14 @@ ApplicationWindow {
                                 Text {
                                     text: qsTr("История капитала")
                                     color: root.accent
-                                    font.pixelSize: 15
+                                    font.pixelSize: 16
                                     font.weight: Font.DemiBold
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
                                     text: root.capitalHistoryResolutionLabel()
                                     color: root.muted
-                                    font.pixelSize: 11
+                                    font.pixelSize: 14
                                 }
                             }
                             Item {
@@ -1517,7 +1520,7 @@ ApplicationWindow {
                                             return top + (maximum - value) / valueRange * plotHeight;
                                         }
 
-                                        ctx.font = "10px sans-serif";
+                                        ctx.font = "14px sans-serif";
                                         ctx.lineWidth = 1;
                                         const verticalTicks = 4;
                                         for (let tick = 0; tick <= verticalTicks; ++tick) {
@@ -1612,7 +1615,7 @@ ApplicationWindow {
                                     visible: financeController.capitalHistory.length === 0
                                     text: qsTr("Добавьте операцию — здесь появится история капитала")
                                     color: root.muted
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     horizontalAlignment: Text.AlignHCenter
                                     wrapMode: Text.WordWrap
                                 }
@@ -1629,7 +1632,7 @@ ApplicationWindow {
                             Text {
                                 text: qsTr("Структура расходов")
                                 color: root.accent
-                                font.pixelSize: 15
+                                font.pixelSize: 16
                                 font.weight: Font.DemiBold
                             }
                             RowLayout {
@@ -1701,7 +1704,7 @@ ApplicationWindow {
                                             Text {
                                                 text: root.money(modelData.amount, financeController.appCurrency, false)
                                                 color: root.accent
-                                                font.pixelSize: 11
+                                                font.pixelSize: 14
                                             }
                                         }
                                     }
@@ -1774,7 +1777,7 @@ ApplicationWindow {
                         root.selectedCryptoSymbol() || qsTr("криптовалюты")
                     )
                     color: root.accent
-                    font.pixelSize: 15
+                    font.pixelSize: 16
                     font.weight: Font.DemiBold
                 }
                 Item { Layout.fillWidth: true }
@@ -1782,7 +1785,7 @@ ApplicationWindow {
                     text: qsTr("Последние операции: %1")
                         .arg(dashboardCryptoHistory.rows.length)
                     color: root.muted
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                 }
             }
 
@@ -1799,31 +1802,31 @@ ApplicationWindow {
                     Text {
                         text: qsTr("Дата")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: dashboardCryptoHistory.dateColumnWidth
                     }
                     Text {
                         text: qsTr("Направление")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
                     }
                     Text {
                         text: qsTr("Адрес")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.fillWidth: true
                     }
                     Text {
                         text: qsTr("Хеш")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: dashboardCryptoHistory.hashColumnWidth
                     }
                     Text {
                         text: qsTr("Сумма")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: dashboardCryptoHistory.amountColumnWidth
                         horizontalAlignment: Text.AlignRight
                     }
@@ -1861,7 +1864,7 @@ ApplicationWindow {
                                         "dd.MM.yyyy HH:mm"
                                     )
                                     color: root.muted
-                                    font.pixelSize: 11
+                                    font.pixelSize: 14
                                     Layout.preferredWidth: dashboardCryptoHistory.dateColumnWidth
                                 }
                                 Text {
@@ -1871,21 +1874,21 @@ ApplicationWindow {
                                     color: modelData.direction === "in"
                                          ? root.income
                                          : root.red
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     font.weight: Font.Medium
                                     Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
                                 }
                                 Text {
                                     text: modelData.counterparty
                                     color: root.muted
-                                    font.pixelSize: 11
+                                    font.pixelSize: 14
                                     Layout.fillWidth: true
                                     elide: Text.ElideMiddle
                                 }
                                 Text {
                                     text: modelData.transactionId
                                     color: root.muted
-                                    font.pixelSize: 11
+                                    font.pixelSize: 14
                                     Layout.preferredWidth: dashboardCryptoHistory.hashColumnWidth
                                     elide: Text.ElideMiddle
                                 }
@@ -1899,7 +1902,7 @@ ApplicationWindow {
                                     color: modelData.direction === "in"
                                          ? root.income
                                          : root.red
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: dashboardCryptoHistory.amountColumnWidth
                                     horizontalAlignment: Text.AlignRight
@@ -1953,7 +1956,7 @@ ApplicationWindow {
                 Text {
                     text: transactionBlock.title
                     color: root.accent
-                    font.pixelSize: 15
+                    font.pixelSize: 16
                     font.weight: Font.DemiBold
                 }
 
@@ -2069,37 +2072,37 @@ ApplicationWindow {
                     Text {
                         text: qsTr("Операция")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: transactionTable.operationColumnWidth
                     }
                     Text {
                         text: qsTr("Счёт")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: transactionTable.accountColumnWidth
                     }
                     Text {
                         text: qsTr("Категория")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: transactionTable.categoryColumnWidth
                     }
                     Text {
                         text: qsTr("Описание")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.fillWidth: true
                     }
                     Text {
                         text: qsTr("Дата")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: transactionTable.dateColumnWidth
                     }
                     Text {
                         text: qsTr("Сумма")
                         color: root.muted
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         Layout.preferredWidth: transactionTable.amountColumnWidth
                         horizontalAlignment: Text.AlignRight
                     }
@@ -2155,7 +2158,7 @@ ApplicationWindow {
                                 Text {
                                     text: root.transactionTypeLabel(modelData)
                                     color: root.accent
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     font.weight: Font.Medium
                                     Layout.preferredWidth: transactionTable.operationColumnWidth
                                     elide: Text.ElideRight
@@ -2163,28 +2166,28 @@ ApplicationWindow {
                                 Text {
                                     text: root.accountName(modelData.accountId)
                                     color: root.muted
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     Layout.preferredWidth: transactionTable.accountColumnWidth
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     text: modelData.categoryName
                                     color: root.accent
-                                    font.pixelSize: 11
+                                    font.pixelSize: 14
                                     Layout.preferredWidth: transactionTable.categoryColumnWidth
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     text: modelData.rawDescription || "—"
                                     color: root.muted
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
                                     color: root.muted
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     Layout.preferredWidth: transactionTable.dateColumnWidth
                                 }
                                 Text {
@@ -2195,7 +2198,7 @@ ApplicationWindow {
                                            ? root.navSelected
                                            : modelData.type === "income"
                                              ? root.income : root.red
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: transactionTable.amountColumnWidth
                                     horizontalAlignment: Text.AlignRight
@@ -2250,7 +2253,7 @@ ApplicationWindow {
                             Text {
                                 text: root.transactionTypeLabel(modelData)
                                 color: root.accent
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                                 font.weight: Font.Medium
                                 Layout.preferredWidth: transactionTable.operationColumnWidth
                                 elide: Text.ElideRight
@@ -2258,28 +2261,28 @@ ApplicationWindow {
                             Text {
                                 text: root.accountName(modelData.accountId)
                                 color: root.muted
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                                 Layout.preferredWidth: transactionTable.accountColumnWidth
                                 elide: Text.ElideRight
                             }
                             Text {
                                 text: modelData.categoryName
                                 color: root.accent
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 Layout.preferredWidth: transactionTable.categoryColumnWidth
                                 elide: Text.ElideRight
                             }
                             Text {
                                 text: modelData.rawDescription || "—"
                                 color: root.muted
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
                             }
                             Text {
                                 text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
                                 color: root.muted
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                                 Layout.preferredWidth: transactionTable.dateColumnWidth
                             }
                             Text {
@@ -2290,7 +2293,7 @@ ApplicationWindow {
                                        ? root.navSelected
                                        : modelData.type === "income"
                                          ? root.income : root.red
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                                 font.weight: Font.DemiBold
                                 Layout.preferredWidth: transactionTable.amountColumnWidth
                                 horizontalAlignment: Text.AlignRight
@@ -2392,7 +2395,7 @@ ApplicationWindow {
                                     Text {
                                         text: Math.round(modelData.progress * 100) + "%"
                                         color: modelData.progress > 1 ? root.red : root.muted
-                                        font.pixelSize: 12
+                                        font.pixelSize: 14
                                     }
                                 }
                                 Text {
@@ -2403,7 +2406,7 @@ ApplicationWindow {
                                         + root.money(modelData.displayLimitMinor,
                                                      modelData.displayCurrency, false)
                                     color: modelData.progress > 1 ? root.red : root.muted
-                                    font.pixelSize: 12
+                                    font.pixelSize: 14
                                     elide: Text.ElideRight
                                 }
                                 Rectangle {
@@ -2528,7 +2531,7 @@ ApplicationWindow {
                     visible: root.selectedBudget() && root.selectedBudget().rateMissing
                     text: qsTr("Не удалось пересчитать часть сумм: проверьте валютные курсы")
                     color: root.red
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                 }
 
                 RowLayout {
@@ -2558,7 +2561,7 @@ ApplicationWindow {
                                          .arg(root.selectedBudget().accountIds.length))
                                     : ""
                                 color: root.muted
-                                font.pixelSize: 12
+                                font.pixelSize: 14
                             }
                             ListView {
                                 id: budgetCategoryList
@@ -2598,7 +2601,7 @@ ApplicationWindow {
                                                     : root.money(modelData.spentMinor,
                                                         root.selectedBudget().currency, false)
                                                 color: modelData.progress > 1 ? root.red : root.muted
-                                                font.pixelSize: 11
+                                                font.pixelSize: 14
                                             }
                                         }
                                         Rectangle {
@@ -2673,7 +2676,7 @@ ApplicationWindow {
                                                     + Qt.formatDateTime(
                                                         new Date(modelData.date), "dd.MM.yyyy")
                                                 color: root.muted
-                                                font.pixelSize: 11
+                                                font.pixelSize: 14
                                             }
                                         }
                                         Text {
@@ -2815,7 +2818,7 @@ ApplicationWindow {
                                               true
                                           ))
                                     color: root.muted
-                                    font.pixelSize: 11
+                                    font.pixelSize: 14
                                     elide: Text.ElideRight
                                 }
                             }
@@ -2846,7 +2849,7 @@ ApplicationWindow {
                         visible: financeController.projects.length === 0
                         text: qsTr("Создайте первый проект, чтобы учитывать его доходы и расходы")
                         color: root.muted
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         wrapMode: Text.WordWrap
@@ -2915,7 +2918,7 @@ ApplicationWindow {
                                 Text {
                                     text: modelData.title
                                     color: root.muted
-                                    font.pixelSize: 13
+                                    font.pixelSize: 14
                                 }
                                 Text {
                                     text: root.money(
@@ -2963,7 +2966,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: qsTr("Создайте проект слева, а затем добавляйте его доходы и расходы прямо здесь")
                         color: root.muted
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                     }
@@ -3029,7 +3032,7 @@ ApplicationWindow {
                           : qsTr("Не удалось обновить криптоданные: %1")
                                 .arg(financeController.cryptoLastError)
                     color: financeController.cryptoRefreshing ? root.muted : root.red
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                     elide: Text.ElideRight
                 }
                 SoftButton {
@@ -3102,7 +3105,7 @@ ApplicationWindow {
                             color: accountCard.selected
                                  ? root.paleText
                                  : root.navSelected
-                            font.pixelSize: 12
+                            font.pixelSize: 14
                         }
                         Text {
                             Layout.fillWidth: true
@@ -3112,7 +3115,7 @@ ApplicationWindow {
                             color: accountCard.selected
                                  ? root.paleText
                                  : root.muted
-                            font.pixelSize: 12
+                            font.pixelSize: 14
                             elide: Text.ElideMiddle
                         }
                         Text {
@@ -3124,7 +3127,7 @@ ApplicationWindow {
                                  : modelData.refreshing
                                    ? root.navSelected
                                    : root.muted
-                            font.pixelSize: 11
+                            font.pixelSize: 14
                             elide: Text.ElideRight
                         }
                     }
@@ -3216,7 +3219,7 @@ ApplicationWindow {
                                 root.selectedCryptoSymbol() || qsTr("криптовалюты")
                             )
                             color: root.accent
-                            font.pixelSize: 15
+                            font.pixelSize: 16
                             font.weight: Font.DemiBold
                         }
                         Item { Layout.fillWidth: true }
@@ -3224,7 +3227,7 @@ ApplicationWindow {
                             text: qsTr("Последние операции: %1")
                                 .arg(financeController.cryptoTransactions.length)
                             color: root.muted
-                            font.pixelSize: 12
+                            font.pixelSize: 14
                         }
                     }
 
@@ -3241,31 +3244,31 @@ ApplicationWindow {
                             Text {
                                 text: qsTr("Дата")
                                 color: root.muted
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 Layout.preferredWidth: 125
                             }
                             Text {
                                 text: qsTr("Направление")
                                 color: root.muted
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 Layout.preferredWidth: 105
                             }
                             Text {
                                 text: qsTr("Адрес")
                                 color: root.muted
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 Layout.fillWidth: true
                             }
                             Text {
                                 text: qsTr("Хеш")
                                 color: root.muted
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 Layout.preferredWidth: 175
                             }
                             Text {
                                 text: qsTr("Сумма")
                                 color: root.muted
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                                 Layout.preferredWidth: 135
                                 horizontalAlignment: Text.AlignRight
                             }
@@ -3305,7 +3308,7 @@ ApplicationWindow {
                                             "dd.MM.yyyy HH:mm"
                                         )
                                         color: root.muted
-                                        font.pixelSize: 11
+                                        font.pixelSize: 14
                                         Layout.preferredWidth: 125
                                     }
                                     Text {
@@ -3315,21 +3318,21 @@ ApplicationWindow {
                                         color: modelData.direction === "in"
                                              ? root.income
                                              : root.red
-                                        font.pixelSize: 12
+                                        font.pixelSize: 14
                                         font.weight: Font.Medium
                                         Layout.preferredWidth: 105
                                     }
                                     Text {
                                         text: modelData.counterparty
                                         color: root.muted
-                                        font.pixelSize: 11
+                                        font.pixelSize: 14
                                         Layout.fillWidth: true
                                         elide: Text.ElideMiddle
                                     }
                                     Text {
                                         text: modelData.transactionId
                                         color: root.muted
-                                        font.pixelSize: 11
+                                        font.pixelSize: 14
                                         Layout.preferredWidth: 175
                                         elide: Text.ElideMiddle
                                     }
@@ -3343,7 +3346,7 @@ ApplicationWindow {
                                         color: modelData.direction === "in"
                                              ? root.income
                                              : root.red
-                                        font.pixelSize: 12
+                                        font.pixelSize: 14
                                         font.weight: Font.DemiBold
                                         Layout.preferredWidth: 135
                                         horizontalAlignment: Text.AlignRight
@@ -3625,7 +3628,7 @@ ApplicationWindow {
                                     < root.expenseHistoryLastYear()
                                 onClicked: analyticsScroll.expenseYear += 1
                             }
-                            Text { text: "RUB"; color: root.muted; font.pixelSize: 12 }
+                            Text { text: "RUB"; color: root.muted; font.pixelSize: 14 }
                         }
                         Text {
                             Layout.fillWidth: true
@@ -3651,7 +3654,7 @@ ApplicationWindow {
                             visible: financeController.expenseHistoryByMonthRub.length === 0
                             text: qsTr("Добавьте расходы — здесь появится история по месяцам")
                             color: root.muted
-                            font.pixelSize: 12
+                            font.pixelSize: 14
                         }
                     }
                 }
@@ -3960,7 +3963,7 @@ ApplicationWindow {
                     Text {
                         id: rateSaveStatus
                         color: root.income
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                     }
                 }
                 Rectangle {
@@ -4006,7 +4009,7 @@ ApplicationWindow {
                     visible: root.csvStatus.length > 0
                     text: root.csvStatus
                     color: root.csvStatusOk ? root.income : root.red
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                     wrapMode: Text.WordWrap
                 }
             }
@@ -4191,14 +4194,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: qsTr("Вводите только публичный адрес. Никогда не указывайте seed-фразу или приватный ключ.")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
             Text {
                 id: cryptoWalletError
                 Layout.fillWidth: true
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
             RowLayout {
@@ -4470,14 +4473,14 @@ ApplicationWindow {
                       && accountDialog.editingAccount.transactionCount > 0
                 text: qsTr("Валюту счёта с операциями изменить нельзя")
                 color: root.muted
-                font.pixelSize: 11
+                font.pixelSize: 14
             }
             Text {
                 Layout.fillWidth: true
                 visible: accountDialog.creditCardSelected
                 text: qsTr("Кредитный лимит")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             AppTextField {
                 id: accountCreditLimitField
@@ -4498,7 +4501,7 @@ ApplicationWindow {
                         ? qsTr("Сумма вклада")
                       : qsTr("Начальный баланс")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             AppTextField {
                 id: accountBalanceField
@@ -4520,7 +4523,7 @@ ApplicationWindow {
                 visible: accountDialog.depositSelected
                 text: qsTr("Годовая ставка, %")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             AppTextField {
                 id: depositRateField
@@ -4538,7 +4541,7 @@ ApplicationWindow {
                 visible: accountDialog.depositSelected
                 text: qsTr("Начисление процентов")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             AppComboBox {
                 id: depositPayoutBox
@@ -4552,7 +4555,7 @@ ApplicationWindow {
                 visible: accountDialog.monthlyDepositSelected
                 text: qsTr("День выплаты")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             AppTextField {
                 id: depositPayoutDayField
@@ -4566,13 +4569,13 @@ ApplicationWindow {
                 visible: accountDialog.creditCardSelected
                 text: qsTr("Кредитный лимит не считается активом. Расходы увеличивают задолженность, а перевод на кредитку её погашает.")
                 color: root.muted
-                font.pixelSize: 11
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
             Text {
                 id: accountError
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             RowLayout {
                 Item {
@@ -4804,7 +4807,7 @@ ApplicationWindow {
                       ? qsTr("Счёт и все связанные операции будут удалены. Связанные переводы удалятся целиком. Это действие нельзя отменить.")
                       : qsTr("Счёт будет удалён. Это действие нельзя отменить.")
                 color: root.muted
-                font.pixelSize: 13
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
 
@@ -4841,7 +4844,7 @@ ApplicationWindow {
                                      + deleteAccountDialog.accountData.transactionCount)
                               : ""
                         color: root.muted
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                         elide: Text.ElideRight
                     }
                 }
@@ -4851,7 +4854,7 @@ ApplicationWindow {
                 id: deleteAccountError
                 Layout.fillWidth: true
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
 
@@ -4997,7 +5000,7 @@ ApplicationWindow {
                         ? qsTr("Позиция будет удалена из списка и базы данных. Общая стоимость активов будет пересчитана.")
                       : qsTr("Это действие нельзя отменить. Баланс и статистика будут пересчитаны.")
                 color: root.muted
-                font.pixelSize: 13
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
 
@@ -5040,7 +5043,7 @@ ApplicationWindow {
                                 )
                               : ""
                         color: root.muted
-                        font.pixelSize: 12
+                        font.pixelSize: 14
                         elide: Text.ElideRight
                     }
                 }
@@ -5050,7 +5053,7 @@ ApplicationWindow {
                 id: deleteTransactionError
                 Layout.fillWidth: true
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
 
@@ -5147,7 +5150,7 @@ ApplicationWindow {
                 id: projectError
                 Layout.fillWidth: true
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
             RowLayout {
@@ -5212,7 +5215,7 @@ ApplicationWindow {
                       ? deleteProjectDialog.projectData.name
                       : ""
                 color: root.accent
-                font.pixelSize: 15
+                font.pixelSize: 16
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
@@ -5220,14 +5223,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: qsTr("Операции останутся на своих счетах и продолжат учитываться в общем балансе. Проект будет скрыт из списка.")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
             Text {
                 id: deleteProjectError
                 Layout.fillWidth: true
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             RowLayout {
                 Item { Layout.fillWidth: true }
@@ -5290,7 +5293,7 @@ ApplicationWindow {
                 text: deleteBudgetDialog.budgetData
                     ? deleteBudgetDialog.budgetData.name : ""
                 color: root.accent
-                font.pixelSize: 15
+                font.pixelSize: 16
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
@@ -5298,14 +5301,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: qsTr("История операций и счета не изменятся. Будет удалён только бюджет и его месячные лимиты.")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
             Text {
                 id: deleteBudgetError
                 Layout.fillWidth: true
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             RowLayout {
                 Item { Layout.fillWidth: true }
@@ -5624,7 +5627,7 @@ ApplicationWindow {
                 visible: operationType.currentIndex === 2
                 text: qsTr("Откуда")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             AppComboBox {
                 id: operationAccount
@@ -5642,7 +5645,7 @@ ApplicationWindow {
                 visible: operationType.currentIndex === 2
                 text: qsTr("Куда")
                 color: root.muted
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             AppComboBox {
                 id: transferTargetAccount
@@ -5700,7 +5703,7 @@ ApplicationWindow {
                 Text {
                     text: qsTr("Дата операции")
                     color: root.muted
-                    font.pixelSize: 12
+                    font.pixelSize: 14
                 }
 
                 Button {
@@ -5747,7 +5750,7 @@ ApplicationWindow {
             Text {
                 id: operationError
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             RowLayout {
                 Item {
@@ -5940,7 +5943,7 @@ ApplicationWindow {
                     required property string shortName
                     text: shortName
                     color: root.muted
-                    font.pixelSize: 11
+                    font.pixelSize: 14
                     font.weight: Font.DemiBold
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -5970,7 +5973,7 @@ ApplicationWindow {
                     contentItem: Text {
                         text: filterDayButton.model.day
                         color: filterDayButton.rangeEdge ? root.white : root.accent
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                         font.weight: filterDayButton.model.today
                                      ? Font.DemiBold
                                      : Font.Normal
@@ -6001,7 +6004,7 @@ ApplicationWindow {
                           + " — "
                           + Qt.formatDate(dateFilterDialog.pendingTo, "dd.MM.yyyy")
                 color: root.muted
-                font.pixelSize: 13
+                font.pixelSize: 14
                 horizontalAlignment: Text.AlignHCenter
             }
 
@@ -6116,7 +6119,7 @@ ApplicationWindow {
                     required property string shortName
                     text: shortName
                     color: root.muted
-                    font.pixelSize: 11
+                    font.pixelSize: 14
                     font.weight: Font.DemiBold
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -6147,7 +6150,7 @@ ApplicationWindow {
                                )
                                ? root.white
                                : root.accent
-                        font.pixelSize: 13
+                        font.pixelSize: 14
                         font.weight: dayButton.model.today ? Font.DemiBold : Font.Normal
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
@@ -6250,7 +6253,7 @@ ApplicationWindow {
             Text {
                 id: categoryError
                 color: root.red
-                font.pixelSize: 12
+                font.pixelSize: 14
             }
             RowLayout {
                 Item {

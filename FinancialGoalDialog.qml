@@ -153,7 +153,7 @@ Dialog {
                     placeholderText: qsTr("ДД.ММ.ГГГГ"); maximumLength: 10 }
                 Text { visible: limited.checked; Layout.fillWidth: true
                     text: qsTr("Срок включительно. После него цель продолжит обновляться.")
-                    color: theme.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                    color: theme.muted; font.pixelSize: 14; wrapMode: Text.WordWrap }
                 FormCheckBox {
                     id: allSources
                     text: qsTr("Учитывать весь текущий капитал")
@@ -164,7 +164,7 @@ Dialog {
                     }
                 }
                 Text { Layout.fillWidth: true; text: qsTr("Фиат, инвестиции и криптовалюта за вычетом задолженности. Деньги не резервируются: несколько целей могут учитывать одни средства.")
-                    color: theme.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                    color: theme.muted; font.pixelSize: 14; wrapMode: Text.WordWrap }
                 Repeater {
                     model: sources
                     delegate: FormCheckBox {

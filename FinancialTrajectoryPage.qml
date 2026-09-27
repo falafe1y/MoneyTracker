@@ -38,7 +38,7 @@ ScrollView {
     component Card: Rectangle {
         radius: 16; color: theme.panel; border.color: theme.line
     }
-    component Caption: Text { color: theme.muted; font.pixelSize: 13 }
+    component Caption: Text { color: theme.muted; font.pixelSize: 14 }
     component Field: StyledTextField {
         horizontalAlignment: Text.AlignRight
         validator: DoubleValidator { bottom: -99; top: 1000; decimals: 2 }

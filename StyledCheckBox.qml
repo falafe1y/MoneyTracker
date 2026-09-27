@@ -35,7 +35,7 @@ CheckBox {
             visible: control.checked
             text: "✓"
             color: control.appOnAccentColor
-            font.pixelSize: 15
+            font.pixelSize: 16
             font.weight: Font.Bold
         }
     }

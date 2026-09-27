@@ -326,7 +326,7 @@ Dialog {
                                         Layout.fillWidth: true
                                         text: modelData.name
                                         color: dialog.textColor
-                                        font.pixelSize: 15
+                                        font.pixelSize: 16
                                         font.weight: Font.DemiBold
                                         elide: Text.ElideRight
                                     }
@@ -338,7 +338,7 @@ Dialog {
                                                     dialog.dateFromIso(modelData.nextDate),
                                                     "dd.MM.yyyy"))
                                         color: dialog.mutedColor
-                                        font.pixelSize: 12
+                                        font.pixelSize: 14
                                         elide: Text.ElideRight
                                     }
                                     Text {
@@ -346,7 +346,7 @@ Dialog {
                                         text: modelData.accountName
                                             + " · " + modelData.categoryName
                                         color: dialog.mutedColor
-                                        font.pixelSize: 12
+                                        font.pixelSize: 14
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -532,7 +532,7 @@ Dialog {
                         visible: recurrenceBox.currentValue === "monthly_day"
                         text: qsTr("Если выбранного числа нет в месяце, операция будет создана в последний день месяца.")
                         color: dialog.mutedColor
-                        font.pixelSize: 11
+                        font.pixelSize: 14
                         wrapMode: Text.WordWrap
                     }
                     Text {
