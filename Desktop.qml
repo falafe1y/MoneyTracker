@@ -151,6 +151,12 @@ ApplicationWindow {
              : new Date();
     }
 
+    function budgetMonthLabel() {
+        const value = budgetMonthDate();
+        return root.expenseMonthLabel(value.getMonth())
+            + " " + value.getFullYear();
+    }
+
     function shiftBudgetMonth(offset) {
         const value = budgetMonthDate();
         value.setMonth(value.getMonth() + offset);
@@ -1140,7 +1146,7 @@ ApplicationWindow {
                 SoftButton {
                     implicitWidth: 205
                     implicitHeight: 42
-                    text: "◷  " + root.dateFilterLabel()
+                    text: root.dateFilterLabel()
                     onClicked: dateFilterDialog.openForCurrent()
                 }
             }
@@ -1446,14 +1452,16 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text {
-                                    text: qsTr("История капитала")
+                                    text: qsTr("История капитала в рублях")
                                     color: root.accent
                                     font.pixelSize: 16
                                     font.weight: Font.DemiBold
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
-                                    text: root.capitalHistoryResolutionLabel()
+                                    text: root.historyResolutionLabel(
+                                        financeController.capitalHistoryRub
+                                    )
                                     color: root.muted
                                     font.pixelSize: 14
                                 }
@@ -1462,157 +1470,17 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
-                                Canvas {
-                                    id: capitalHistoryChart
+                                AnalyticsLineChart {
                                     anchors.fill: parent
-                                    property var points: financeController.capitalHistory
-
-                                    onPointsChanged: requestPaint()
-                                    onWidthChanged: requestPaint()
-                                    onHeightChanged: requestPaint()
-
-                                    onPaint: {
-                                        const ctx = getContext("2d");
-                                        ctx.clearRect(0, 0, width, height);
-                                        const data = points || [];
-                                        if (data.length === 0 || width < 150 || height < 90)
-                                            return;
-
-                                        const left = 78;
-                                        const right = 12;
-                                        const top = 8;
-                                        const bottom = 31;
-                                        const plotWidth = Math.max(1, width - left - right);
-                                        const plotHeight = Math.max(1, height - top - bottom);
-
-                                        let minimum = Number(data[0].totalMinor);
-                                        let maximum = minimum;
-                                        for (let i = 1; i < data.length; ++i) {
-                                            const value = Number(data[i].totalMinor);
-                                            minimum = Math.min(minimum, value);
-                                            maximum = Math.max(maximum, value);
-                                        }
-                                        if (minimum === maximum) {
-                                            const padding = Math.max(100, Math.abs(minimum) * 0.05);
-                                            minimum -= padding;
-                                            maximum += padding;
-                                        } else {
-                                            const padding = (maximum - minimum) * 0.08;
-                                            minimum -= padding;
-                                            maximum += padding;
-                                        }
-
-                                        const valueRange = Math.max(1, maximum - minimum);
-                                        const firstDate = root.dateFromIso(data[0].date);
-                                        const lastDate = root.dateFromIso(data[data.length - 1].date);
-                                        const firstTime = firstDate ? firstDate.getTime() : 0;
-                                        const lastTime = lastDate ? lastDate.getTime() : firstTime;
-                                        const timeRange = Math.max(1, lastTime - firstTime);
-
-                                        function pointX(row, index) {
-                                            if (data.length === 1)
-                                                return left + plotWidth / 2;
-                                            const date = root.dateFromIso(row.date);
-                                            const time = date ? date.getTime() : firstTime;
-                                            return left + (time - firstTime) / timeRange * plotWidth;
-                                        }
-                                        function pointY(value) {
-                                            return top + (maximum - value) / valueRange * plotHeight;
-                                        }
-
-                                        ctx.font = "14px sans-serif";
-                                        ctx.lineWidth = 1;
-                                        const verticalTicks = 4;
-                                        for (let tick = 0; tick <= verticalTicks; ++tick) {
-                                            const ratio = tick / verticalTicks;
-                                            const y = top + ratio * plotHeight;
-                                            const value = maximum - ratio * valueRange;
-                                            ctx.strokeStyle = root.line;
-                                            ctx.beginPath();
-                                            ctx.moveTo(left, y);
-                                            ctx.lineTo(left + plotWidth, y);
-                                            ctx.stroke();
-                                            ctx.fillStyle = root.muted;
-                                            ctx.textAlign = "right";
-                                            ctx.textBaseline = "middle";
-                                            ctx.fillText(
-                                                root.capitalAxisMoney(
-                                                    value,
-                                                    financeController.appCurrency
-                                                ),
-                                                left - 7,
-                                                y
-                                            );
-                                        }
-
-                                        ctx.strokeStyle = root.accent;
-                                        ctx.lineWidth = 2.5;
-                                        ctx.lineJoin = "round";
-                                        ctx.lineCap = "round";
-                                        ctx.beginPath();
-                                        for (let point = 0; point < data.length; ++point) {
-                                            const x = pointX(data[point], point);
-                                            const y = pointY(Number(data[point].totalMinor));
-                                            if (point === 0)
-                                                ctx.moveTo(x, y);
-                                            else
-                                                ctx.lineTo(x, y);
-                                        }
-                                        ctx.stroke();
-
-                                        ctx.fillStyle = root.chartAccent3;
-                                        for (let marker = 0; marker < data.length; ++marker) {
-                                            ctx.beginPath();
-                                            ctx.arc(
-                                                pointX(data[marker], marker),
-                                                pointY(Number(data[marker].totalMinor)),
-                                                3.5,
-                                                0,
-                                                Math.PI * 2
-                                            );
-                                            ctx.fill();
-                                        }
-
-                                        const horizontalTicks = Math.min(5, data.length);
-                                        const used = {};
-                                        for (let label = 0; label < horizontalTicks; ++label) {
-                                            const index = horizontalTicks === 1
-                                                ? 0
-                                                : Math.round(
-                                                      label * (data.length - 1)
-                                                      / (horizontalTicks - 1)
-                                                  );
-                                            if (used[index])
-                                                continue;
-                                            used[index] = true;
-                                            const x = pointX(data[index], index);
-                                            ctx.fillStyle = root.muted;
-                                            ctx.textBaseline = "top";
-                                            ctx.textAlign = index === 0 && data.length > 1
-                                                ? "left"
-                                                : index === data.length - 1 && data.length > 1
-                                                  ? "right"
-                                                  : "center";
-                                            ctx.fillText(
-                                                root.capitalDateLabel(data[index]),
-                                                x,
-                                                top + plotHeight + 8
-                                            );
-                                        }
-                                    }
-
-                                    Connections {
-                                        target: financeController
-                                        function onUiLanguageChanged() {
-                                            capitalHistoryChart.requestPaint();
-                                        }
-                                    }
+                                    points: financeController.capitalHistoryRub
+                                    currency: "RUB"
+                                    seriesColor: root.chartAccent2
                                 }
 
                                 Text {
                                     anchors.centerIn: parent
                                     width: parent.width - 32
-                                    visible: financeController.capitalHistory.length === 0
+                                    visible: financeController.capitalHistoryRub.length === 0
                                     text: qsTr("Добавьте операцию — здесь появится история капитала")
                                     color: root.muted
                                     font.pixelSize: 14
@@ -2462,16 +2330,24 @@ ApplicationWindow {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    SoftButton { text: "‹"; onClicked: root.shiftBudgetMonth(-1) }
+                    SoftButton {
+                        text: "‹"
+                        Layout.preferredWidth: 58
+                        onClicked: root.shiftBudgetMonth(-1)
+                    }
                     Text {
                         Layout.preferredWidth: 180
-                        text: Qt.formatDate(root.budgetMonthDate(), "MMMM yyyy")
+                        text: root.budgetMonthLabel()
                         color: root.accent
                         font.pixelSize: 16
                         font.weight: Font.DemiBold
                         horizontalAlignment: Text.AlignHCenter
                     }
-                    SoftButton { text: "›"; onClicked: root.shiftBudgetMonth(1) }
+                    SoftButton {
+                        text: "›"
+                        Layout.preferredWidth: 58
+                        onClicked: root.shiftBudgetMonth(1)
+                    }
                     Item { Layout.fillWidth: true }
                 }
 
@@ -5996,13 +5872,9 @@ ApplicationWindow {
 
             Text {
                 Layout.fillWidth: true
-                text: !dateFilterDialog.pendingFrom
-                      ? qsTr("Выберите начало периода")
-                      : !dateFilterDialog.pendingTo
-                        ? qsTr("Теперь выберите конец периода")
-                        : Qt.formatDate(dateFilterDialog.pendingFrom, "dd.MM.yyyy")
-                          + " — "
-                          + Qt.formatDate(dateFilterDialog.pendingTo, "dd.MM.yyyy")
+                text: (dateFilterDialog.pendingFrom && dateFilterDialog.pendingTo)
+                    ? Qt.formatDate(dateFilterDialog.pendingFrom, "dd.MM.yyyy") + " — " + Qt.formatDate(dateFilterDialog.pendingTo, "dd.MM.yyyy")
+                    : ""
                 color: root.muted
                 font.pixelSize: 14
                 horizontalAlignment: Text.AlignHCenter
