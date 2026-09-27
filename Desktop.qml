@@ -303,6 +303,38 @@ ApplicationWindow {
         accountContextMenu.open();
     }
 
+    function openBudgetContextMenu(row, sourceItem, localX, localY) {
+        if (!row || !row.id)
+            return;
+        const point = sourceItem.mapToItem(root.contentItem, localX, localY);
+        budgetContextMenu.budgetData = row;
+        budgetContextMenu.x = Math.max(
+            8,
+            Math.min(point.x, root.contentItem.width - budgetContextMenu.width - 8)
+        );
+        budgetContextMenu.y = Math.max(
+            8,
+            Math.min(point.y, root.contentItem.height - budgetContextMenu.implicitHeight - 8)
+        );
+        budgetContextMenu.open();
+    }
+
+    function openProjectContextMenu(row, sourceItem, localX, localY) {
+        if (!row || !row.id)
+            return;
+        const point = sourceItem.mapToItem(root.contentItem, localX, localY);
+        projectContextMenu.projectData = row;
+        projectContextMenu.x = Math.max(
+            8,
+            Math.min(point.x, root.contentItem.width - projectContextMenu.width - 8)
+        );
+        projectContextMenu.y = Math.max(
+            8,
+            Math.min(point.y, root.contentItem.height - projectContextMenu.implicitHeight - 8)
+        );
+        projectContextMenu.open();
+    }
+
     function dateFromIso(value) {
         if (!value)
             return null;
@@ -2098,9 +2130,21 @@ ApplicationWindow {
                                 }
                             }
                             MouseArea {
+                                id: budgetRowMenuArea
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: financeController.selectedBudgetId = modelData.id
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onClicked: function(mouse) {
+                                    financeController.selectedBudgetId = modelData.id;
+                                    if (mouse.button === Qt.RightButton) {
+                                        root.openBudgetContextMenu(
+                                            modelData,
+                                            budgetRowMenuArea,
+                                            mouse.x,
+                                            mouse.y
+                                        );
+                                    }
+                                }
                             }
                         }
 
@@ -2136,15 +2180,6 @@ ApplicationWindow {
                     }
                     SoftButton { text: "›"; onClicked: root.shiftBudgetMonth(1) }
                     Item { Layout.fillWidth: true }
-                    SoftButton {
-                        text: qsTr("Изменить")
-                        onClicked: budgetDialog.openForEdit(root.selectedBudget())
-                    }
-                    SoftButton {
-                        text: qsTr("Удалить")
-                        destructive: true
-                        onClicked: deleteBudgetDialog.openFor(root.selectedBudget())
-                    }
                 }
 
                 RowLayout {
@@ -2417,8 +2452,8 @@ ApplicationWindow {
             spacing: 14
 
             Panel {
-                Layout.preferredWidth: 310
-                Layout.minimumWidth: 270
+                Layout.preferredWidth: 320
+                Layout.minimumWidth: 280
                 Layout.fillHeight: true
 
                 ColumnLayout {
@@ -2447,7 +2482,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         clip: true
-                        spacing: 7
+                        spacing: 8
                         model: financeController.projects
                         ScrollBar.vertical: ScrollBar {
                             policy: ScrollBar.AlwaysOff
@@ -2456,7 +2491,7 @@ ApplicationWindow {
                         delegate: Rectangle {
                             required property var modelData
                             width: ListView.view.width
-                            height: 72
+                            height: 108
                             radius: 12
                             color: financeController.selectedProjectId
                                    === modelData.id
@@ -2496,10 +2531,21 @@ ApplicationWindow {
                             }
 
                             MouseArea {
+                                id: projectRowMenuArea
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: financeController.selectedProjectId =
-                                           modelData.id
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onClicked: function(mouse) {
+                                    financeController.selectedProjectId = modelData.id;
+                                    if (mouse.button === Qt.RightButton) {
+                                        root.openProjectContextMenu(
+                                            modelData,
+                                            projectRowMenuArea,
+                                            mouse.x,
+                                            mouse.y
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
@@ -2536,19 +2582,6 @@ ApplicationWindow {
                         font.weight: Font.Bold
                         elide: Text.ElideRight
                     }
-                    SoftButton {
-                        text: qsTr("Изменить")
-                        onClicked: projectDialog.openForEdit(
-                            root.selectedProject()
-                        )
-                    }
-                    SoftButton {
-                        text: qsTr("Удалить")
-                        destructive: true
-                        onClicked: deleteProjectDialog.openFor(
-                            root.selectedProject()
-                        )
-                    }
                 }
 
                 RowLayout {
@@ -2582,7 +2615,7 @@ ApplicationWindow {
                         delegate: Panel {
                             required property var modelData
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 110
+                            Layout.preferredHeight: 106
                             color: root.soft
 
                             ColumnLayout {
@@ -4077,6 +4110,98 @@ ApplicationWindow {
                     onClicked: accountDialog.submit()
                 }
             }
+        }
+    }
+
+    Menu {
+        id: budgetContextMenu
+        width: 224
+        padding: 6
+        property var budgetData: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        AppMenuItem {
+            width: budgetContextMenu.availableWidth
+            text: qsTr("Редактировать")
+            enabled: budgetContextMenu.budgetData !== null
+            onTriggered: {
+                if (budgetContextMenu.budgetData)
+                    budgetDialog.openForEdit(budgetContextMenu.budgetData);
+            }
+        }
+
+        MenuSeparator {
+            width: budgetContextMenu.availableWidth
+            topPadding: 4
+            bottomPadding: 4
+            contentItem: Rectangle {
+                implicitHeight: 1
+                color: root.line
+            }
+        }
+
+        AppMenuItem {
+            width: budgetContextMenu.availableWidth
+            text: qsTr("Удалить")
+            destructive: true
+            enabled: budgetContextMenu.budgetData !== null
+            onTriggered: {
+                if (budgetContextMenu.budgetData)
+                    deleteBudgetDialog.openFor(budgetContextMenu.budgetData);
+            }
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 12
+            border.width: 1
+            border.color: root.line
+        }
+    }
+
+    Menu {
+        id: projectContextMenu
+        width: 224
+        padding: 6
+        property var projectData: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        AppMenuItem {
+            width: projectContextMenu.availableWidth
+            text: qsTr("Редактировать")
+            enabled: projectContextMenu.projectData !== null
+            onTriggered: {
+                if (projectContextMenu.projectData)
+                    projectDialog.openForEdit(projectContextMenu.projectData);
+            }
+        }
+
+        MenuSeparator {
+            width: projectContextMenu.availableWidth
+            topPadding: 4
+            bottomPadding: 4
+            contentItem: Rectangle {
+                implicitHeight: 1
+                color: root.line
+            }
+        }
+
+        AppMenuItem {
+            width: projectContextMenu.availableWidth
+            text: qsTr("Удалить")
+            destructive: true
+            enabled: projectContextMenu.projectData !== null
+            onTriggered: {
+                if (projectContextMenu.projectData)
+                    deleteProjectDialog.openFor(projectContextMenu.projectData);
+            }
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 12
+            border.width: 1
+            border.color: root.line
         }
     }
 
