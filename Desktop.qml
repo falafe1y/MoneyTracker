@@ -2317,12 +2317,12 @@ ApplicationWindow {
                     }
                 }
 
-                Label {
-                    anchors.centerIn: parent
-                    visible: transactionTable.rows.length === 0
-                    text: qsTr("Операций пока нет")
-                    color: root.muted
-                }
+                // Label {
+                //     anchors.centerIn: parent
+                //     visible: transactionTable.rows.length === 0
+                //     text: qsTr("Операций пока нет")
+                //     color: root.muted
+                // }
             }
         }
     }
@@ -2688,12 +2688,12 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Label {
-                                    anchors.centerIn: parent
-                                    visible: budgetOperationList.count === 0
-                                    text: qsTr("Операций пока нет")
-                                    color: root.muted
-                                }
+                                // Label {
+                                //     anchors.centerIn: parent
+                                //     visible: budgetOperationList.count === 0
+                                //     text: qsTr("Операций пока нет")
+                                //     color: root.muted
+                                // }
                             }
                         }
                     }
