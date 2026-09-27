@@ -4035,8 +4035,8 @@ ApplicationWindow {
                 spacing: 4
 
                 SoftButton {
-                    leftPadding: 8
-                    rightPadding: 8
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: qsTr("Этот месяц")
                     onClicked: {
                         const to = dateFilterDialog.normalizedDate(new Date());
@@ -4047,8 +4047,8 @@ ApplicationWindow {
                     }
                 }
                 SoftButton {
-                    leftPadding: 8
-                    rightPadding: 8
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: qsTr("Этот год")
                     onClicked: {
                         const to = dateFilterDialog.normalizedDate(new Date());
@@ -4058,10 +4058,9 @@ ApplicationWindow {
                         );
                     }
                 }
-                Item { Layout.fillWidth: true }
                 SoftButton {
-                    leftPadding: 8
-                    rightPadding: 8
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: qsTr("Все время")
                     onClicked: {
                         financeController.clearDateFilter();
