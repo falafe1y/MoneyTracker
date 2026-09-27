@@ -498,6 +498,16 @@ ApplicationWindow {
                 }
             }
         }
+        Text {
+            anchors.centerIn: parent
+            width: Math.max(0, parent.width - 24)
+            visible: !mobileAnalyticsRoot.bars && mobileAnalyticsRoot.points.length === 0
+            text: qsTr("Добавьте операцию — здесь появится история капитала")
+            color: root.muted
+            font.pixelSize: 14
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+        }
     }
 
     // Item.clip and ListView.clip are rectangular. These masks cover content

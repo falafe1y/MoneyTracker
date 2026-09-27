@@ -56,6 +56,7 @@
     <message><source>История капитала в рублях</source><translation>Capital history in rubles</translation></message>
     <message><source>История капитала в выбранной валюте</source><translation>Capital history in selected currency</translation></message>
     <message><source>Капитал в выбранной валюте</source><translation>Capital in selected currency</translation></message>
+    <message><source>Правый клик или Enter: изменить или удалить</source><translation>Right-click or press Enter to edit or delete</translation></message>
     <message><source>История расходов по месяцам</source><translation>Monthly expense history</translation></message>
     <message><source>Средние расходы: %1 в месяц</source><translation>Average expenses: %1 per month</translation></message>
     <message><source>Среднее: %1 в месяц</source><translation>Average: %1 per month</translation></message>

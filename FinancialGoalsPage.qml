@@ -83,6 +83,22 @@ ColumnLayout {
             width: ListView.view.width
             height: cardContent.implicitHeight + 36
             radius: 16; color: theme.panel; border.color: theme.line
+            border.width: activeFocus ? 2 : 1
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Button
+            Accessible.name: modelData.name
+            ToolTip.delay: 650
+            ToolTip.visible: goalMenuArea.containsMouse || activeFocus
+            ToolTip.text: qsTr("Правый клик или Enter: изменить или удалить")
+            Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                    || event.key === Qt.Key_Menu
+                    || (event.key === Qt.Key_F10
+                        && (event.modifiers & Qt.ShiftModifier))) {
+                    page.openGoalContextMenu(modelData, card, card.width - 24, 24);
+                    event.accepted = true;
+                }
+            }
             ColumnLayout {
                 id: cardContent
                 anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
@@ -126,9 +142,11 @@ ColumnLayout {
             MouseArea {
                 id: goalMenuArea
                 anchors.fill: parent
+                hoverEnabled: true
                 acceptedButtons: Qt.RightButton
                 cursorShape: Qt.PointingHandCursor
                 onClicked: function(mouse) {
+                    card.forceActiveFocus();
                     page.openGoalContextMenu(
                         card.modelData,
                         goalMenuArea,

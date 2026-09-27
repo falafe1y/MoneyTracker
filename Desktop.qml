@@ -691,6 +691,7 @@ ApplicationWindow {
         property var points: []
         property string currency: "RUB"
         property color seriesColor: root.chartAccent3
+        property string hoveredValue: ""
 
         Canvas {
             id: analyticsLineCanvas
@@ -701,7 +702,10 @@ ApplicationWindow {
 
             Connections {
                 target: analyticsLineRoot
-                function onPointsChanged() { analyticsLineCanvas.requestPaint(); }
+                function onPointsChanged() {
+                    analyticsLineRoot.hoveredValue = "";
+                    analyticsLineCanvas.requestPaint();
+                }
                 function onCurrencyChanged() { analyticsLineCanvas.requestPaint(); }
                 function onSeriesColorChanged() { analyticsLineCanvas.requestPaint(); }
             }
@@ -732,7 +736,7 @@ ApplicationWindow {
                 const lastTime = lastDate ? lastDate.getTime() : firstTime;
                 const timeRange = Math.max(1, lastTime - firstTime);
                 function xFor(row) {
-                    if (data.length === 1)
+                    if (data.length === 1 || lastTime === firstTime)
                         return left + plotWidth / 2;
                     const date = root.dateFromIso(row.date);
                     return left + ((date ? date.getTime() : firstTime) - firstTime)
@@ -765,56 +769,73 @@ ApplicationWindow {
                     if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                 }
                 ctx.stroke();
-                const labelCount = Math.min(5, data.length);
-                const used = {};
-                const labels = [];
+                // The plot uses elapsed time, so its labels must use the same scale.
+                const sampleLabel = root.capitalDateLabel(data[0]);
+                const labelWidth = ctx.measureText(sampleLabel).width;
+                const labelCount = data.length === 1 || lastTime === firstTime ? 1
+                    : Math.max(2, Math.min(5,
+                        Math.floor(plotWidth / (labelWidth + 16)) + 1));
                 for (let label = 0; label < labelCount; ++label) {
-                    const index = labelCount === 1 ? 0
-                        : Math.round(label * (data.length - 1) / (labelCount - 1));
-                    if (used[index]) continue;
-                    used[index] = true;
-                    const text = root.capitalDateLabel(data[index]);
-                    const x = xFor(data[index]);
-                    const textWidth = ctx.measureText(text).width;
-                    labels.push({
-                        index: index,
-                        text: text,
-                        x: x,
-                        left: index === 0 ? x
-                            : index === data.length - 1 ? x - textWidth
-                            : x - textWidth / 2,
-                        right: index === 0 ? x + textWidth
-                             : index === data.length - 1 ? x
-                             : x + textWidth / 2
-                    });
-                }
-                const visibleLabels = [];
-                function addIfFits(candidate) {
-                    const gap = 8;
-                    for (let i = 0; i < visibleLabels.length; ++i) {
-                        const other = visibleLabels[i];
-                        if (candidate.left < other.right + gap
-                            && candidate.right > other.left - gap)
-                            return;
-                    }
-                    visibleLabels.push(candidate);
-                }
-                if (labels.length > 0)
-                    addIfFits(labels[0]);
-                if (labels.length > 1)
-                    addIfFits(labels[labels.length - 1]);
-                for (let i = 1; i < labels.length - 1; ++i)
-                    addIfFits(labels[i]);
-                visibleLabels.sort(function(a, b) { return a.index - b.index; });
-                for (let label = 0; label < visibleLabels.length; ++label) {
-                    const item = visibleLabels[label];
+                    const fraction = labelCount === 1 ? 0.5
+                        : label / (labelCount - 1);
+                    const x = left + fraction * plotWidth;
+                    const date = labelCount === 1 ? firstDate
+                        : new Date(firstTime + fraction * (lastTime - firstTime));
+                    const labelText = date ? Qt.formatDate(date, "dd.MM.yyyy") : "";
                     ctx.fillStyle = root.muted;
-                    ctx.textAlign = item.index === 0 ? "left"
-                        : item.index === data.length - 1 ? "right" : "center";
+                    ctx.textAlign = labelCount === 1 ? "center"
+                        : label === 0 ? "left"
+                        : label === labelCount - 1 ? "right" : "center";
                     ctx.textBaseline = "top";
-                    ctx.fillText(item.text, item.x, top + plotHeight + 8);
+                    ctx.fillText(labelText, x, top + plotHeight + 8);
                 }
             }
+        }
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onPositionChanged: function(mouse) {
+                const rows = analyticsLineRoot.points || [];
+                if (rows.length === 0 || width < 180) {
+                    analyticsLineRoot.hoveredValue = "";
+                    return;
+                }
+                const first = root.dateFromIso(rows[0].date);
+                const last = root.dateFromIso(rows[rows.length - 1].date);
+                const start = first ? first.getTime() : 0;
+                const range = last ? Math.max(1, last.getTime() - start) : 1;
+                const position = Math.max(0, Math.min(1,
+                    (mouse.x - 90) / Math.max(1, width - 102)));
+                let closest = rows[0];
+                let distance = Infinity;
+                for (let i = 0; i < rows.length; ++i) {
+                    const date = root.dateFromIso(rows[i].date);
+                    const fraction = rows.length === 1 ? 0.5
+                        : ((date ? date.getTime() : start) - start) / range;
+                    if (Math.abs(fraction - position) < distance) {
+                        distance = Math.abs(fraction - position);
+                        closest = rows[i];
+                    }
+                }
+                analyticsLineRoot.hoveredValue =
+                    root.capitalDateLabel(closest) + " · "
+                    + root.money(closest.totalMinor, analyticsLineRoot.currency, false);
+            }
+            onExited: analyticsLineRoot.hoveredValue = ""
+            ToolTip.delay: 350
+            ToolTip.visible: containsMouse && analyticsLineRoot.hoveredValue.length > 0
+            ToolTip.text: analyticsLineRoot.hoveredValue
+        }
+        Text {
+            anchors.centerIn: parent
+            width: Math.max(0, parent.width - 24)
+            visible: analyticsLineRoot.points.length === 0
+            text: qsTr("Добавьте операцию — здесь появится история капитала")
+            color: root.muted
+            font.pixelSize: 14
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
         }
     }
 
@@ -1221,12 +1242,12 @@ ApplicationWindow {
             id: overviewScroll
             clip: true
 
-            // ===== SCROLLBARS DISABLED =====
-            // Keep scrolling itself enabled, but never draw scrollbars.
-            // To restore them later, change AlwaysOff to AsNeeded.
             ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-            // ===============================
+            ScrollBar.vertical: StyledScrollBar {
+                policy: ScrollBar.AsNeeded
+                appAccentColor: root.accentSoft
+                appTrackColor: root.line
+            }
 
             // ===== CONTENT CLIP SAFETY MARGIN =====
             // Keep panel borders one physical pixel away from ScrollView's clip edge.
@@ -1392,8 +1413,11 @@ ApplicationWindow {
                             orientation: ListView.Horizontal
                             spacing: 12
                             clip: true
-                            // Scrollbars intentionally hidden application-wide.
-                            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
+                            ScrollBar.horizontal: StyledScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                appAccentColor: root.accentSoft
+                                appTrackColor: root.line
+                            }
                             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
                             model: [
                                 {
@@ -1523,17 +1547,6 @@ ApplicationWindow {
                                     points: financeController.capitalHistoryRub
                                     currency: "RUB"
                                     seriesColor: root.chartAccent2
-                                }
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    width: parent.width - 32
-                                    visible: financeController.capitalHistoryRub.length === 0
-                                    text: qsTr("Добавьте операцию — здесь появится история капитала")
-                                    color: root.muted
-                                    font.pixelSize: 14
-                                    horizontalAlignment: Text.AlignHCenter
-                                    wrapMode: Text.WordWrap
                                 }
                             }
                         }
@@ -2147,7 +2160,11 @@ ApplicationWindow {
                     visible: !transactionTable.expandToContent
                     clip: true
                     ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
+                    ScrollBar.vertical: StyledScrollBar {
+                        policy: ScrollBar.AsNeeded
+                        appAccentColor: root.accentSoft
+                        appTrackColor: root.line
+                    }
                     model: transactionTable.rows
 
                     delegate: Item {
@@ -2281,17 +2298,42 @@ ApplicationWindow {
                         spacing: 8
                         clip: true
                         model: financeController.budgets
+                        ScrollBar.vertical: StyledScrollBar {
+                            policy: ScrollBar.AsNeeded
+                            appAccentColor: root.accentSoft
+                            appTrackColor: root.line
+                        }
 
                         delegate: Rectangle {
+                            id: budgetCard
                             required property var modelData
                             width: ListView.view.width
                             height: 108
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData.name
+                            ToolTip.delay: 650
+                            ToolTip.visible: budgetRowMenuArea.containsMouse || activeFocus
+                            ToolTip.text: qsTr("Правый клик или Enter: изменить или удалить")
+                            Keys.onPressed: function(event) {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Menu
+                                    || (event.key === Qt.Key_F10
+                                        && (event.modifiers & Qt.ShiftModifier))) {
+                                    financeController.selectedBudgetId = modelData.id;
+                                    root.openBudgetContextMenu(modelData, budgetCard,
+                                                               budgetCard.width - 24, 24);
+                                    event.accepted = true;
+                                }
+                            }
                             radius: 12
                             color: financeController.selectedBudgetId === modelData.id
                                  ? root.pale : root.soft
-                            border.width: financeController.selectedBudgetId === modelData.id
+                            border.width: budgetCard.activeFocus
+                                        || financeController.selectedBudgetId === modelData.id
                                         ? 2 : 1
-                            border.color: financeController.selectedBudgetId === modelData.id
+                            border.color: budgetCard.activeFocus
+                                        || financeController.selectedBudgetId === modelData.id
                                         ? root.accentSoft : root.line
 
                             ColumnLayout {
@@ -2341,9 +2383,11 @@ ApplicationWindow {
                             MouseArea {
                                 id: budgetRowMenuArea
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 onClicked: function(mouse) {
+                                    budgetCard.forceActiveFocus();
                                     financeController.selectedBudgetId = modelData.id;
                                     if (mouse.button === Qt.RightButton) {
                                         root.openBudgetContextMenu(
@@ -2701,21 +2745,42 @@ ApplicationWindow {
                         clip: true
                         spacing: 8
                         model: financeController.projects
-                        ScrollBar.vertical: ScrollBar {
-                            policy: ScrollBar.AlwaysOff
+                        ScrollBar.vertical: StyledScrollBar {
+                            policy: ScrollBar.AsNeeded
+                            appAccentColor: root.accentSoft
+                            appTrackColor: root.line
                         }
 
                         delegate: Rectangle {
+                            id: projectCard
                             required property var modelData
                             width: ListView.view.width
                             height: 108
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData.name
+                            ToolTip.delay: 650
+                            ToolTip.visible: projectRowMenuArea.containsMouse || activeFocus
+                            ToolTip.text: qsTr("Правый клик или Enter: изменить или удалить")
+                            Keys.onPressed: function(event) {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                                    || event.key === Qt.Key_Menu
+                                    || (event.key === Qt.Key_F10
+                                        && (event.modifiers & Qt.ShiftModifier))) {
+                                    financeController.selectedProjectId = modelData.id;
+                                    root.openProjectContextMenu(modelData, projectCard,
+                                                                projectCard.width - 24, 24);
+                                    event.accepted = true;
+                                }
+                            }
                             radius: 12
                             color: financeController.selectedProjectId
                                    === modelData.id
                                    ? root.pale
                                    : root.soft
-                            border.width: 1
-                            border.color: financeController.selectedProjectId
+                            border.width: projectCard.activeFocus ? 2 : 1
+                            border.color: projectCard.activeFocus
+                                          || financeController.selectedProjectId
                                           === modelData.id
                                           ? root.accentSoft
                                           : root.line
@@ -2750,9 +2815,11 @@ ApplicationWindow {
                             MouseArea {
                                 id: projectRowMenuArea
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                                 onClicked: function(mouse) {
+                                    projectCard.forceActiveFocus();
                                     financeController.selectedProjectId = modelData.id;
                                     if (mouse.button === Qt.RightButton) {
                                         root.openProjectContextMenu(
@@ -2977,9 +3044,12 @@ ApplicationWindow {
                 cellWidth: 320
                 cellHeight: financeController.selectedAsset === "crypto" ? 174 : 150
                 clip: true
-                // Scrollbars intentionally hidden application-wide.
                 ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
+                ScrollBar.vertical: StyledScrollBar {
+                    policy: ScrollBar.AsNeeded
+                    appAccentColor: root.accentSoft
+                    appTrackColor: root.line
+                }
                 model: financeController.selectedAsset === "crypto"
                        ? financeController.cryptoWallets
                        : financeController.accounts
@@ -3210,8 +3280,10 @@ ApplicationWindow {
                             ScrollBar.horizontal: ScrollBar {
                                 policy: ScrollBar.AlwaysOff
                             }
-                            ScrollBar.vertical: ScrollBar {
-                                policy: ScrollBar.AlwaysOff
+                            ScrollBar.vertical: StyledScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                appAccentColor: root.accentSoft
+                                appTrackColor: root.line
                             }
 
                             delegate: Rectangle {
@@ -3353,8 +3425,10 @@ ApplicationWindow {
                                 policy: ScrollBar.AlwaysOff
                             }
 
-                            ScrollBar.vertical: ScrollBar {
-                                policy: ScrollBar.AlwaysOff
+                            ScrollBar.vertical: StyledScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                appAccentColor: root.accentSoft
+                                appTrackColor: root.line
                             }
 
                             model: financeController.categories.filter(function(category) {
@@ -3436,8 +3510,10 @@ ApplicationWindow {
                                 policy: ScrollBar.AlwaysOff
                             }
 
-                            ScrollBar.vertical: ScrollBar {
-                                policy: ScrollBar.AlwaysOff
+                            ScrollBar.vertical: StyledScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                appAccentColor: root.accentSoft
+                                appTrackColor: root.line
                             }
 
                             model: financeController.categories.filter(function(category) {
@@ -3508,6 +3584,11 @@ ApplicationWindow {
             clip: true
             contentWidth: availableWidth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical: StyledScrollBar {
+                policy: ScrollBar.AsNeeded
+                appAccentColor: root.accentSoft
+                appTrackColor: root.line
+            }
 
             ColumnLayout {
                 width: analyticsScroll.availableWidth

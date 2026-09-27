@@ -50,10 +50,12 @@ Button {
                    ? (control.down || control.hovered
                       ? Qt.lighter(control.appAccentColor, 1.2) : control.appAccentColor)
                    : control.hovered ? control.appHoverColor : control.appSoftColor
-        border.width: control.flat ? 0
-                    : control.activeFocus ? 2
+        border.width: control.visualFocus ? 2
+                    : control.flat ? 0
                     : control.primary || control.destructive ? 0 : 1
-        border.color: control.activeFocus ? control.appAccentColor
+        border.color: control.visualFocus
+                    ? (control.primary || control.destructive
+                       ? control.appOnAccentColor : control.appAccentColor)
                     : control.appLineColor
     }
 }
