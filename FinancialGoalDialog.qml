@@ -132,6 +132,8 @@ Dialog {
             id: scroll
             Layout.fillWidth: true; Layout.fillHeight: true
             clip: true; contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
             ColumnLayout {
                 width: scroll.availableWidth
                 spacing: 12

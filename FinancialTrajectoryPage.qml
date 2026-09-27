@@ -9,6 +9,7 @@ ScrollView {
     property var trajectory: controller.financialTrajectory
     clip: true
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
     function money(value) { return theme.money(value, trajectory.currency, false); }
     function number(text) {

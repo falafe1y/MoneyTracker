@@ -1244,7 +1244,7 @@ ApplicationWindow {
 
             ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
             ScrollBar.vertical: StyledScrollBar {
-                policy: ScrollBar.AsNeeded
+                policy: ScrollBar.AlwaysOff
                 appAccentColor: root.accentSoft
                 appTrackColor: root.line
             }
@@ -1414,7 +1414,7 @@ ApplicationWindow {
                             spacing: 12
                             clip: true
                             ScrollBar.horizontal: StyledScrollBar {
-                                policy: ScrollBar.AsNeeded
+                                policy: ScrollBar.AlwaysOff
                                 appAccentColor: root.accentSoft
                                 appTrackColor: root.line
                             }
@@ -2161,7 +2161,7 @@ ApplicationWindow {
                     clip: true
                     ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
                     ScrollBar.vertical: StyledScrollBar {
-                        policy: ScrollBar.AsNeeded
+                        policy: ScrollBar.AlwaysOff
                         appAccentColor: root.accentSoft
                         appTrackColor: root.line
                     }
@@ -2299,7 +2299,7 @@ ApplicationWindow {
                         clip: true
                         model: financeController.budgets
                         ScrollBar.vertical: StyledScrollBar {
-                            policy: ScrollBar.AsNeeded
+                            policy: ScrollBar.AlwaysOff
                             appAccentColor: root.accentSoft
                             appTrackColor: root.line
                         }
@@ -2746,7 +2746,7 @@ ApplicationWindow {
                         spacing: 8
                         model: financeController.projects
                         ScrollBar.vertical: StyledScrollBar {
-                            policy: ScrollBar.AsNeeded
+                            policy: ScrollBar.AlwaysOff
                             appAccentColor: root.accentSoft
                             appTrackColor: root.line
                         }
@@ -3046,7 +3046,7 @@ ApplicationWindow {
                 clip: true
                 ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
                 ScrollBar.vertical: StyledScrollBar {
-                    policy: ScrollBar.AsNeeded
+                    policy: ScrollBar.AlwaysOff
                     appAccentColor: root.accentSoft
                     appTrackColor: root.line
                 }
@@ -3281,7 +3281,7 @@ ApplicationWindow {
                                 policy: ScrollBar.AlwaysOff
                             }
                             ScrollBar.vertical: StyledScrollBar {
-                                policy: ScrollBar.AsNeeded
+                                policy: ScrollBar.AlwaysOff
                                 appAccentColor: root.accentSoft
                                 appTrackColor: root.line
                             }
@@ -3426,7 +3426,7 @@ ApplicationWindow {
                             }
 
                             ScrollBar.vertical: StyledScrollBar {
-                                policy: ScrollBar.AsNeeded
+                                policy: ScrollBar.AlwaysOff
                                 appAccentColor: root.accentSoft
                                 appTrackColor: root.line
                             }
@@ -3511,7 +3511,7 @@ ApplicationWindow {
                             }
 
                             ScrollBar.vertical: StyledScrollBar {
-                                policy: ScrollBar.AsNeeded
+                                policy: ScrollBar.AlwaysOff
                                 appAccentColor: root.accentSoft
                                 appTrackColor: root.line
                             }
@@ -3585,7 +3585,7 @@ ApplicationWindow {
             contentWidth: availableWidth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ScrollBar.vertical: StyledScrollBar {
-                policy: ScrollBar.AsNeeded
+                policy: ScrollBar.AlwaysOff
                 appAccentColor: root.accentSoft
                 appTrackColor: root.line
             }

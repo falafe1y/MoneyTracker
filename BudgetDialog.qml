@@ -228,6 +228,8 @@ Dialog {
             Layout.fillHeight: true
             clip: true
             contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
             ColumnLayout {
                 width: Math.max(0, parent.width - 40)

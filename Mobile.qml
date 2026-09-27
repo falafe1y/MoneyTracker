@@ -820,12 +820,8 @@ ApplicationWindow {
             id: overviewScroll
             clip: true
 
-            // ===== SCROLLBARS DISABLED =====
-            // Keep scrolling itself enabled, but never draw scrollbars.
-            // To restore them later, change AlwaysOff to AsNeeded.
             ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-            // ===============================
 
             // ===== CONTENT CLIP SAFETY MARGIN =====
             // Keep panel borders one physical pixel away from ScrollView's clip edge.
@@ -2320,6 +2316,7 @@ ApplicationWindow {
             clip: true
             contentWidth: availableWidth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
             ColumnLayout {
                 width: mobileAnalyticsScroll.availableWidth

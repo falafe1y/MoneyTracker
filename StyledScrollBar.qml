@@ -3,6 +3,7 @@ import QtQuick.Controls
 
 ScrollBar {
     id: control
+    policy: ScrollBar.AlwaysOff
 
     property color appAccentColor: "#315C9B"
     property color appTrackColor: "#E8E7DA"
