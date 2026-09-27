@@ -3,6 +3,7 @@
 #include "../services/BankCsvImporter.h"
 #include "../services/CapitalHistoryCalculator.h"
 #include "../services/DateSliceCalculator.h"
+#include "../services/DepositInterestCalculator.h"
 #include "../services/RecurringScheduleCalculator.h"
 #include "../services/CsvCodec.h"
 #include "../services/CryptoParser.h"
@@ -33,6 +34,49 @@ bool isTransfer(const Transaction& transaction)
 {
     return transaction.categoryId() == QStringLiteral("transfer-in") ||
            transaction.categoryId() == QStringLiteral("transfer-out");
+}
+
+bool parseDepositParameters(
+    const double annualRatePercent,
+    const QString& payoutFrequency,
+    const int requestedPayoutDay,
+    int& annualRateBasisPoints,
+    DepositPayoutFrequency& frequency,
+    int& payoutDay
+    )
+{
+    if (!std::isfinite(annualRatePercent) ||
+        annualRatePercent <= 0.0 || annualRatePercent > 1'000.0) {
+        return false;
+    }
+    annualRateBasisPoints = static_cast<int>(
+        std::llround(annualRatePercent * 100.0));
+    if (annualRateBasisPoints <= 0 || annualRateBasisPoints > 100'000) {
+        return false;
+    }
+
+    const QString normalized = payoutFrequency.trimmed().toLower();
+    if (normalized == QStringLiteral("daily")) {
+        frequency = DepositPayoutFrequency::Daily;
+        payoutDay = 0;
+        return true;
+    }
+    if (normalized == QStringLiteral("monthly") &&
+        requestedPayoutDay >= 1 && requestedPayoutDay <= 31) {
+        frequency = DepositPayoutFrequency::Monthly;
+        payoutDay = requestedPayoutDay;
+        return true;
+    }
+    return false;
+}
+
+QString depositPayoutFrequencyToString(
+    const DepositPayoutFrequency frequency
+    )
+{
+    return frequency == DepositPayoutFrequency::Daily
+        ? QStringLiteral("daily")
+        : QStringLiteral("monthly");
 }
 
 QString transferId(const Transaction& transaction)
@@ -666,6 +710,7 @@ FinanceController::FinanceController(QObject* parent)
     recurringTransactions_ = repository_.loadRecurringTransactions();
     categories_ = repository_.loadCategories();
     accounts_ = repository_.loadAccounts();
+    depositSettings_ = repository_.loadDepositSettings();
     budgets_ = repository_.loadBudgets();
     financialGoals_ = repository_.loadFinancialGoals();
     trajectorySettings_ = repository_.loadFinancialTrajectorySettings();
@@ -2232,6 +2277,15 @@ QVariantList FinanceController::accounts() const
         item["asset"] = assetTypeToString(account.assetType());
         item["currency"] = currencyCode(account.currency());
         item["initialBalanceMinor"] = account.initialBalanceMinor();
+        item["isDeposit"] = account.type() == AccountType::Deposit;
+        if (const DepositSettings* deposit =
+                depositSettingsForAccount(account.id())) {
+            item["depositAnnualRatePercent"] =
+                deposit->annualRateBasisPoints() / 100.0;
+            item["depositPayoutFrequency"] =
+                depositPayoutFrequencyToString(deposit->payoutFrequency());
+            item["depositPayoutDay"] = deposit->payoutDay();
+        }
         const qint64 balanceMinor = accountBalanceMinor(account);
         item["balanceMinor"] = balanceMinor;
         addAccountFinancialRoles(item, account, balanceMinor);
@@ -2262,6 +2316,15 @@ QVariantList FinanceController::allAccounts() const
         const qint64 balanceMinor = accountBalanceMinor(account);
         item["balanceMinor"] = balanceMinor;
         item["initialBalanceMinor"] = account.initialBalanceMinor();
+        item["isDeposit"] = account.type() == AccountType::Deposit;
+        if (const DepositSettings* deposit =
+                depositSettingsForAccount(account.id())) {
+            item["depositAnnualRatePercent"] =
+                deposit->annualRateBasisPoints() / 100.0;
+            item["depositPayoutFrequency"] =
+                depositPayoutFrequencyToString(deposit->payoutFrequency());
+            item["depositPayoutDay"] = deposit->payoutDay();
+        }
         addAccountFinancialRoles(item, account, balanceMinor);
         item["transactionCount"] = accountTransactionCount(account.id());
         result.append(item);
@@ -2419,7 +2482,8 @@ QVariantList FinanceController::investmentAccounts() const
 {
     QVariantList result;
     for (const Account& account : accounts_) {
-        if (account.assetType() != AssetType::Investment) {
+        if (account.assetType() != AssetType::Investment ||
+            account.type() != AccountType::Brokerage) {
             continue;
         }
         QVariantMap item;
@@ -2692,7 +2756,10 @@ bool FinanceController::addAccount(
     const QString& type,
     const QString& currency,
     const qint64 initialBalanceMinor,
-    const qint64 creditLimitMinor
+    const qint64 creditLimitMinor,
+    const double depositAnnualRatePercent,
+    const QString& depositPayoutFrequency,
+    const int depositPayoutDay
     )
 {
     const QString normalizedName = name.trimmed();
@@ -2726,14 +2793,32 @@ bool FinanceController::addAccount(
 
     const bool creditCard = accountType == AccountType::CreditCard;
     if ((creditCard && (initialBalanceMinor > 0 || creditLimitMinor <= 0)) ||
-        creditLimitMinor < 0) {
+        creditLimitMinor < 0 ||
+        (accountType == AccountType::Deposit && initialBalanceMinor <= 0)) {
         return false;
     }
     const qint64 resolvedCreditLimitMinor = creditCard ? creditLimitMinor : 0;
 
+    int annualRateBasisPoints = 0;
+    int payoutDay = 0;
+    DepositPayoutFrequency payoutFrequency =
+        DepositPayoutFrequency::Monthly;
+    if (accountType == AccountType::Deposit &&
+        !parseDepositParameters(
+            depositAnnualRatePercent,
+            depositPayoutFrequency,
+            depositPayoutDay,
+            annualRateBasisPoints,
+            payoutFrequency,
+            payoutDay)) {
+        return false;
+    }
+
     const Currency accountCurrency = currencyFromString(currency);
+    const QString accountId = QUuid::createUuid().toString(
+        QUuid::WithoutBraces);
     const Account account(
-        QUuid::createUuid().toString(QUuid::WithoutBraces),
+        accountId,
         normalizedName,
         selectedAsset_,
         accountType,
@@ -2741,12 +2826,32 @@ bool FinanceController::addAccount(
         initialBalanceMinor,
         resolvedCreditLimitMinor);
 
-    if (!repository_.insertAccount(account)) {
+    std::optional<DepositSettings> deposit;
+    if (accountType == AccountType::Deposit) {
+        const QDate today = QDate::currentDate();
+        deposit.emplace(
+            accountId,
+            annualRateBasisPoints,
+            payoutFrequency,
+            payoutDay,
+            DepositInterestCalculator::firstPayoutAfter(
+                today, payoutFrequency, payoutDay),
+            today);
+    }
+
+    const bool saved = deposit
+        ? repository_.insertDepositAccount(account, *deposit)
+        : repository_.insertAccount(account);
+    if (!saved) {
         qWarning() << "Failed to save account:" << repository_.lastError();
         return false;
     }
 
     accounts_.append(account);
+    if (deposit) {
+        depositSettings_.append(*deposit);
+        scheduleRecurringMaterialization();
+    }
     summary_.balance[currencyIndex(accountCurrency)] += initialBalanceMinor;
     emit accountsChanged();
     emit balanceChanged();
@@ -2759,7 +2864,10 @@ bool FinanceController::updateAccount(
     const QString& type,
     const QString& currency,
     const qint64 initialBalanceMinor,
-    const qint64 creditLimitMinor
+    const qint64 creditLimitMinor,
+    const double depositAnnualRatePercent,
+    const QString& depositPayoutFrequency,
+    const int depositPayoutDay
     )
 {
     const QString normalizedName = name.trimmed();
@@ -2809,10 +2917,55 @@ bool FinanceController::updateAccount(
 
     const bool creditCard = accountType == AccountType::CreditCard;
     if ((creditCard && (initialBalanceMinor > 0 || creditLimitMinor <= 0)) ||
-        creditLimitMinor < 0) {
+        creditLimitMinor < 0 ||
+        (accountType == AccountType::Deposit && initialBalanceMinor <= 0)) {
         return false;
     }
     const qint64 resolvedCreditLimitMinor = creditCard ? creditLimitMinor : 0;
+
+    if (accountType != AccountType::Brokerage &&
+        std::any_of(
+            investmentPositions_.cbegin(), investmentPositions_.cend(),
+            [&id](const InvestmentPosition& position)
+            {
+                return position.accountId() == id;
+            })) {
+        return false;
+    }
+
+    std::optional<DepositSettings> deposit;
+    if (accountType == AccountType::Deposit) {
+        int annualRateBasisPoints = 0;
+        int payoutDay = 0;
+        DepositPayoutFrequency payoutFrequency =
+            DepositPayoutFrequency::Monthly;
+        if (!parseDepositParameters(
+                depositAnnualRatePercent,
+                depositPayoutFrequency,
+                depositPayoutDay,
+                annualRateBasisPoints,
+                payoutFrequency,
+                payoutDay)) {
+            return false;
+        }
+
+        const DepositSettings* existing = depositSettingsForAccount(id);
+        const bool scheduleUnchanged = existing &&
+            existing->annualRateBasisPoints() == annualRateBasisPoints &&
+            existing->payoutFrequency() == payoutFrequency &&
+            existing->payoutDay() == payoutDay;
+        const QDate today = QDate::currentDate();
+        deposit.emplace(
+            id,
+            annualRateBasisPoints,
+            payoutFrequency,
+            payoutDay,
+            scheduleUnchanged
+                ? existing->startsOn()
+                : DepositInterestCalculator::firstPayoutAfter(
+                    today, payoutFrequency, payoutDay),
+            scheduleUnchanged ? existing->generatedThrough() : today);
+    }
 
     const Currency accountCurrency = currencyFromString(currency);
     if (accountCurrency != original.currency() &&
@@ -2828,12 +2981,25 @@ bool FinanceController::updateAccount(
         accountCurrency,
         initialBalanceMinor,
         resolvedCreditLimitMinor);
-    if (!repository_.isOpen() || !repository_.updateAccount(updated)) {
+    if (!repository_.isOpen() ||
+        !repository_.updateAccountAndDeposit(updated, deposit)) {
         qWarning() << "Failed to update account:" << repository_.lastError();
         return false;
     }
 
     accounts_[accountIndex] = updated;
+    depositSettings_.erase(
+        std::remove_if(
+            depositSettings_.begin(), depositSettings_.end(),
+            [&id](const DepositSettings& settings)
+            {
+                return settings.accountId() == id;
+            }),
+        depositSettings_.end());
+    if (deposit) {
+        depositSettings_.append(*deposit);
+        scheduleRecurringMaterialization();
+    }
     summary_ = repository_.loadSummary();
     emit accountsChanged();
     emit balanceChanged();
@@ -2860,6 +3026,14 @@ bool FinanceController::deleteAccount(const QString& id)
     }
 
     accounts_.removeAt(accountIndex);
+    depositSettings_.erase(
+        std::remove_if(
+            depositSettings_.begin(), depositSettings_.end(),
+            [&id](const DepositSettings& settings)
+            {
+                return settings.accountId() == id;
+            }),
+        depositSettings_.end());
     transactions_ = repository_.loadTransactions();
     recurringTransactions_ = repository_.loadRecurringTransactions();
     investmentPositions_ = repository_.loadInvestmentPositions();
@@ -3343,7 +3517,8 @@ QVariantMap FinanceController::addInvestmentPosition(
         accounts_.cbegin(), accounts_.cend(),
         [&accountId](const Account& candidate) {
             return candidate.id() == accountId &&
-                candidate.assetType() == AssetType::Investment;
+                candidate.assetType() == AssetType::Investment &&
+                candidate.type() == AccountType::Brokerage;
         });
     if (account == accounts_.cend()) {
         result[QStringLiteral("error")] = tr("Выберите инвестиционный счёт");
@@ -3461,7 +3636,8 @@ QVariantMap FinanceController::updateInvestmentPosition(
         accounts_.cbegin(), accounts_.cend(),
         [&accountId](const Account& candidate) {
             return candidate.id() == accountId &&
-                candidate.assetType() == AssetType::Investment;
+                candidate.assetType() == AssetType::Investment &&
+                candidate.type() == AccountType::Brokerage;
         });
     if (account == accounts_.cend()) {
         result[QStringLiteral("error")] = tr("Выберите инвестиционный счёт");
@@ -4282,6 +4458,19 @@ bool FinanceController::addTransaction(
     return true;
 }
 
+const DepositSettings* FinanceController::depositSettingsForAccount(
+    const QString& accountId
+    ) const
+{
+    const auto settings = std::find_if(
+        depositSettings_.cbegin(), depositSettings_.cend(),
+        [&accountId](const DepositSettings& candidate)
+        {
+            return candidate.accountId() == accountId;
+        });
+    return settings == depositSettings_.cend() ? nullptr : &*settings;
+}
+
 qint64 FinanceController::accountBalanceMinor(const Account& account) const
 {
     qint64 balance = account.initialBalanceMinor();
@@ -4523,6 +4712,8 @@ void FinanceController::materializeRecurringTransactions()
         totalInserted += inserted;
     }
 
+    totalInserted += materializeDepositInterest();
+
     recurringTransactions_ = repository_.loadRecurringTransactions();
     emit scheduledTransactionsChanged();
     const QDateTime now = QDateTime::currentDateTime();
@@ -4540,6 +4731,105 @@ void FinanceController::materializeRecurringTransactions()
     emit transactionsChanged();
     emit balanceChanged();
     emit accountsChanged();
+}
+
+int FinanceController::materializeDepositInterest()
+{
+    const QDate today = QDate::currentDate();
+    int totalInserted = 0;
+
+    for (const DepositSettings& settings :
+         std::as_const(depositSettings_)) {
+        const auto account = std::find_if(
+            accounts_.cbegin(), accounts_.cend(),
+            [&settings](const Account& candidate)
+            {
+                return candidate.id() == settings.accountId() &&
+                    candidate.assetType() == AssetType::Investment &&
+                    candidate.type() == AccountType::Deposit;
+            });
+        if (account == accounts_.cend()) {
+            qWarning() << "Skipped invalid deposit settings:"
+                       << settings.accountId();
+            continue;
+        }
+
+        QDate from = settings.generatedThrough().isValid()
+            ? settings.generatedThrough().addDays(1)
+            : settings.startsOn();
+        from = std::max(from, settings.startsOn());
+        if (from > today) {
+            continue;
+        }
+
+        const QVector<QDate> dates =
+            DepositInterestCalculator::occurrences(
+                settings, from, today);
+        QVector<FinanceRepository::DepositInterestOccurrence> occurrences;
+        occurrences.reserve(dates.size());
+
+        for (const QDate& date : dates) {
+            const QDateTime payoutAt(
+                date,
+                QTime(0, 0),
+                QTimeZone::systemTimeZone());
+            qint64 balanceMinor = account->initialBalanceMinor();
+            for (const Transaction& transaction :
+                 std::as_const(transactions_)) {
+                if (transaction.accountId() != account->id() ||
+                    transaction.date() >= payoutAt) {
+                    continue;
+                }
+                balanceMinor = transaction.type() == TransactionType::Income
+                    ? saturatedCapitalAdd(
+                        balanceMinor, transaction.money().minorUnits())
+                    : saturatedCapitalSubtract(
+                        balanceMinor, transaction.money().minorUnits());
+            }
+            for (const FinanceRepository::DepositInterestOccurrence& pending :
+                 std::as_const(occurrences)) {
+                balanceMinor = saturatedCapitalAdd(
+                    balanceMinor,
+                    pending.transaction.money().minorUnits());
+            }
+
+            const qint64 interestMinor =
+                DepositInterestCalculator::interestMinor(
+                    balanceMinor,
+                    settings.annualRateBasisPoints(),
+                    settings.payoutFrequency());
+            if (interestMinor <= 0) {
+                continue;
+            }
+
+            const QString transactionId = QStringLiteral("deposit-interest-")
+                + settings.accountId() + QLatin1Char('-')
+                + date.toString(QStringLiteral("yyyyMMdd"));
+            occurrences.append(
+                FinanceRepository::DepositInterestOccurrence{
+                    date,
+                    Transaction(
+                        transactionId,
+                        settings.accountId(),
+                        QStringLiteral("deposit_interest"),
+                        Money(interestMinor, account->currency()),
+                        TransactionType::Income,
+                        payoutAt,
+                        tr("Проценты по вкладу"))});
+        }
+
+        int inserted = 0;
+        if (!repository_.materializeDepositInterest(
+                settings, occurrences, today, &inserted)) {
+            qWarning() << "Failed to materialize deposit interest:"
+                       << settings.accountId() << repository_.lastError();
+            continue;
+        }
+        totalInserted += inserted;
+    }
+
+    depositSettings_ = repository_.loadDepositSettings();
+    return totalInserted;
 }
 
 void FinanceController::rebuildCapitalHistory()
@@ -4872,6 +5162,9 @@ QString FinanceController::categoryDisplayName(const Category& category) const
         return tr("Подарок");
     if (id == QStringLiteral("investment") && name == QStringLiteral("Инвестиции"))
         return tr("Инвестиции");
+    if (id == QStringLiteral("deposit_interest") &&
+        name == QStringLiteral("Проценты по вкладу"))
+        return tr("Проценты по вкладу");
     if (id == QStringLiteral("other_income") && name == QStringLiteral("Другой доход"))
         return tr("Другой доход");
     if (id == QStringLiteral("groceries") && name == QStringLiteral("Продукты"))

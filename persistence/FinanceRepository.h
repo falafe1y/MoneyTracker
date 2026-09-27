@@ -2,6 +2,7 @@
 
 #include "../core/Transaction.h"
 #include "../core/RecurringTransaction.h"
+#include "../core/DepositSettings.h"
 #include "../core/Category.h"
 #include "../core/Account.h"
 #include "../core/CryptoWallet.h"
@@ -21,6 +22,7 @@
 #include <QVector>
 
 #include <array>
+#include <optional>
 
 class FinanceRepository
 {
@@ -46,6 +48,12 @@ public:
     };
 
     struct RecurringOccurrence
+    {
+        QDate date;
+        Transaction transaction;
+    };
+
+    struct DepositInterestOccurrence
     {
         QDate date;
         Transaction transaction;
@@ -87,6 +95,7 @@ public:
     QVector<Transaction> loadTransactions();
     QVector<Project> loadProjects();
     QVector<RecurringTransaction> loadRecurringTransactions();
+    QVector<DepositSettings> loadDepositSettings();
     QVector<Category> loadCategories();
     QVector<Account> loadAccounts();
     QVector<CryptoWallet> loadCryptoWallets();
@@ -133,8 +142,22 @@ public:
         );
     bool insertCategory(const Category& category);
     bool insertAccount(const Account& account);
+    bool insertDepositAccount(
+        const Account& account,
+        const DepositSettings& settings
+        );
     bool updateAccount(const Account& account);
+    bool updateAccountAndDeposit(
+        const Account& account,
+        const std::optional<DepositSettings>& settings
+        );
     bool deleteAccount(const QString& id);
+    bool materializeDepositInterest(
+        const DepositSettings& settings,
+        const QVector<DepositInterestOccurrence>& occurrences,
+        const QDate& generatedThrough,
+        int* insertedCount = nullptr
+        );
     bool insertCryptoWallet(const CryptoWallet& wallet);
     bool updateCryptoWalletBalance(
         const QString& id,

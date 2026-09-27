@@ -24,6 +24,7 @@ private slots:
     void migratesLegacyProjectTable();
     void storesUpdatesAndArchivesBudgets();
     void storesAndMaterializesRecurringTransactions();
+    void storesAndMaterializesDepositInterest();
     void storesCreditCardTerms();
     void migratesCreditLimitForExistingDatabase();
     void updatesAndDeletesTransaction();
@@ -1336,6 +1337,83 @@ void FinanceRepositoryTest::deletesAccountWithRelatedOperations()
             QVERIFY(account.id() != QStringLiteral("household-eur"));
         }
     }
+}
+
+void FinanceRepositoryTest::storesAndMaterializesDepositInterest()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString databasePath = temporaryDirectory.filePath(
+        QStringLiteral("moneytracker-deposit-interest-test.sqlite3"));
+    FinanceRepository repository(databasePath);
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+
+    const Account account(
+        QStringLiteral("alpha-deposit"),
+        QStringLiteral("Альфа Накопительный"),
+        AssetType::Investment,
+        AccountType::Deposit,
+        Currency::RUB,
+        21'000'000);
+    const DepositSettings settings(
+        account.id(),
+        1'300,
+        DepositPayoutFrequency::Monthly,
+        15,
+        QDate(2026, 10, 15),
+        QDate(2026, 9, 27));
+    QVERIFY2(repository.insertDepositAccount(account, settings),
+             qPrintable(repository.lastError()));
+
+    QVector<DepositSettings> loaded = repository.loadDepositSettings();
+    QCOMPARE(loaded.size(), 1);
+    QCOMPARE(loaded.constFirst().annualRateBasisPoints(), 1'300);
+    QCOMPARE(loaded.constFirst().payoutDay(), 15);
+
+    const Transaction interest(
+        QStringLiteral("deposit-interest-alpha-deposit-20261015"),
+        account.id(),
+        QStringLiteral("deposit_interest"),
+        Money(227'500, Currency::RUB),
+        TransactionType::Income,
+        QDateTime(QDate(2026, 10, 15), QTime(0, 0), QTimeZone::UTC),
+        QStringLiteral("Проценты по вкладу"));
+    int inserted = 0;
+    QVERIFY2(repository.materializeDepositInterest(
+                 settings,
+                 {{QDate(2026, 10, 15), interest}},
+                 QDate(2026, 10, 15),
+                 &inserted),
+             qPrintable(repository.lastError()));
+    QCOMPARE(inserted, 1);
+    QCOMPARE(repository.loadTransactions().size(), 1);
+
+    loaded = repository.loadDepositSettings();
+    QCOMPARE(loaded.constFirst().generatedThrough(), QDate(2026, 10, 15));
+    QVERIFY2(repository.materializeDepositInterest(
+                 loaded.constFirst(),
+                 {{QDate(2026, 10, 15), interest}},
+                 QDate(2026, 10, 15),
+                 &inserted),
+             qPrintable(repository.lastError()));
+    QCOMPARE(inserted, 0);
+    QCOMPARE(repository.loadTransactions().size(), 1);
+
+    const DepositSettings daily(
+        account.id(),
+        1'300,
+        DepositPayoutFrequency::Daily,
+        0,
+        QDate(2026, 10, 16),
+        QDate(2026, 10, 15));
+    QVERIFY(repository.updateAccountAndDeposit(account, daily));
+    loaded = repository.loadDepositSettings();
+    QCOMPARE(static_cast<int>(loaded.constFirst().payoutFrequency()),
+             static_cast<int>(DepositPayoutFrequency::Daily));
+
+    QVERIFY(repository.deleteAccount(account.id()));
+    QVERIFY(repository.loadDepositSettings().isEmpty());
+    QVERIFY(repository.loadTransactions().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(FinanceRepositoryTest)

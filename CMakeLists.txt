@@ -56,6 +56,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/Project.h
         SOURCES core/Transaction.h
         SOURCES core/RecurringTransaction.h
+        SOURCES core/DepositSettings.h
         SOURCES core/CryptoWallet.h
         SOURCES core/CryptoTransaction.h
         SOURCES core/InvestmentInstrument.h
@@ -80,6 +81,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CapitalHistoryCalculator.cpp
         SOURCES services/RecurringScheduleCalculator.h
         SOURCES services/RecurringScheduleCalculator.cpp
+        SOURCES services/DepositInterestCalculator.h
+        SOURCES services/DepositInterestCalculator.cpp
         SOURCES services/CurrencyRateProvider.h
         SOURCES services/CurrencyRateCache.h
         SOURCES services/CurrencyRateCache.cpp
@@ -210,6 +213,22 @@ target_link_libraries(TransactionDateFilterTest
 add_test(
     NAME TransactionDateFilterTest
     COMMAND TransactionDateFilterTest
+)
+
+add_executable(DepositInterestCalculatorTest
+    tests/DepositInterestCalculatorTest.cpp
+    services/DepositInterestCalculator.cpp
+)
+
+target_link_libraries(DepositInterestCalculatorTest
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+
+add_test(
+    NAME DepositInterestCalculatorTest
+    COMMAND DepositInterestCalculatorTest
 )
 
 add_executable(FinanceRepositoryTest

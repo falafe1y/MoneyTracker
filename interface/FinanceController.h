@@ -393,7 +393,10 @@ public:
         const QString& type,
         const QString& currency,
         qint64 initialBalanceMinor,
-        qint64 creditLimitMinor
+        qint64 creditLimitMinor,
+        double depositAnnualRatePercent = 0.0,
+        const QString& depositPayoutFrequency = QString(),
+        int depositPayoutDay = 1
         );
 
     Q_INVOKABLE bool updateAccount(
@@ -402,7 +405,10 @@ public:
         const QString& type,
         const QString& currency,
         qint64 initialBalanceMinor,
-        qint64 creditLimitMinor
+        qint64 creditLimitMinor,
+        double depositAnnualRatePercent = 0.0,
+        const QString& depositPayoutFrequency = QString(),
+        int depositPayoutDay = 1
         );
 
     Q_INVOKABLE bool deleteAccount(const QString& id);
@@ -618,6 +624,10 @@ private:
     void rebuildCapitalHistory();
     void scheduleRecurringMaterialization();
     void materializeRecurringTransactions();
+    int materializeDepositInterest();
+    const DepositSettings* depositSettingsForAccount(
+        const QString& accountId
+        ) const;
     void scheduleInitialCryptoRefresh();
     void scheduleNextCryptoRefresh(qint64 delayMs);
     void startCryptoBalanceRequest(const CryptoWallet& wallet);
@@ -658,6 +668,7 @@ private:
     CapitalHistorySeries capitalHistorySeries_;
     QVector<BankCsvProfile> bankCsvProfiles_;
     QVector<RecurringTransaction> recurringTransactions_;
+    QVector<DepositSettings> depositSettings_;
     QVector<Project> projects_;
     QVector<Budget> budgets_;
     QVector<FinancialGoal> financialGoals_;

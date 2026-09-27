@@ -522,13 +522,19 @@ ApplicationWindow {
         return "";
     }
 
+    function selectedInvestmentAccountAcceptsPositions() {
+        if (financeController.selectedAccountId.length === 0)
+            return financeController.investmentAccounts.length > 0;
+        return selectedInvestmentAccountId().length > 0;
+    }
+
     function openNewOperationForSelectedAsset() {
         if (financeController.selectedAsset === "fiat") {
             operationDialog.openForNew();
             return;
         }
         if (financeController.selectedAsset === "investment"
-            && financeController.investmentAccounts.length > 0) {
+            && selectedInvestmentAccountAcceptsPositions()) {
             investmentPositionDialog.openForNewPosition(
                 selectedInvestmentAccountId()
             );
@@ -543,7 +549,7 @@ ApplicationWindow {
               && !transactionContextMenu.visible
               && (financeController.selectedAsset === "fiat"
                   || (financeController.selectedAsset === "investment"
-                      && financeController.investmentAccounts.length > 0))
+                      && root.selectedInvestmentAccountAcceptsPositions()))
         onActivated: root.openNewOperationForSelectedAsset()
     }
 
@@ -839,18 +845,18 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
-                    implicitWidth: 205
-                    implicitHeight: 42
-                    text: "◷  " + root.dateFilterLabel()
-                    onClicked: dateFilterDialog.openForCurrent()
-                }
-                SoftButton {
                     visible: page === "overview"
                           && financeController.selectedAsset === "fiat"
                     implicitWidth: 190
                     implicitHeight: 42
                     text: qsTr("Плановые операции")
                     onClicked: recurringTransactionsDialog.openManager()
+                }
+                SoftButton {
+                    implicitWidth: 205
+                    implicitHeight: 42
+                    text: "◷  " + root.dateFilterLabel()
+                    onClicked: dateFilterDialog.openForCurrent()
                 }
             }
             Loader {
@@ -1686,8 +1692,10 @@ ApplicationWindow {
                     text: qsTr("+  Операция")
                     highlighted: true
                     implicitWidth: 132
+                    visible: !transactionBlock.addInvestmentPositionAction
+                          || root.selectedInvestmentAccountAcceptsPositions()
                     enabled: !transactionBlock.addInvestmentPositionAction
-                          || financeController.investmentAccounts.length > 0
+                          || root.selectedInvestmentAccountAcceptsPositions()
                     onClicked: {
                         if (transactionBlock.projectId.length > 0)
                             operationDialog.openForNew(transactionBlock.projectId);
@@ -2702,6 +2710,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    visible: financeController.selectedAsset !== "investment"
+                          || financeController.investmentAccounts.length > 0
                     text: financeController.selectedAsset === "crypto"
                           ? qsTr("+ Добавить криптовалюту")
                           : financeController.selectedAsset === "investment"
@@ -3849,10 +3859,20 @@ ApplicationWindow {
         property string editingId: ""
         property var editingAccount: null
         property string editingAsset: financeController.selectedAsset
+        property var depositPayoutTypes: [
+            { label: qsTr("Ежемесячно"), value: "monthly" },
+            { label: qsTr("Ежедневно"), value: "daily" }
+        ]
         readonly property bool creditCardSelected:
             accountTypeBox.currentIndex >= 0
             && accountTypeBox.currentIndex < accountTypes.length
             && accountTypes[accountTypeBox.currentIndex].value === "credit_card"
+        readonly property bool depositSelected:
+            accountTypeBox.currentIndex >= 0
+            && accountTypeBox.currentIndex < accountTypes.length
+            && accountTypes[accountTypeBox.currentIndex].value === "deposit"
+        readonly property bool monthlyDepositSelected:
+            depositSelected && depositPayoutBox.currentIndex === 0
 
         function typesForAsset(asset) {
             return asset === "fiat" ? [
@@ -3909,6 +3929,9 @@ ApplicationWindow {
             accountNameField.clear();
             accountBalanceField.clear();
             accountCreditLimitField.clear();
+            depositRateField.clear();
+            depositPayoutBox.currentIndex = 0;
+            depositPayoutDayField.text = "1";
             accountTypeBox.currentIndex = 0;
             accountCurrencyBox.currentIndex = 0;
             accountError.text = "";
@@ -3935,6 +3958,13 @@ ApplicationWindow {
                                      ? root.amountForInput(row.initialDebtMinor)
                                      : root.signedAmountForInput(row.initialBalanceMinor);
             accountCreditLimitField.text = root.amountForInput(row.creditLimitMinor);
+            depositRateField.text = row.depositAnnualRatePercent
+                                  ? String(row.depositAnnualRatePercent).replace(".", ",")
+                                  : "";
+            depositPayoutBox.currentIndex = row.depositPayoutFrequency === "daily"
+                                          ? 1 : 0;
+            depositPayoutDayField.text = row.depositPayoutDay > 0
+                                       ? String(row.depositPayoutDay) : "1";
             accountError.text = "";
             open();
             Qt.callLater(function() { accountNameField.forceActiveFocus(); });
@@ -3958,6 +3988,28 @@ ApplicationWindow {
                 accountError.text = qsTr("Укажите кредитный лимит");
                 return;
             }
+            const depositAnnualRatePercent = Number(
+                depositRateField.text.replace(",", ".")
+            );
+            const depositPayoutFrequency = depositSelected
+                ? depositPayoutTypes[depositPayoutBox.currentIndex].value
+                : "";
+            const depositPayoutDay = monthlyDepositSelected
+                ? Number(depositPayoutDayField.text)
+                : 0;
+            if (depositSelected && initialBalanceMinor <= 0) {
+                accountError.text = qsTr("Укажите сумму вклада");
+                return;
+            }
+            if (depositSelected && depositAnnualRatePercent <= 0) {
+                accountError.text = qsTr("Укажите годовую процентную ставку");
+                return;
+            }
+            if (monthlyDepositSelected &&
+                (depositPayoutDay < 1 || depositPayoutDay > 31)) {
+                accountError.text = qsTr("Укажите день выплаты от 1 до 31");
+                return;
+            }
             const ok = editingId
                      ? financeController.updateAccount(
                          editingId,
@@ -3965,14 +4017,20 @@ ApplicationWindow {
                          type,
                          accountCurrencyBox.currentText,
                          initialBalanceMinor,
-                         creditLimitMinor
+                         creditLimitMinor,
+                         depositAnnualRatePercent,
+                         depositPayoutFrequency,
+                         depositPayoutDay
                      )
                      : financeController.addAccount(
                          accountNameField.text,
                          type,
                          accountCurrencyBox.currentText,
                          initialBalanceMinor,
-                         creditLimitMinor
+                         creditLimitMinor,
+                         depositAnnualRatePercent,
+                         depositPayoutFrequency,
+                         depositPayoutDay
                      );
             if (ok)
                 close();
@@ -3988,6 +4046,8 @@ ApplicationWindow {
                   && !accountTypeBox.popup.visible
                   && !accountCurrencyBox.activeFocus
                   && !accountCurrencyBox.popup.visible
+                  && !depositPayoutBox.activeFocus
+                  && !depositPayoutBox.popup.visible
                   && !accountCancelButton.activeFocus
                   && !accountSubmitButton.activeFocus
             onActivated: accountDialog.submit()
@@ -4065,6 +4125,8 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: accountDialog.creditCardSelected
                       ? qsTr("Задолженность на момент добавления")
+                      : accountDialog.depositSelected
+                        ? qsTr("Сумма вклада")
                       : qsTr("Начальный баланс")
                 color: root.muted
                 font.pixelSize: 12
@@ -4074,12 +4136,61 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 placeholderText: accountDialog.creditCardSelected
                                  ? qsTr("Задолженность на момент добавления")
+                                 : accountDialog.depositSelected
+                                   ? qsTr("Сумма вклада")
                                  : qsTr("Начальный баланс")
                 validator: DoubleValidator {
-                    bottom: accountDialog.creditCardSelected ? 0 : -999999999
+                    bottom: accountDialog.creditCardSelected
+                            || accountDialog.depositSelected ? 0 : -999999999
                     top: 999999999
                     decimals: 2
                 }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                text: qsTr("Годовая ставка, %")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppTextField {
+                id: depositRateField
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                placeholderText: qsTr("Например, 13")
+                validator: DoubleValidator {
+                    bottom: 0.01
+                    top: 1000
+                    decimals: 2
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                text: qsTr("Начисление процентов")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppComboBox {
+                id: depositPayoutBox
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                model: accountDialog.depositPayoutTypes
+                textRole: "label"
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.monthlyDepositSelected
+                text: qsTr("День выплаты")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppTextField {
+                id: depositPayoutDayField
+                Layout.fillWidth: true
+                visible: accountDialog.monthlyDepositSelected
+                placeholderText: qsTr("От 1 до 31")
+                validator: IntValidator { bottom: 1; top: 31 }
             }
             Text {
                 Layout.fillWidth: true

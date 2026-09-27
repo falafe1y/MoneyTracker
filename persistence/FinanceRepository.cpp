@@ -528,6 +528,35 @@ QVector<RecurringTransaction> FinanceRepository::loadRecurringTransactions()
     return result;
 }
 
+QVector<DepositSettings> FinanceRepository::loadDepositSettings()
+{
+    QVector<DepositSettings> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+            "SELECT d.account_id, d.annual_rate_bps, d.payout_frequency, "
+            "       d.payout_day, d.starts_on, d.generated_through "
+            "FROM deposit_settings d "
+            "JOIN accounts a ON a.id = d.account_id "
+            "WHERE a.is_archived = 0 AND a.account_type = 7 "
+            "ORDER BY a.created_at, d.account_id"))) {
+        setLastError(query.lastError().text());
+        return result;
+    }
+
+    while (query.next()) {
+        result.append(DepositSettings(
+            query.value(0).toString(),
+            query.value(1).toInt(),
+            query.value(2).toInt() == 1
+                ? DepositPayoutFrequency::Daily
+                : DepositPayoutFrequency::Monthly,
+            query.value(3).toInt(),
+            QDate::fromString(query.value(4).toString(), Qt::ISODate),
+            QDate::fromString(query.value(5).toString(), Qt::ISODate)));
+    }
+    return result;
+}
+
 QVector<Category> FinanceRepository::loadCategories()
 {
     QVector<Category> result;
@@ -1268,6 +1297,43 @@ bool FinanceRepository::archiveProject(const QString& id)
     return true;
 }
 
+namespace
+{
+bool upsertDepositSettings(
+    QSqlDatabase& database,
+    const DepositSettings& settings,
+    QString& error
+    )
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "INSERT INTO deposit_settings("
+        "account_id, annual_rate_bps, payout_frequency, payout_day, "
+        "starts_on, generated_through, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(account_id) DO UPDATE SET "
+        "annual_rate_bps = excluded.annual_rate_bps, "
+        "payout_frequency = excluded.payout_frequency, "
+        "payout_day = excluded.payout_day, "
+        "starts_on = excluded.starts_on, "
+        "generated_through = excluded.generated_through, "
+        "updated_at = excluded.updated_at"));
+    query.addBindValue(settings.accountId());
+    query.addBindValue(settings.annualRateBasisPoints());
+    query.addBindValue(
+        settings.payoutFrequency() == DepositPayoutFrequency::Daily ? 1 : 0);
+    query.addBindValue(settings.payoutDay());
+    query.addBindValue(settings.startsOn().toString(Qt::ISODate));
+    query.addBindValue(settings.generatedThrough().toString(Qt::ISODate));
+    query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+    if (!query.exec()) {
+        error = query.lastError().text();
+        return false;
+    }
+    return true;
+}
+}
+
 bool FinanceRepository::insertAccount(const Account& account)
 {
     QSqlQuery query(database_);
@@ -1286,6 +1352,35 @@ bool FinanceRepository::insertAccount(const Account& account)
 
     if (!query.exec()) {
         setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::insertDepositAccount(
+    const Account& account,
+    const DepositSettings& settings
+    )
+{
+    if (account.type() != AccountType::Deposit ||
+        account.id() != settings.accountId() ||
+        !database_.transaction()) {
+        setLastError(database_.lastError().isValid()
+            ? database_.lastError().text()
+            : QStringLiteral("Invalid deposit account"));
+        return false;
+    }
+
+    QString error;
+    if (!insertAccount(account) ||
+        !upsertDepositSettings(database_, settings, error) ||
+        !database_.commit()) {
+        if (!error.isEmpty()) {
+            setLastError(error);
+        } else if (database_.lastError().isValid()) {
+            setLastError(database_.lastError().text());
+        }
+        database_.rollback();
         return false;
     }
     return true;
@@ -1322,6 +1417,47 @@ bool FinanceRepository::updateAccount(const Account& account)
     return true;
 }
 
+bool FinanceRepository::updateAccountAndDeposit(
+    const Account& account,
+    const std::optional<DepositSettings>& settings
+    )
+{
+    if ((account.type() == AccountType::Deposit) != settings.has_value() ||
+        (settings && settings->accountId() != account.id()) ||
+        !database_.transaction()) {
+        setLastError(database_.lastError().isValid()
+            ? database_.lastError().text()
+            : QStringLiteral("Invalid deposit settings"));
+        return false;
+    }
+
+    QString error;
+    bool settingsSaved = false;
+    if (settings) {
+        settingsSaved = upsertDepositSettings(database_, *settings, error);
+    } else {
+        QSqlQuery deletion(database_);
+        deletion.prepare(QStringLiteral(
+            "DELETE FROM deposit_settings WHERE account_id = ?"));
+        deletion.addBindValue(account.id());
+        settingsSaved = deletion.exec();
+        if (!settingsSaved) {
+            error = deletion.lastError().text();
+        }
+    }
+
+    if (!updateAccount(account) || !settingsSaved || !database_.commit()) {
+        if (!error.isEmpty()) {
+            setLastError(error);
+        } else if (database_.lastError().isValid()) {
+            setLastError(database_.lastError().text());
+        }
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::deleteAccount(const QString& id)
 {
     if (!database_.transaction()) {
@@ -1335,6 +1471,16 @@ bool FinanceRepository::deleteAccount(const QString& id)
     recurring.addBindValue(id);
     if (!recurring.exec()) {
         setLastError(recurring.lastError().text());
+        database_.rollback();
+        return false;
+    }
+
+    QSqlQuery deposit(database_);
+    deposit.prepare(QStringLiteral(
+        "DELETE FROM deposit_settings WHERE account_id = ?"));
+    deposit.addBindValue(id);
+    if (!deposit.exec()) {
+        setLastError(deposit.lastError().text());
         database_.rollback();
         return false;
     }
@@ -1403,6 +1549,94 @@ bool FinanceRepository::deleteAccount(const QString& id)
                          : database_.lastError().text());
         database_.rollback();
         return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::materializeDepositInterest(
+    const DepositSettings& settings,
+    const QVector<DepositInterestOccurrence>& occurrences,
+    const QDate& generatedThrough,
+    int* insertedCount
+    )
+{
+    if (settings.accountId().isEmpty() || !generatedThrough.isValid()) {
+        setLastError(QStringLiteral("Invalid deposit materialization range"));
+        return false;
+    }
+    if (insertedCount) {
+        *insertedCount = 0;
+    }
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QSqlQuery occurrenceLookup(database_);
+    occurrenceLookup.prepare(QStringLiteral(
+        "SELECT 1 FROM deposit_interest_occurrences "
+        "WHERE account_id = ? AND occurrence_date = ?"));
+    QSqlQuery transactionInsert(database_);
+    prepareTransactionInsert(transactionInsert);
+    QSqlQuery occurrenceInsert(database_);
+    occurrenceInsert.prepare(QStringLiteral(
+        "INSERT INTO deposit_interest_occurrences("
+        "account_id, occurrence_date, transaction_id) VALUES (?, ?, ?)"));
+    const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    int inserted = 0;
+
+    for (const DepositInterestOccurrence& occurrence : occurrences) {
+        const QString date = occurrence.date.toString(Qt::ISODate);
+        occurrenceLookup.bindValue(0, settings.accountId());
+        occurrenceLookup.bindValue(1, date);
+        if (!occurrenceLookup.exec()) {
+            setLastError(occurrenceLookup.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        const bool alreadyCreated = occurrenceLookup.next();
+        occurrenceLookup.finish();
+        if (alreadyCreated) {
+            continue;
+        }
+
+        if (!insertTransactionRow(
+                transactionInsert, occurrence.transaction, createdAt)) {
+            setLastError(transactionInsert.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        occurrenceInsert.bindValue(0, settings.accountId());
+        occurrenceInsert.bindValue(1, date);
+        occurrenceInsert.bindValue(2, occurrence.transaction.id());
+        if (!occurrenceInsert.exec()) {
+            setLastError(occurrenceInsert.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        ++inserted;
+    }
+
+    QSqlQuery progress(database_);
+    progress.prepare(QStringLiteral(
+        "UPDATE deposit_settings SET generated_through = CASE "
+        "WHEN generated_through < ? THEN ? ELSE generated_through END, "
+        "updated_at = ? WHERE account_id = ?"));
+    const QString through = generatedThrough.toString(Qt::ISODate);
+    progress.addBindValue(through);
+    progress.addBindValue(through);
+    progress.addBindValue(createdAt);
+    progress.addBindValue(settings.accountId());
+    if (!progress.exec() || progress.numRowsAffected() != 1 ||
+        !database_.commit()) {
+        setLastError(progress.lastError().isValid()
+            ? progress.lastError().text()
+            : database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    if (insertedCount) {
+        *insertedCount = inserted;
     }
     return true;
 }
@@ -2258,6 +2492,27 @@ bool FinanceRepository::initializeSchema()
                        "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
                        "project_id TEXT REFERENCES projects(id) ON DELETE SET NULL, "
                        "created_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS deposit_settings ("
+                       "account_id TEXT PRIMARY KEY "
+                       "REFERENCES accounts(id) ON DELETE CASCADE, "
+                       "annual_rate_bps INTEGER NOT NULL "
+                       "CHECK(annual_rate_bps BETWEEN 1 AND 100000), "
+                       "payout_frequency INTEGER NOT NULL "
+                       "CHECK(payout_frequency IN (0,1)), "
+                       "payout_day INTEGER NOT NULL CHECK(payout_day BETWEEN 0 AND 31), "
+                       "starts_on TEXT NOT NULL CHECK(length(starts_on) = 10), "
+                       "generated_through TEXT NOT NULL "
+                       "CHECK(length(generated_through) = 10), "
+                       "updated_at INTEGER NOT NULL, "
+                       "CHECK((payout_frequency = 0 AND payout_day BETWEEN 1 AND 31) OR "
+                       "      (payout_frequency = 1 AND payout_day = 0)))"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS deposit_interest_occurrences ("
+                       "account_id TEXT NOT NULL "
+                       "REFERENCES deposit_settings(account_id) ON DELETE CASCADE, "
+                       "occurrence_date TEXT NOT NULL CHECK(length(occurrence_date) = 10), "
+                       "transaction_id TEXT NOT NULL UNIQUE "
+                       "REFERENCES transactions(id) ON DELETE CASCADE, "
+                       "PRIMARY KEY(account_id, occurrence_date))"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS settings ("
                        "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS bank_csv_profiles ("
@@ -2355,6 +2610,8 @@ bool FinanceRepository::initializeSchema()
                        "ON transactions(account_id, occurred_at DESC)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_category "
                        "ON transactions(category_id)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_deposit_occurrences_transaction "
+                       "ON deposit_interest_occurrences(transaction_id)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_budget_accounts_account "
                        "ON budget_accounts(account_id)"),
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_budget_categories_category "
@@ -2922,6 +3179,7 @@ bool FinanceRepository::seedDefaults()
         {QStringLiteral("freelance"), QStringLiteral("Фриланс"), 0},
         {QStringLiteral("gift"), QStringLiteral("Подарок"), 0},
         {QStringLiteral("investment"), QStringLiteral("Инвестиции"), 0},
+        {QStringLiteral("deposit_interest"), QStringLiteral("Проценты по вкладу"), 0},
         {QStringLiteral("other_income"), QStringLiteral("Другой доход"), 0},
         {QStringLiteral("groceries"), QStringLiteral("Продукты"), 1},
         {QStringLiteral("transport"), QStringLiteral("Транспорт"), 1},

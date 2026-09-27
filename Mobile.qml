@@ -1715,6 +1715,8 @@ ApplicationWindow {
 
                 SoftButton {
                     Layout.fillWidth: true
+                    visible: financeController.selectedAsset !== "investment"
+                          || financeController.investmentAccounts.length > 0
                     text: financeController.selectedAsset === "crypto"
                           ? qsTr("+ Добавить криптовалюту")
                           : financeController.selectedAsset === "investment"
@@ -2590,10 +2592,20 @@ ApplicationWindow {
         property string editingId: ""
         property var editingAccount: null
         property string editingAsset: financeController.selectedAsset
+        property var depositPayoutTypes: [
+            { label: qsTr("Ежемесячно"), value: "monthly" },
+            { label: qsTr("Ежедневно"), value: "daily" }
+        ]
         readonly property bool creditCardSelected:
             accountTypeBox.currentIndex >= 0
             && accountTypeBox.currentIndex < accountTypes.length
             && accountTypes[accountTypeBox.currentIndex].value === "credit_card"
+        readonly property bool depositSelected:
+            accountTypeBox.currentIndex >= 0
+            && accountTypeBox.currentIndex < accountTypes.length
+            && accountTypes[accountTypeBox.currentIndex].value === "deposit"
+        readonly property bool monthlyDepositSelected:
+            depositSelected && depositPayoutBox.currentIndex === 0
 
         function typesForAsset(asset) {
             return asset === "fiat" ? [
@@ -2650,6 +2662,9 @@ ApplicationWindow {
             accountNameField.clear();
             accountBalanceField.clear();
             accountCreditLimitField.clear();
+            depositRateField.clear();
+            depositPayoutBox.currentIndex = 0;
+            depositPayoutDayField.text = "1";
             accountTypeBox.currentIndex = 0;
             accountCurrencyBox.currentIndex = 0;
             accountError.text = "";
@@ -2675,6 +2690,13 @@ ApplicationWindow {
                                      ? root.amountForInput(row.initialDebtMinor)
                                      : root.signedAmountForInput(row.initialBalanceMinor);
             accountCreditLimitField.text = root.amountForInput(row.creditLimitMinor);
+            depositRateField.text = row.depositAnnualRatePercent
+                                  ? String(row.depositAnnualRatePercent).replace(".", ",")
+                                  : "";
+            depositPayoutBox.currentIndex = row.depositPayoutFrequency === "daily"
+                                          ? 1 : 0;
+            depositPayoutDayField.text = row.depositPayoutDay > 0
+                                       ? String(row.depositPayoutDay) : "1";
             accountError.text = "";
             open();
         }
@@ -2761,6 +2783,8 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: accountDialog.creditCardSelected
                       ? qsTr("Задолженность на момент добавления")
+                      : accountDialog.depositSelected
+                        ? qsTr("Сумма вклада")
                       : qsTr("Начальный баланс")
                 color: root.muted
                 font.pixelSize: 12
@@ -2770,12 +2794,61 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 placeholderText: accountDialog.creditCardSelected
                                  ? qsTr("Задолженность на момент добавления")
+                                 : accountDialog.depositSelected
+                                   ? qsTr("Сумма вклада")
                                  : qsTr("Начальный баланс")
                 validator: DoubleValidator {
-                    bottom: accountDialog.creditCardSelected ? 0 : -999999999
+                    bottom: accountDialog.creditCardSelected
+                            || accountDialog.depositSelected ? 0 : -999999999
                     top: 999999999
                     decimals: 2
                 }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                text: qsTr("Годовая ставка, %")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppTextField {
+                id: depositRateField
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                placeholderText: qsTr("Например, 13")
+                validator: DoubleValidator {
+                    bottom: 0.01
+                    top: 1000
+                    decimals: 2
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                text: qsTr("Начисление процентов")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppComboBox {
+                id: depositPayoutBox
+                Layout.fillWidth: true
+                visible: accountDialog.depositSelected
+                model: accountDialog.depositPayoutTypes
+                textRole: "label"
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.monthlyDepositSelected
+                text: qsTr("День выплаты")
+                color: root.muted
+                font.pixelSize: 12
+            }
+            AppTextField {
+                id: depositPayoutDayField
+                Layout.fillWidth: true
+                visible: accountDialog.monthlyDepositSelected
+                placeholderText: qsTr("От 1 до 31")
+                validator: IntValidator { bottom: 1; top: 31 }
             }
             Text {
                 Layout.fillWidth: true
@@ -2814,6 +2887,29 @@ ApplicationWindow {
                             accountError.text = qsTr("Укажите кредитный лимит");
                             return;
                         }
+                        const depositAnnualRatePercent = Number(
+                            depositRateField.text.replace(",", ".")
+                        );
+                        const depositPayoutFrequency = accountDialog.depositSelected
+                            ? accountDialog.depositPayoutTypes[
+                                  depositPayoutBox.currentIndex].value
+                            : "";
+                        const depositPayoutDay = accountDialog.monthlyDepositSelected
+                            ? Number(depositPayoutDayField.text)
+                            : 0;
+                        if (accountDialog.depositSelected && initialBalanceMinor <= 0) {
+                            accountError.text = qsTr("Укажите сумму вклада");
+                            return;
+                        }
+                        if (accountDialog.depositSelected && depositAnnualRatePercent <= 0) {
+                            accountError.text = qsTr("Укажите годовую процентную ставку");
+                            return;
+                        }
+                        if (accountDialog.monthlyDepositSelected &&
+                            (depositPayoutDay < 1 || depositPayoutDay > 31)) {
+                            accountError.text = qsTr("Укажите день выплаты от 1 до 31");
+                            return;
+                        }
                         const ok = accountDialog.editingId
                                  ? financeController.updateAccount(
                                      accountDialog.editingId,
@@ -2821,14 +2917,20 @@ ApplicationWindow {
                                      type,
                                      accountCurrencyBox.currentText,
                                      initialBalanceMinor,
-                                     creditLimitMinor
+                                     creditLimitMinor,
+                                     depositAnnualRatePercent,
+                                     depositPayoutFrequency,
+                                     depositPayoutDay
                                  )
                                  : financeController.addAccount(
                                      accountNameField.text,
                                      type,
                                      accountCurrencyBox.currentText,
                                      initialBalanceMinor,
-                                     creditLimitMinor
+                                     creditLimitMinor,
+                                     depositAnnualRatePercent,
+                                     depositPayoutFrequency,
+                                     depositPayoutDay
                                  );
                         if (ok)
                             accountDialog.close();
