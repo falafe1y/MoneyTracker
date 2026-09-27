@@ -438,6 +438,46 @@ ApplicationWindow {
         ][month];
     }
 
+    function niceChartStep(range, targetIntervals) {
+        if (!Number.isFinite(range) || range <= 0)
+            return 1;
+        const raw = range / Math.max(1, targetIntervals);
+        const magnitude = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+        const normalized = raw / magnitude;
+        const factor = normalized <= 1.5 ? 1
+                     : normalized <= 3.0 ? 2
+                     : normalized <= 4.0 ? 2.5
+                     : normalized <= 7.5 ? 5 : 10;
+        return factor * magnitude;
+    }
+
+    function niceChartAxis(minimum, maximum) {
+        let low = Number(minimum);
+        let high = Number(maximum);
+        if (!Number.isFinite(low) || !Number.isFinite(high))
+            return { minimum: 0, maximum: 1, step: 1, intervals: 1 };
+        if (low > high) {
+            const swap = low;
+            low = high;
+            high = swap;
+        }
+        let span = high - low;
+        if (span === 0)
+            span = Math.max(100, Math.abs(high) * 0.1);
+        const padding = span * 0.04;
+        const step = niceChartStep(span + padding * 2, 5);
+        let axisMinimum = Math.floor((low - padding) / step) * step;
+        let axisMaximum = Math.ceil((high + padding) / step) * step;
+        if (axisMinimum === axisMaximum)
+            axisMaximum += step;
+        return {
+            minimum: axisMinimum,
+            maximum: axisMaximum,
+            step: step,
+            intervals: Math.round((axisMaximum - axisMinimum) / step)
+        };
+    }
+
     function capitalAxisMoney(minor, code) {
         const amount = Number(minor) / 100;
         const absolute = Math.abs(amount);
@@ -661,15 +701,9 @@ ApplicationWindow {
                     minimum = Math.min(minimum, value);
                     maximum = Math.max(maximum, value);
                 }
-                if (minimum === maximum) {
-                    const padding = Math.max(100, Math.abs(minimum) * 0.05);
-                    minimum -= padding;
-                    maximum += padding;
-                } else {
-                    const padding = (maximum - minimum) * 0.08;
-                    minimum -= padding;
-                    maximum += padding;
-                }
+                const axis = root.niceChartAxis(minimum, maximum);
+                minimum = axis.minimum;
+                maximum = axis.maximum;
                 const range = Math.max(1, maximum - minimum);
                 const firstDate = root.dateFromIso(data[0].date);
                 const lastDate = root.dateFromIso(data[data.length - 1].date);
@@ -687,8 +721,8 @@ ApplicationWindow {
                     return top + (maximum - value) / range * plotHeight;
                 }
                 ctx.font = "14px sans-serif";
-                for (let tick = 0; tick <= 4; ++tick) {
-                    const ratio = tick / 4;
+                for (let tick = 0; tick <= axis.intervals; ++tick) {
+                    const ratio = tick / axis.intervals;
                     const y = top + ratio * plotHeight;
                     ctx.strokeStyle = root.line;
                     ctx.lineWidth = 1;
@@ -696,7 +730,8 @@ ApplicationWindow {
                     ctx.fillStyle = root.muted;
                     ctx.textAlign = "right";
                     ctx.textBaseline = "middle";
-                    ctx.fillText(root.capitalAxisMoney(maximum - ratio * range, parent.currency), left - 7, y);
+                    ctx.fillText(root.capitalAxisMoney(
+                        maximum - tick * axis.step, parent.currency), left - 7, y);
                 }
                 ctx.strokeStyle = parent.seriesColor;
                 ctx.lineWidth = 2.5;
@@ -755,10 +790,13 @@ ApplicationWindow {
                 let maximum = 0;
                 for (let i = 0; i < data.length; ++i)
                     maximum = Math.max(maximum, Number(data[i].totalMinor));
-                maximum = Math.max(100, maximum * 1.08);
+                const paddedMaximum = Math.max(100, maximum * 1.08);
+                const tickStep = root.niceChartStep(paddedMaximum, 5);
+                maximum = Math.ceil(paddedMaximum / tickStep) * tickStep;
+                const tickIntervals = Math.max(1, Math.round(maximum / tickStep));
                 ctx.font = "14px sans-serif";
-                for (let tick = 0; tick <= 4; ++tick) {
-                    const ratio = tick / 4;
+                for (let tick = 0; tick <= tickIntervals; ++tick) {
+                    const ratio = tick / tickIntervals;
                     const y = top + ratio * plotHeight;
                     ctx.strokeStyle = root.line;
                     ctx.lineWidth = 1;
@@ -766,7 +804,8 @@ ApplicationWindow {
                     ctx.fillStyle = root.muted;
                     ctx.textAlign = "right";
                     ctx.textBaseline = "middle";
-                    ctx.fillText(root.capitalAxisMoney(maximum * (1 - ratio), parent.currency), left - 7, y);
+                    ctx.fillText(root.capitalAxisMoney(
+                        maximum - tick * tickStep, parent.currency), left - 7, y);
                 }
                 const slot = plotWidth / data.length;
                 const barWidth = Math.max(2, slot * 0.68);
@@ -3590,7 +3629,7 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: qsTr("Средние расходы: %1 в месяц")
+                            text: qsTr("В среднем %1")
                                 .arg(root.money(
                                     root.averageCompletedMonthExpense(
                                         root.expenseRowsForYear(
@@ -3632,6 +3671,7 @@ ApplicationWindow {
                         anchors.margins: 18
                         RowLayout {
                             Layout.fillWidth: true
+                            Layout.preferredHeight: 44
                             Text {
                                 text: qsTr("История капитала в рублях")
                                 color: root.accent
@@ -3666,6 +3706,7 @@ ApplicationWindow {
                         anchors.margins: 18
                         RowLayout {
                             Layout.fillWidth: true
+                            Layout.preferredHeight: 44
                             Text {
                                 Layout.fillWidth: true
                                 text: qsTr("Капитал в выбранной валюте")
