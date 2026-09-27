@@ -273,10 +273,16 @@ ApplicationWindow {
         return qsTr("По дням");
     }
 
-    function analyticsSeriesHasValues(rows) {
-        for (let i = 0; i < rows.length; ++i)
-            if (Number(rows[i].totalMinor) !== 0) return true;
-        return false;
+    function averageCompletedMonthExpense(rows) {
+        let total = 0, count = 0;
+        for (let i = 0; i < rows.length; ++i) {
+            if (!rows[i].complete) continue;
+            total += Number(rows[i].totalMinor);
+            ++count;
+        }
+        if (count === 0 && rows.length > 0)
+            return Number(rows[rows.length - 1].totalMinor);
+        return count > 0 ? Math.round(total / count) : 0;
     }
 
     function compactAxisMoney(minor, code) {
@@ -342,6 +348,7 @@ ApplicationWindow {
         property var points: []
         property string currency: "RUB"
         property bool bars: false
+        property real averageMinor: 0
 
         Canvas {
             id: mobileAnalyticsCanvas
@@ -354,6 +361,7 @@ ApplicationWindow {
                 function onPointsChanged() { mobileAnalyticsCanvas.requestPaint(); }
                 function onCurrencyChanged() { mobileAnalyticsCanvas.requestPaint(); }
                 function onBarsChanged() { mobileAnalyticsCanvas.requestPaint(); }
+                function onAverageMinorChanged() { mobileAnalyticsCanvas.requestPaint(); }
             }
             onPaint: {
                 const ctx = getContext("2d");
@@ -391,6 +399,14 @@ ApplicationWindow {
                         ctx.fillRect(left + bar * barSlot + barSlot * 0.18,
                                      top + plotHeight - barHeight, Math.max(1, barSlot * 0.64), barHeight);
                     }
+                    if (parent.averageMinor > 0) {
+                        const averageY = top + plotHeight
+                            - Math.min(parent.averageMinor, maximum) / maximum * plotHeight;
+                        ctx.save(); ctx.strokeStyle = root.accent; ctx.lineWidth = 1.3;
+                        ctx.setLineDash([5, 3]); ctx.beginPath();
+                        ctx.moveTo(left, averageY); ctx.lineTo(left + plotWidth, averageY);
+                        ctx.stroke(); ctx.restore();
+                    }
                 } else {
                     ctx.strokeStyle = root.chartAccent3; ctx.lineWidth = 2.2;
                     ctx.lineJoin = "round"; ctx.beginPath();
@@ -402,10 +418,10 @@ ApplicationWindow {
                     ctx.stroke();
                 }
                 ctx.fillStyle = root.muted; ctx.textBaseline = "top";
-                const firstLabel = parent.bars ? "1"
-                    : Qt.formatDate(root.dateFromIso(data[0].date), "dd.MM");
-                const lastLabel = parent.bars ? String(data.length)
-                    : Qt.formatDate(root.dateFromIso(data[data.length - 1].date), "dd.MM");
+                const firstLabel = Qt.formatDate(root.dateFromIso(data[0].date),
+                    parent.bars ? "MM.yy" : "dd.MM");
+                const lastLabel = Qt.formatDate(root.dateFromIso(data[data.length - 1].date),
+                    parent.bars ? "MM.yy" : "dd.MM");
                 ctx.textAlign = "left"; ctx.fillText(firstLabel, left, top + plotHeight + 6);
                 ctx.textAlign = "right"; ctx.fillText(lastLabel, left + plotWidth, top + plotHeight + 6);
             }
@@ -2234,23 +2250,34 @@ ApplicationWindow {
                         anchors.margins: 14
                         Text {
                             Layout.fillWidth: true
-                            text: qsTr("Расходы за текущий месяц") + " · RUB"
+                            text: qsTr("История расходов по месяцам") + " · RUB"
                             color: root.accent
                             font.pixelSize: 16
                             font.weight: Font.DemiBold
                             wrapMode: Text.WordWrap
                         }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Среднее: %1 в месяц").arg(root.money(
+                                root.averageCompletedMonthExpense(
+                                    financeController.expenseHistoryByMonthRub),
+                                "RUB", false))
+                            color: root.muted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
                         MobileAnalyticsChart {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            points: financeController.monthlyExpenseHistoryRub
+                            points: financeController.expenseHistoryByMonthRub
                             currency: "RUB"
                             bars: true
+                            averageMinor: root.averageCompletedMonthExpense(points)
                         }
                         Text {
                             Layout.alignment: Qt.AlignHCenter
-                            visible: !root.analyticsSeriesHasValues(financeController.monthlyExpenseHistoryRub)
-                            text: qsTr("В этом месяце расходов пока нет")
+                            visible: financeController.expenseHistoryByMonthRub.length === 0
+                            text: qsTr("Добавьте расходы — здесь появится история по месяцам")
                             color: root.muted
                             font.pixelSize: 11
                         }

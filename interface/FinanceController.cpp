@@ -2699,31 +2699,44 @@ QVariantList FinanceController::capitalHistory() const
     return capitalHistoryToVariant(capitalHistorySeries_, appCurrency_);
 }
 
-QVariantList FinanceController::monthlyExpenseHistoryRub() const
+QVariantList FinanceController::expenseHistoryByMonthRub() const
 {
     const QDate today = QDate::currentDate();
-    const QDate monthStart(today.year(), today.month(), 1);
-    QVector<qint64> dailyTotals(today.daysInMonth(), 0);
+    const QDate currentMonth(today.year(), today.month(), 1);
+    QDate firstMonth;
+    QHash<QDate, qint64> totals;
     for (const Transaction& transaction : transactions_) {
         const QDate date = transaction.date().toLocalTime().date();
         if (transaction.type() != TransactionType::Expense ||
-            date.year() != today.year() || date.month() != today.month()) {
+            !date.isValid() || date > today) {
             continue;
+        }
+        const QDate month(date.year(), date.month(), 1);
+        if (!firstMonth.isValid() || month < firstMonth) {
+            firstMonth = month;
         }
         const qint64 amount = currencyConverter_.convert(
             transaction.money(), Currency::RUB).minorUnits();
-        dailyTotals[date.day() - 1] = saturatedCapitalAdd(
-            dailyTotals.at(date.day() - 1), amount);
+        totals[month] = saturatedCapitalAdd(totals.value(month), amount);
     }
 
     QVariantList result;
-    result.reserve(today.daysInMonth());
-    for (int day = 1; day <= today.daysInMonth(); ++day) {
+    if (!firstMonth.isValid()) {
+        return result;
+    }
+    const int monthCount =
+        (currentMonth.year() - firstMonth.year()) * 12 +
+        currentMonth.month() - firstMonth.month() + 1;
+    result.reserve(monthCount);
+    for (QDate month = firstMonth;
+         month.isValid() && month <= currentMonth;
+         month = month.addMonths(1)) {
         result.append(QVariantMap{
-            {QStringLiteral("date"), monthStart.addDays(day - 1).toString(Qt::ISODate)},
-            {QStringLiteral("totalMinor"), dailyTotals.at(day - 1)},
+            {QStringLiteral("date"), month.toString(Qt::ISODate)},
+            {QStringLiteral("totalMinor"), totals.value(month)},
             {QStringLiteral("currency"), QStringLiteral("RUB")},
-            {QStringLiteral("resolution"), QStringLiteral("day")}
+            {QStringLiteral("resolution"), QStringLiteral("month")},
+            {QStringLiteral("complete"), month < currentMonth}
         });
     }
     return result;

@@ -56,7 +56,10 @@
     <message><source>История капитала в рублях</source><translation>Capital history in rubles</translation></message>
     <message><source>История капитала в выбранной валюте</source><translation>Capital history in selected currency</translation></message>
     <message><source>Капитал в выбранной валюте</source><translation>Capital in selected currency</translation></message>
-    <message><source>Расходы за текущий месяц</source><translation>Expenses this month</translation></message>
+    <message><source>История расходов по месяцам</source><translation>Monthly expense history</translation></message>
+    <message><source>Средние расходы: %1 в месяц</source><translation>Average expenses: %1 per month</translation></message>
+    <message><source>Среднее: %1 в месяц</source><translation>Average: %1 per month</translation></message>
+    <message><source>Добавьте расходы — здесь появится история по месяцам</source><translation>Add expenses to see monthly history here</translation></message>
     <message><source>В этом месяце расходов пока нет</source><translation>No expenses this month yet</translation></message>
     <message><source>Добавьте операцию — здесь появится история капитала</source><translation>Add a transaction to see your capital history here</translation></message>
     <message><source>История операций</source><translation>Transaction history</translation></message>

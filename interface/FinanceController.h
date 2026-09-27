@@ -246,8 +246,8 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
-        QVariantList monthlyExpenseHistoryRub
-            READ monthlyExpenseHistoryRub
+        QVariantList expenseHistoryByMonthRub
+            READ expenseHistoryByMonthRub
                 NOTIFY analyticsChanged
         )
 
@@ -395,7 +395,7 @@ public:
     QString dateFilterFrom() const;
     QString dateFilterTo() const;
     QVariantList capitalHistory() const;
-    QVariantList monthlyExpenseHistoryRub() const;
+    QVariantList expenseHistoryByMonthRub() const;
     QVariantList capitalHistoryRub() const;
     QString analyticsCurrency() const;
     void setAnalyticsCurrency(const QString& currency);
