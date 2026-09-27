@@ -651,7 +651,7 @@ ApplicationWindow {
                 const data = parent.points || [];
                 if (data.length === 0 || width < 180 || height < 100)
                     return;
-                const left = 72, right = 12, top = 10, bottom = 30;
+                const left = 90, right = 12, top = 10, bottom = 38;
                 const plotWidth = Math.max(1, width - left - right);
                 const plotHeight = Math.max(1, height - top - bottom);
                 let minimum = Number(data[0].totalMinor);
@@ -686,7 +686,7 @@ ApplicationWindow {
                 function yFor(value) {
                     return top + (maximum - value) / range * plotHeight;
                 }
-                ctx.font = "10px sans-serif";
+                ctx.font = "14px sans-serif";
                 for (let tick = 0; tick <= 4; ++tick) {
                     const ratio = tick / 4;
                     const y = top + ratio * plotHeight;
@@ -749,14 +749,14 @@ ApplicationWindow {
                 const data = parent.points || [];
                 if (data.length === 0 || width < 180 || height < 100)
                     return;
-                const left = 72, right = 12, top = 10, bottom = 30;
+                const left = 90, right = 12, top = 10, bottom = 38;
                 const plotWidth = Math.max(1, width - left - right);
                 const plotHeight = Math.max(1, height - top - bottom);
                 let maximum = 0;
                 for (let i = 0; i < data.length; ++i)
                     maximum = Math.max(maximum, Number(data[i].totalMinor));
                 maximum = Math.max(100, maximum * 1.08);
-                ctx.font = "10px sans-serif";
+                ctx.font = "14px sans-serif";
                 for (let tick = 0; tick <= 4; ++tick) {
                     const ratio = tick / 4;
                     const y = top + ratio * plotHeight;
@@ -790,7 +790,7 @@ ApplicationWindow {
                     ctx.stroke();
                     ctx.restore();
                 }
-                ctx.font = "9px sans-serif";
+                ctx.font = "14px sans-serif";
                 for (let index = 0; index < data.length; ++index) {
                     ctx.fillStyle = root.muted;
                     ctx.textBaseline = "top";
@@ -3549,7 +3549,7 @@ ApplicationWindow {
 
                 Panel {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 255
+                    Layout.preferredHeight: 275
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 18
@@ -3597,7 +3597,7 @@ ApplicationWindow {
                                             analyticsScroll.expenseYear)),
                                     "RUB", false))
                             color: root.muted
-                            font.pixelSize: 12
+                            font.pixelSize: 14
                             wrapMode: Text.WordWrap
                         }
                         AnalyticsBarChart {
@@ -3617,9 +3617,16 @@ ApplicationWindow {
                     }
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+
                 Panel {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 255
+                    Layout.preferredWidth: 0
+                    Layout.minimumWidth: 360
+                    Layout.preferredHeight: 300
+                    Layout.fillHeight: true
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 18
@@ -3635,7 +3642,7 @@ ApplicationWindow {
                             Text {
                                 text: root.historyResolutionLabel(financeController.capitalHistoryRub)
                                 color: root.muted
-                                font.pixelSize: 11
+                                font.pixelSize: 14
                             }
                         }
                         AnalyticsLineChart {
@@ -3650,19 +3657,23 @@ ApplicationWindow {
 
                 Panel {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 270
+                    Layout.preferredWidth: 0
+                    Layout.minimumWidth: 360
+                    Layout.preferredHeight: 300
+                    Layout.fillHeight: true
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 18
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
-                                text: qsTr("История капитала в выбранной валюте")
+                                Layout.fillWidth: true
+                                text: qsTr("Капитал в выбранной валюте")
                                 color: root.accent
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
+                                elide: Text.ElideRight
                             }
-                            Item { Layout.fillWidth: true }
                             AppComboBox {
                                 model: ["USD", "EUR"]
                                 currentIndex: Math.max(0, model.indexOf(financeController.analyticsCurrency))
@@ -3678,6 +3689,7 @@ ApplicationWindow {
                             seriesColor: root.chartAccent4
                         }
                     }
+                }
                 }
             }
         }
