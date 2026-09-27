@@ -380,14 +380,62 @@ ApplicationWindow {
         let total = 0;
         let count = 0;
         for (let i = 0; i < rows.length; ++i) {
-            if (!rows[i].complete)
+            if (!rows[i].tracked || !rows[i].complete)
                 continue;
             total += Number(rows[i].totalMinor);
             ++count;
         }
-        if (count === 0 && rows.length > 0)
-            return Number(rows[rows.length - 1].totalMinor);
+        if (count === 0) {
+            for (let j = 0; j < rows.length; ++j) {
+                if (!rows[j].tracked)
+                    continue;
+                total += Number(rows[j].totalMinor);
+                ++count;
+            }
+        }
         return count > 0 ? Math.round(total / count) : 0;
+    }
+
+    function expenseHistoryFirstYear() {
+        const rows = financeController.expenseHistoryByMonthRub;
+        if (rows.length === 0)
+            return new Date().getFullYear();
+        const date = root.dateFromIso(rows[0].date);
+        return date ? date.getFullYear() : new Date().getFullYear();
+    }
+
+    function expenseHistoryLastYear() {
+        return new Date().getFullYear();
+    }
+
+    function expenseRowsForYear(year) {
+        const source = financeController.expenseHistoryByMonthRub;
+        const byMonth = {};
+        for (let i = 0; i < source.length; ++i) {
+            const date = root.dateFromIso(source[i].date);
+            if (date && date.getFullYear() === year)
+                byMonth[date.getMonth()] = source[i];
+        }
+        const result = [];
+        for (let month = 0; month < 12; ++month) {
+            const row = byMonth[month];
+            result.push({
+                date: year + "-" + (month < 9 ? "0" : "") + (month + 1) + "-01",
+                monthIndex: month,
+                totalMinor: row ? Number(row.totalMinor) : 0,
+                complete: row ? Boolean(row.complete) : false,
+                tracked: Boolean(row)
+            });
+        }
+        return result;
+    }
+
+    function expenseMonthLabel(month) {
+        return [
+            qsTr("Янв."), qsTr("Фев."), qsTr("Мар."), qsTr("Апр."),
+            qsTr("Май"), qsTr("Июн."), qsTr("Июл."), qsTr("Авг."),
+            qsTr("Сен."), qsTr("Окт."), qsTr("Ноя."), qsTr("Дек.")
+        ][month];
     }
 
     function capitalAxisMoney(minor, code) {
@@ -742,15 +790,14 @@ ApplicationWindow {
                     ctx.stroke();
                     ctx.restore();
                 }
-                const labels = [0, Math.floor((data.length - 1) / 2), data.length - 1];
-                for (let label = 0; label < labels.length; ++label) {
-                    const index = labels[label];
+                ctx.font = "9px sans-serif";
+                for (let index = 0; index < data.length; ++index) {
                     ctx.fillStyle = root.muted;
                     ctx.textBaseline = "top";
-                    ctx.textAlign = label === 0 ? "left" : label === labels.length - 1 ? "right" : "center";
-                    const date = root.dateFromIso(data[index].date);
-                    ctx.fillText(date ? Qt.formatDate(date, "MM.yyyy") : "",
-                                 left + (index + 0.5) * slot, top + plotHeight + 8);
+                    ctx.textAlign = "center";
+                    ctx.fillText(root.expenseMonthLabel(data[index].monthIndex),
+                                 left + (index + 0.5) * slot,
+                                 top + plotHeight + 8);
                 }
             }
         }
@@ -3491,6 +3538,7 @@ ApplicationWindow {
         id: analyticsPage
         ScrollView {
             id: analyticsScroll
+            property int expenseYear: root.expenseHistoryLastYear()
             clip: true
             contentWidth: availableWidth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
@@ -3514,6 +3562,30 @@ ApplicationWindow {
                                 font.weight: Font.DemiBold
                             }
                             Item { Layout.fillWidth: true }
+                            SoftButton {
+                                text: "‹"
+                                controlHeight: 30
+                                Layout.preferredWidth: 34
+                                enabled: analyticsScroll.expenseYear
+                                    > root.expenseHistoryFirstYear()
+                                onClicked: analyticsScroll.expenseYear -= 1
+                            }
+                            Text {
+                                text: analyticsScroll.expenseYear
+                                color: root.accent
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                                Layout.minimumWidth: 42
+                                horizontalAlignment: Text.AlignHCenter
+                            }
+                            SoftButton {
+                                text: "›"
+                                controlHeight: 30
+                                Layout.preferredWidth: 34
+                                enabled: analyticsScroll.expenseYear
+                                    < root.expenseHistoryLastYear()
+                                onClicked: analyticsScroll.expenseYear += 1
+                            }
                             Text { text: "RUB"; color: root.muted; font.pixelSize: 12 }
                         }
                         Text {
@@ -3521,7 +3593,8 @@ ApplicationWindow {
                             text: qsTr("Средние расходы: %1 в месяц")
                                 .arg(root.money(
                                     root.averageCompletedMonthExpense(
-                                        financeController.expenseHistoryByMonthRub),
+                                        root.expenseRowsForYear(
+                                            analyticsScroll.expenseYear)),
                                     "RUB", false))
                             color: root.muted
                             font.pixelSize: 12
@@ -3530,7 +3603,7 @@ ApplicationWindow {
                         AnalyticsBarChart {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            points: financeController.expenseHistoryByMonthRub
+                            points: root.expenseRowsForYear(analyticsScroll.expenseYear)
                             currency: "RUB"
                             averageMinor: root.averageCompletedMonthExpense(points)
                         }

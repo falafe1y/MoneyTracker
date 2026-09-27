@@ -60,6 +60,18 @@
     <message><source>Средние расходы: %1 в месяц</source><translation>Average expenses: %1 per month</translation></message>
     <message><source>Среднее: %1 в месяц</source><translation>Average: %1 per month</translation></message>
     <message><source>Добавьте расходы — здесь появится история по месяцам</source><translation>Add expenses to see monthly history here</translation></message>
+    <message><source>Янв.</source><translation>Jan</translation></message>
+    <message><source>Фев.</source><translation>Feb</translation></message>
+    <message><source>Мар.</source><translation>Mar</translation></message>
+    <message><source>Апр.</source><translation>Apr</translation></message>
+    <message><source>Май</source><translation>May</translation></message>
+    <message><source>Июн.</source><translation>Jun</translation></message>
+    <message><source>Июл.</source><translation>Jul</translation></message>
+    <message><source>Авг.</source><translation>Aug</translation></message>
+    <message><source>Сен.</source><translation>Sep</translation></message>
+    <message><source>Окт.</source><translation>Oct</translation></message>
+    <message><source>Ноя.</source><translation>Nov</translation></message>
+    <message><source>Дек.</source><translation>Dec</translation></message>
     <message><source>В этом месяце расходов пока нет</source><translation>No expenses this month yet</translation></message>
     <message><source>Добавьте операцию — здесь появится история капитала</source><translation>Add a transaction to see your capital history here</translation></message>
     <message><source>История операций</source><translation>Transaction history</translation></message>
