@@ -2189,6 +2189,31 @@ bool FinanceRepository::saveAppCurrency(const QString& currency)
     return true;
 }
 
+QString FinanceRepository::loadAnalyticsCurrency() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral(
+            "SELECT value FROM settings WHERE key = 'analytics_currency'")) &&
+        query.next()) {
+        return query.value(0).toString();
+    }
+    return QStringLiteral("USD");
+}
+
+bool FinanceRepository::saveAnalyticsCurrency(const QString& currency)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO settings(key, value) VALUES('analytics_currency', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"));
+    query.addBindValue(currency);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
 QString FinanceRepository::loadSelectedAsset() const
 {
     QSqlQuery query(database_);
@@ -3209,6 +3234,9 @@ bool FinanceRepository::seedDefaults()
     QSqlQuery setting(database_);
     if (!setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) VALUES('app_currency','RUB')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) "
+            "VALUES('analytics_currency','USD')")) ||
         !setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) VALUES('selected_asset','fiat')")) ||
         !setting.exec(QStringLiteral(

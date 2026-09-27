@@ -53,6 +53,11 @@
     <message><source>Задолженность: %1</source><translation>Debt: %1</translation></message>
     <message><source>Инвестиции</source><translation>Investments</translation></message>
     <message><source>История капитала</source><translation>Capital history</translation></message>
+    <message><source>История капитала в рублях</source><translation>Capital history in rubles</translation></message>
+    <message><source>История капитала в выбранной валюте</source><translation>Capital history in selected currency</translation></message>
+    <message><source>Капитал в выбранной валюте</source><translation>Capital in selected currency</translation></message>
+    <message><source>Расходы за текущий месяц</source><translation>Expenses this month</translation></message>
+    <message><source>В этом месяце расходов пока нет</source><translation>No expenses this month yet</translation></message>
     <message><source>Добавьте операцию — здесь появится история капитала</source><translation>Add a transaction to see your capital history here</translation></message>
     <message><source>История операций</source><translation>Transaction history</translation></message>
     <message><source>Категории</source><translation>Categories</translation></message>

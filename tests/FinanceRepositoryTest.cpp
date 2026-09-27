@@ -688,8 +688,10 @@ void FinanceRepositoryTest::storesCurrencyRateSettings()
         FinanceRepository repository(databasePath);
         QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
         QVERIFY(repository.loadAutomaticCurrencyRates());
+        QCOMPARE(repository.loadAnalyticsCurrency(), QStringLiteral("USD"));
         QVERIFY(repository.saveAutomaticCurrencyRates(false));
         QVERIFY(repository.saveManualCurrencyRates(1.02, 86.54, 100.12));
+        QVERIFY(repository.saveAnalyticsCurrency(QStringLiteral("EUR")));
     }
 
     FinanceRepository reopened(databasePath);
@@ -698,6 +700,7 @@ void FinanceRepositoryTest::storesCurrencyRateSettings()
     QCOMPARE(reopened.loadManualRubToRubRate(), 1.02);
     QCOMPARE(reopened.loadManualUsdToRubRate(), 86.54);
     QCOMPARE(reopened.loadManualEurToRubRate(), 100.12);
+    QCOMPARE(reopened.loadAnalyticsCurrency(), QStringLiteral("EUR"));
 }
 
 void FinanceRepositoryTest::storesCreditCardTerms()

@@ -363,7 +363,10 @@ ApplicationWindow {
     }
 
     function capitalHistoryResolutionLabel() {
-        const rows = financeController.capitalHistory;
+        return historyResolutionLabel(financeController.capitalHistory);
+    }
+
+    function historyResolutionLabel(rows) {
         if (rows.length === 0)
             return "";
         if (rows[0].resolution === "year")
@@ -371,6 +374,13 @@ ApplicationWindow {
         if (rows[0].resolution === "month")
             return qsTr("По месяцам");
         return qsTr("По дням");
+    }
+
+    function analyticsSeriesHasValues(rows) {
+        for (let i = 0; i < rows.length; ++i)
+            if (Number(rows[i].totalMinor) !== 0)
+                return true;
+        return false;
     }
 
     function capitalAxisMoney(minor, code) {
@@ -558,6 +568,168 @@ ApplicationWindow {
         radius: 16
         border.width: 1
         border.color: root.line
+    }
+
+    component AnalyticsLineChart: Item {
+        id: analyticsLineRoot
+        property var points: []
+        property string currency: "RUB"
+        property color seriesColor: root.chartAccent3
+
+        Canvas {
+            id: analyticsLineCanvas
+            anchors.fill: parent
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+            Component.onCompleted: requestPaint()
+
+            Connections {
+                target: analyticsLineRoot
+                function onPointsChanged() { analyticsLineCanvas.requestPaint(); }
+                function onCurrencyChanged() { analyticsLineCanvas.requestPaint(); }
+                function onSeriesColorChanged() { analyticsLineCanvas.requestPaint(); }
+            }
+
+            onPaint: {
+                const ctx = getContext("2d");
+                ctx.clearRect(0, 0, width, height);
+                const data = parent.points || [];
+                if (data.length === 0 || width < 180 || height < 100)
+                    return;
+                const left = 72, right = 12, top = 10, bottom = 30;
+                const plotWidth = Math.max(1, width - left - right);
+                const plotHeight = Math.max(1, height - top - bottom);
+                let minimum = Number(data[0].totalMinor);
+                let maximum = minimum;
+                for (let i = 1; i < data.length; ++i) {
+                    const value = Number(data[i].totalMinor);
+                    minimum = Math.min(minimum, value);
+                    maximum = Math.max(maximum, value);
+                }
+                if (minimum === maximum) {
+                    const padding = Math.max(100, Math.abs(minimum) * 0.05);
+                    minimum -= padding;
+                    maximum += padding;
+                } else {
+                    const padding = (maximum - minimum) * 0.08;
+                    minimum -= padding;
+                    maximum += padding;
+                }
+                const range = Math.max(1, maximum - minimum);
+                const firstDate = root.dateFromIso(data[0].date);
+                const lastDate = root.dateFromIso(data[data.length - 1].date);
+                const firstTime = firstDate ? firstDate.getTime() : 0;
+                const lastTime = lastDate ? lastDate.getTime() : firstTime;
+                const timeRange = Math.max(1, lastTime - firstTime);
+                function xFor(row) {
+                    if (data.length === 1)
+                        return left + plotWidth / 2;
+                    const date = root.dateFromIso(row.date);
+                    return left + ((date ? date.getTime() : firstTime) - firstTime)
+                        / timeRange * plotWidth;
+                }
+                function yFor(value) {
+                    return top + (maximum - value) / range * plotHeight;
+                }
+                ctx.font = "10px sans-serif";
+                for (let tick = 0; tick <= 4; ++tick) {
+                    const ratio = tick / 4;
+                    const y = top + ratio * plotHeight;
+                    ctx.strokeStyle = root.line;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke();
+                    ctx.fillStyle = root.muted;
+                    ctx.textAlign = "right";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(root.capitalAxisMoney(maximum - ratio * range, parent.currency), left - 7, y);
+                }
+                ctx.strokeStyle = parent.seriesColor;
+                ctx.lineWidth = 2.5;
+                ctx.lineJoin = "round";
+                ctx.lineCap = "round";
+                ctx.beginPath();
+                for (let point = 0; point < data.length; ++point) {
+                    const x = xFor(data[point]);
+                    const y = yFor(Number(data[point].totalMinor));
+                    if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                const labelCount = Math.min(5, data.length);
+                const used = {};
+                for (let label = 0; label < labelCount; ++label) {
+                    const index = labelCount === 1 ? 0
+                        : Math.round(label * (data.length - 1) / (labelCount - 1));
+                    if (used[index]) continue;
+                    used[index] = true;
+                    ctx.fillStyle = root.muted;
+                    ctx.textAlign = index === 0 ? "left"
+                        : index === data.length - 1 ? "right" : "center";
+                    ctx.textBaseline = "top";
+                    ctx.fillText(root.capitalDateLabel(data[index]), xFor(data[index]), top + plotHeight + 8);
+                }
+            }
+        }
+    }
+
+    component AnalyticsBarChart: Item {
+        id: analyticsBarRoot
+        property var points: []
+        property string currency: "RUB"
+
+        Canvas {
+            id: analyticsBarCanvas
+            anchors.fill: parent
+            onWidthChanged: requestPaint()
+            onHeightChanged: requestPaint()
+            Component.onCompleted: requestPaint()
+            Connections {
+                target: analyticsBarRoot
+                function onPointsChanged() { analyticsBarCanvas.requestPaint(); }
+            }
+            onPaint: {
+                const ctx = getContext("2d");
+                ctx.clearRect(0, 0, width, height);
+                const data = parent.points || [];
+                if (data.length === 0 || width < 180 || height < 100)
+                    return;
+                const left = 72, right = 12, top = 10, bottom = 30;
+                const plotWidth = Math.max(1, width - left - right);
+                const plotHeight = Math.max(1, height - top - bottom);
+                let maximum = 0;
+                for (let i = 0; i < data.length; ++i)
+                    maximum = Math.max(maximum, Number(data[i].totalMinor));
+                maximum = Math.max(100, maximum * 1.08);
+                ctx.font = "10px sans-serif";
+                for (let tick = 0; tick <= 4; ++tick) {
+                    const ratio = tick / 4;
+                    const y = top + ratio * plotHeight;
+                    ctx.strokeStyle = root.line;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke();
+                    ctx.fillStyle = root.muted;
+                    ctx.textAlign = "right";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(root.capitalAxisMoney(maximum * (1 - ratio), parent.currency), left - 7, y);
+                }
+                const slot = plotWidth / data.length;
+                const barWidth = Math.max(2, slot * 0.68);
+                ctx.fillStyle = root.red;
+                for (let bar = 0; bar < data.length; ++bar) {
+                    const value = Number(data[bar].totalMinor);
+                    const barHeight = value / maximum * plotHeight;
+                    ctx.fillRect(left + bar * slot + (slot - barWidth) / 2,
+                                 top + plotHeight - barHeight, barWidth, barHeight);
+                }
+                const labels = [0, Math.floor((data.length - 1) / 2), data.length - 1];
+                for (let label = 0; label < labels.length; ++label) {
+                    const index = labels[label];
+                    ctx.fillStyle = root.muted;
+                    ctx.textBaseline = "top";
+                    ctx.textAlign = label === 0 ? "left" : label === labels.length - 1 ? "right" : "center";
+                    ctx.fillText(String(index + 1), left + (index + 0.5) * slot, top + plotHeight + 8);
+                }
+            }
+        }
     }
 
     // Item.clip and ListView.clip are rectangular. These masks cover content
@@ -3293,74 +3465,109 @@ ApplicationWindow {
 
     Component {
         id: analyticsPage
-        RowLayout {
-            spacing: 14
-            Panel {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 24
-                    Text {
-                        text: qsTr("Доходы")
-                        color: root.muted
-                    }
-                    Text {
-                        text: root.money(financeController.incomeMinorUnits, financeController.appCurrency, false)
-                        color: root.income
-                        font.pixelSize: 30
-                        font.weight: Font.Bold
-                    }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 1
-                        color: root.line
-                    }
-                    Text {
-                        text: qsTr("Расходы")
-                        color: root.muted
-                    }
-                    Text {
-                        text: root.money(financeController.expenseMinorUnits, financeController.appCurrency, false)
-                        color: root.red
-                        font.pixelSize: 30
-                        font.weight: Font.Bold
-                    }
-                    Item {
-                        Layout.fillHeight: true
-                    }
-                }
-            }
-            Panel {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 24
-                    Text {
-                        text: qsTr("Категории расходов")
-                        color: root.accent
-                        font.pixelSize: 17
-                        font.weight: Font.DemiBold
-                    }
-                    Repeater {
-                        model: root.categoryTotals()
-                        delegate: RowLayout {
-                            required property var modelData
+        ScrollView {
+            id: analyticsScroll
+            clip: true
+            contentWidth: availableWidth
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                width: analyticsScroll.availableWidth
+                spacing: 14
+
+                Panel {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 255
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        RowLayout {
                             Layout.fillWidth: true
                             Text {
-                                text: modelData.label
-                                color: root.muted
-                                Layout.fillWidth: true
-                            }
-                            Text {
-                                text: root.money(modelData.amount, financeController.appCurrency, false)
+                                text: qsTr("Расходы за текущий месяц")
                                 color: root.accent
+                                font.pixelSize: 17
+                                font.weight: Font.DemiBold
                             }
+                            Item { Layout.fillWidth: true }
+                            Text { text: "RUB"; color: root.muted; font.pixelSize: 12 }
+                        }
+                        AnalyticsBarChart {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            points: financeController.monthlyExpenseHistoryRub
+                            currency: "RUB"
+                        }
+                        Text {
+                            Layout.alignment: Qt.AlignHCenter
+                            visible: !root.analyticsSeriesHasValues(financeController.monthlyExpenseHistoryRub)
+                            text: qsTr("В этом месяце расходов пока нет")
+                            color: root.muted
+                            font.pixelSize: 12
                         }
                     }
-                    Item {
-                        Layout.fillHeight: true
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 255
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: qsTr("История капитала в рублях")
+                                color: root.accent
+                                font.pixelSize: 17
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: root.historyResolutionLabel(financeController.capitalHistoryRub)
+                                color: root.muted
+                                font.pixelSize: 11
+                            }
+                        }
+                        AnalyticsLineChart {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            points: financeController.capitalHistoryRub
+                            currency: "RUB"
+                            seriesColor: root.chartAccent2
+                        }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 270
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: qsTr("История капитала в выбранной валюте")
+                                color: root.accent
+                                font.pixelSize: 17
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            AppComboBox {
+                                model: ["USD", "EUR"]
+                                currentIndex: Math.max(0, model.indexOf(financeController.analyticsCurrency))
+                                onActivated: financeController.analyticsCurrency = currentText
+                                implicitWidth: 105
+                            }
+                        }
+                        AnalyticsLineChart {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            points: financeController.capitalHistoryAnalyticsCurrency
+                            currency: financeController.analyticsCurrency
+                            seriesColor: root.chartAccent4
+                        }
                     }
                 }
             }

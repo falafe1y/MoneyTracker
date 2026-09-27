@@ -246,6 +246,31 @@ class FinanceController final : public QObject
         )
 
     Q_PROPERTY(
+        QVariantList monthlyExpenseHistoryRub
+            READ monthlyExpenseHistoryRub
+                NOTIFY analyticsChanged
+        )
+
+    Q_PROPERTY(
+        QVariantList capitalHistoryRub
+            READ capitalHistoryRub
+                NOTIFY analyticsChanged
+        )
+
+    Q_PROPERTY(
+        QString analyticsCurrency
+            READ analyticsCurrency
+                WRITE setAnalyticsCurrency
+                    NOTIFY analyticsChanged
+        )
+
+    Q_PROPERTY(
+        QVariantList capitalHistoryAnalyticsCurrency
+            READ capitalHistoryAnalyticsCurrency
+                NOTIFY analyticsChanged
+        )
+
+    Q_PROPERTY(
         QVariantList bankCsvProfiles
             READ bankCsvProfiles
                 NOTIFY bankCsvProfilesChanged
@@ -370,6 +395,11 @@ public:
     QString dateFilterFrom() const;
     QString dateFilterTo() const;
     QVariantList capitalHistory() const;
+    QVariantList monthlyExpenseHistoryRub() const;
+    QVariantList capitalHistoryRub() const;
+    QString analyticsCurrency() const;
+    void setAnalyticsCurrency(const QString& currency);
+    QVariantList capitalHistoryAnalyticsCurrency() const;
     QVariantList bankCsvProfiles() const;
     QVariantList scheduledTransactions() const;
     QVariantList projects() const;
@@ -570,6 +600,7 @@ signals:
     void investmentSearchStateChanged();
     void investmentRefreshingChanged();
     void capitalHistoryChanged();
+    void analyticsChanged();
     void bankCsvProfilesChanged();
     void scheduledTransactionsChanged();
     void projectsChanged();
@@ -619,8 +650,21 @@ private:
         const CryptoWallet& wallet,
         qint64 amountAtomic
         ) const;
+    qint64 cryptoAmountValueMinorInCurrency(
+        const CryptoWallet& wallet,
+        qint64 amountAtomic,
+        Currency currency
+        ) const;
     qint64 cryptoWalletValueMinor(const CryptoWallet& wallet) const;
     qint64 cryptoWalletsTotalMinor() const;
+    CapitalHistorySeries calculateCapitalHistory(
+        Currency currency,
+        bool applyDateFilter
+        ) const;
+    QVariantList capitalHistoryToVariant(
+        const CapitalHistorySeries& series,
+        Currency currency
+        ) const;
     void rebuildCapitalHistory();
     void scheduleRecurringMaterialization();
     void materializeRecurringTransactions();
@@ -681,6 +725,7 @@ private:
     bool recurringMaterializationScheduled_ = false;
 
     Currency appCurrency_ = Currency::RUB;
+    Currency analyticsCurrency_ = Currency::USD;
     QString uiLanguage_ = QStringLiteral("ru");
     bool automaticCurrencyRates_ = true;
     double manualRubToRubRate_ = 1.0;

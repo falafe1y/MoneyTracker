@@ -188,6 +188,8 @@ public:
     bool archiveCategory(const QString& id);
     QString loadAppCurrency() const;
     bool saveAppCurrency(const QString& currency);
+    QString loadAnalyticsCurrency() const;
+    bool saveAnalyticsCurrency(const QString& currency);
     QString loadSelectedAsset() const;
     bool saveSelectedAsset(const QString& asset);
     QString loadUiLanguage() const;
