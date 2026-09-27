@@ -2704,16 +2704,20 @@ QVariantList FinanceController::expenseHistoryByMonthRub() const
     const QDate today = QDate::currentDate();
     const QDate currentMonth(today.year(), today.month(), 1);
     QDate firstMonth;
+    QDate lastMonth;
     QHash<QDate, qint64> totals;
     for (const Transaction& transaction : transactions_) {
         const QDate date = transaction.date().toLocalTime().date();
         if (transaction.type() != TransactionType::Expense ||
-            !date.isValid() || date > today) {
+            !date.isValid()) {
             continue;
         }
         const QDate month(date.year(), date.month(), 1);
         if (!firstMonth.isValid() || month < firstMonth) {
             firstMonth = month;
+        }
+        if (!lastMonth.isValid() || month > lastMonth) {
+            lastMonth = month;
         }
         const qint64 amount = currencyConverter_.convert(
             transaction.money(), Currency::RUB).minorUnits();
@@ -2724,12 +2728,14 @@ QVariantList FinanceController::expenseHistoryByMonthRub() const
     if (!firstMonth.isValid()) {
         return result;
     }
+    firstMonth = std::min(firstMonth, currentMonth);
+    lastMonth = std::max(lastMonth, currentMonth);
     const int monthCount =
-        (currentMonth.year() - firstMonth.year()) * 12 +
-        currentMonth.month() - firstMonth.month() + 1;
+        (lastMonth.year() - firstMonth.year()) * 12 +
+        lastMonth.month() - firstMonth.month() + 1;
     result.reserve(monthCount);
     for (QDate month = firstMonth;
-         month.isValid() && month <= currentMonth;
+         month.isValid() && month <= lastMonth;
          month = month.addMonths(1)) {
         result.append(QVariantMap{
             {QStringLiteral("date"), month.toString(Qt::ISODate)},

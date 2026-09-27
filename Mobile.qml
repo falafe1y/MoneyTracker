@@ -298,7 +298,13 @@ ApplicationWindow {
         return date ? date.getFullYear() : new Date().getFullYear();
     }
 
-    function expenseHistoryLastYear() { return new Date().getFullYear(); }
+    function expenseHistoryLastYear() {
+        const rows = financeController.expenseHistoryByMonthRub;
+        if (rows.length === 0) return new Date().getFullYear();
+        const date = root.dateFromIso(rows[rows.length - 1].date);
+        return date ? Math.max(new Date().getFullYear(), date.getFullYear())
+                    : new Date().getFullYear();
+    }
 
     function expenseRowsForYear(year) {
         const source = financeController.expenseHistoryByMonthRub;
@@ -2312,7 +2318,7 @@ ApplicationWindow {
         id: analyticsPage
         ScrollView {
             id: mobileAnalyticsScroll
-            property int expenseYear: root.expenseHistoryLastYear()
+            property int expenseYear: new Date().getFullYear()
             clip: true
             contentWidth: availableWidth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
