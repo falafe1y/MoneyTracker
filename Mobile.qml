@@ -51,6 +51,7 @@ ApplicationWindow {
     readonly property color categoryRow: "#FFFFF0"
     readonly property color categoryEditRow: "#F4F3E3"
     readonly property color controlHovered: "#F3F1E3"
+    readonly property int chartPriceLevels: 7
 
     readonly property color incomePanel: "#E8F0E9"
     readonly property color expensePanel: "#F5E6E2"
@@ -336,7 +337,7 @@ ApplicationWindow {
     }
 
     function compactAxisMoney(minor, code) {
-        const amount = Number(minor) / 100;
+        const amount = Math.abs(Number(minor)) < 0.5 ? 0 : Number(minor) / 100;
         const absolute = Math.abs(amount);
         let divisor = 1, suffix = "";
         const westernStyle = code !== "RUB";
@@ -362,6 +363,42 @@ ApplicationWindow {
                      : Math.abs(scaled) >= 10 ? 1 : 2;
         return scaled.toLocaleString(root.uiLocale(), "f", digits)
             + " " + suffix + " " + root.symbol(code);
+    }
+
+    function chartStep(range, intervals) {
+        const raw = range / Math.max(1, intervals);
+        if (!Number.isFinite(raw) || raw <= 0) return 1;
+        const magnitude = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+        const normalized = raw / magnitude;
+        return (normalized <= 1 ? 1 : normalized <= 2 ? 2
+              : normalized <= 2.5 ? 2.5 : normalized <= 3 ? 3
+              : normalized <= 4 ? 4 : normalized <= 5 ? 5
+              : normalized <= 7.5 ? 7.5 : 10)
+            * magnitude;
+    }
+
+    function chartAxis(minimum, maximum, bars) {
+        const intervals = Math.max(1, chartPriceLevels - 1);
+        if (bars) {
+            const step = chartStep(Math.max(100, maximum * 1.08), intervals);
+            return { minimum: 0, maximum: intervals * step };
+        }
+        const span = maximum === minimum
+            ? Math.max(100, Math.abs(maximum) * 0.1)
+            : maximum - minimum;
+        const padding = span * 0.04;
+        let step = chartStep(span + padding * 2, intervals);
+        let low;
+        while (true) {
+            const lowerStart = Math.floor((minimum - padding) / step + 1e-9) * step;
+            const upperStart = Math.ceil((maximum + padding) / step - 1e-9) * step
+                             - intervals * step;
+            low = Math.max(lowerStart, upperStart);
+            if (low <= minimum + step * 1e-9)
+                break;
+            step = chartStep(step * (1 + 1e-9), 1);
+        }
+        return { minimum: low, maximum: low + intervals * step };
     }
 
     function visibleTransactions() {
@@ -435,7 +472,7 @@ ApplicationWindow {
                 ctx.clearRect(0, 0, width, height);
                 const data = parent.points || [];
                 if (data.length === 0 || width < 120 || height < 80) return;
-                const left = 58, right = 8, top = 8, bottom = 24;
+                const left = 88, right = 8, top = 8, bottom = 24;
                 const plotWidth = Math.max(1, width - left - right);
                 const plotHeight = Math.max(1, height - top - bottom);
                 let minimum = parent.bars ? 0 : Number(data[0].totalMinor);
@@ -445,13 +482,14 @@ ApplicationWindow {
                     minimum = Math.min(minimum, value);
                     maximum = Math.max(maximum, value);
                 }
-                if (parent.bars) { minimum = 0; maximum = Math.max(100, maximum * 1.08); }
-                else if (minimum === maximum) { minimum -= 100; maximum += 100; }
-                else { const padding = (maximum - minimum) * 0.08; minimum -= padding; maximum += padding; }
+                const axis = root.chartAxis(minimum, maximum, parent.bars);
+                minimum = axis.minimum;
+                maximum = axis.maximum;
                 const range = Math.max(1, maximum - minimum);
                 ctx.font = "14px sans-serif";
-                for (let tick = 0; tick <= 3; ++tick) {
-                    const ratio = tick / 3, y = top + ratio * plotHeight;
+                const intervals = Math.max(1, root.chartPriceLevels - 1);
+                for (let tick = 0; tick <= intervals; ++tick) {
+                    const ratio = tick / intervals, y = top + ratio * plotHeight;
                     ctx.strokeStyle = root.line; ctx.lineWidth = 1;
                     ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke();
                     ctx.fillStyle = root.muted; ctx.textAlign = "right"; ctx.textBaseline = "middle";

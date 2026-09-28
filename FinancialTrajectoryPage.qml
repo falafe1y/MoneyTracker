@@ -133,7 +133,7 @@ ScrollView {
                         if (!rows || rows.length < 1) return;
                         ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.setLineDash(dash);
                         for (var i = 0; i < rows.length; ++i) {
-                            var x = 18 + (width - 36) * ((offset + i) / Math.max(1, total - 1));
+                            var x = 90 + (width - 102) * ((offset + i) / Math.max(1, total - 1));
                             var y = 18 + (height - 36) * (1 - (Number(rows[i][key]) - low) / Math.max(1, high - low));
                             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                         }
@@ -149,12 +149,21 @@ ScrollView {
                         for (var i = 0; i < history.length; ++i) values.push(Number(history[i].valueMinor));
                         for (var j = 0; j < forecast.length; ++j) { values.push(Number(forecast[j].valueMinor)); values.push(Number(forecast[j].realMinor)); }
                         if (!values.length) return;
-                        low = Math.min.apply(Math, values); high = Math.max.apply(Math, values);
-                        var pad = Math.max(1, (high - low) * 0.12); low -= pad; high += pad;
+                        var axis = theme.niceChartAxis(
+                            Math.min.apply(Math, values),
+                            Math.max.apply(Math, values));
+                        low = axis.minimum; high = axis.maximum;
                         total = Math.max(1, history.length + forecast.length - 1); offset = Math.max(0, history.length - 1);
                         ctx.strokeStyle = theme.line; ctx.lineWidth = 1;
-                        for (var g = 0; g < 4; ++g) { var gy = 18 + (height - 36) * g / 3;
-                            ctx.beginPath(); ctx.moveTo(18, gy); ctx.lineTo(width - 18, gy); ctx.stroke(); }
+                        ctx.font = "13px sans-serif";
+                        for (var g = 0; g <= axis.intervals; ++g) {
+                            var gy = 18 + (height - 36) * g / axis.intervals;
+                            ctx.beginPath(); ctx.moveTo(90, gy); ctx.lineTo(width - 12, gy); ctx.stroke();
+                            ctx.fillStyle = theme.muted;
+                            ctx.textAlign = "right"; ctx.textBaseline = "middle";
+                            ctx.fillText(theme.capitalAxisMoney(
+                                high - g * axis.step, trajectory.currency), 83, gy);
+                        }
                         offset = 0; drawLine(ctx, history, "valueMinor", theme.accentSoft, []);
                         offset = Math.max(0, history.length - 1); drawLine(ctx, forecast, "valueMinor", theme.income, [9, 6]);
                         drawLine(ctx, forecast, "realMinor", theme.muted, [2, 5]);

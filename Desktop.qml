@@ -45,6 +45,7 @@ ApplicationWindow {
     readonly property color categoryRow: "#FFFFF0"
     readonly property color categoryEditRow: "#F4F3E3"
     readonly property color controlHovered: "#F3F1E3"
+    readonly property int chartPriceLevels: 7
 
     readonly property color incomePanel: "#E8F0E9"
     readonly property color expensePanel: "#F5E6E2"
@@ -456,18 +457,22 @@ ApplicationWindow {
         const raw = range / Math.max(1, targetIntervals);
         const magnitude = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
         const normalized = raw / magnitude;
-        const factor = normalized <= 1.5 ? 1
-                     : normalized <= 3.0 ? 2
-                     : normalized <= 4.0 ? 2.5
-                     : normalized <= 7.5 ? 5 : 10;
+        const factor = normalized <= 1 ? 1
+                     : normalized <= 2 ? 2
+                     : normalized <= 2.5 ? 2.5
+                     : normalized <= 3 ? 3
+                     : normalized <= 4 ? 4
+                     : normalized <= 5 ? 5
+                     : normalized <= 7.5 ? 7.5 : 10;
         return factor * magnitude;
     }
 
     function niceChartAxis(minimum, maximum) {
         let low = Number(minimum);
         let high = Number(maximum);
+        const intervals = Math.max(1, chartPriceLevels - 1);
         if (!Number.isFinite(low) || !Number.isFinite(high))
-            return { minimum: 0, maximum: 1, step: 1, intervals: 1 };
+            return { minimum: 0, maximum: intervals, step: 1, intervals: intervals };
         if (low > high) {
             const swap = low;
             low = high;
@@ -477,21 +482,27 @@ ApplicationWindow {
         if (span === 0)
             span = Math.max(100, Math.abs(high) * 0.1);
         const padding = span * 0.04;
-        const step = niceChartStep(span + padding * 2, 5);
-        let axisMinimum = Math.floor((low - padding) / step) * step;
-        let axisMaximum = Math.ceil((high + padding) / step) * step;
-        if (axisMinimum === axisMaximum)
-            axisMaximum += step;
+        let step = niceChartStep(span + padding * 2, intervals);
+        let axisMinimum;
+        while (true) {
+            const lowerStart = Math.floor((low - padding) / step + 1e-9) * step;
+            const upperStart = Math.ceil((high + padding) / step - 1e-9) * step
+                             - intervals * step;
+            axisMinimum = Math.max(lowerStart, upperStart);
+            if (axisMinimum <= low + step * 1e-9)
+                break;
+            step = niceChartStep(step * (1 + 1e-9), 1);
+        }
         return {
             minimum: axisMinimum,
-            maximum: axisMaximum,
+            maximum: axisMinimum + intervals * step,
             step: step,
-            intervals: Math.round((axisMaximum - axisMinimum) / step)
+            intervals: intervals
         };
     }
 
     function capitalAxisMoney(minor, code) {
-        const amount = Number(minor) / 100;
+        const amount = Math.abs(Number(minor)) < 0.5 ? 0 : Number(minor) / 100;
         const absolute = Math.abs(amount);
         let divisor = 1;
         let suffix = "";
@@ -874,9 +885,9 @@ ApplicationWindow {
                 for (let i = 0; i < data.length; ++i)
                     maximum = Math.max(maximum, Number(data[i].totalMinor));
                 const paddedMaximum = Math.max(100, maximum * 1.08);
-                const tickStep = root.niceChartStep(paddedMaximum, 5);
-                maximum = Math.ceil(paddedMaximum / tickStep) * tickStep;
-                const tickIntervals = Math.max(1, Math.round(maximum / tickStep));
+                const tickIntervals = Math.max(1, root.chartPriceLevels - 1);
+                const tickStep = root.niceChartStep(paddedMaximum, tickIntervals);
+                maximum = tickIntervals * tickStep;
                 ctx.font = "14px sans-serif";
                 for (let tick = 0; tick <= tickIntervals; ++tick) {
                     const ratio = tick / tickIntervals;
