@@ -343,6 +343,22 @@ ApplicationWindow {
         projectContextMenu.open();
     }
 
+    function openCategoryContextMenu(row, sourceItem, localX, localY) {
+        if (!row || !row.value)
+            return;
+        const point = sourceItem.mapToItem(root.contentItem, localX, localY);
+        categoryContextMenu.categoryData = row;
+        categoryContextMenu.x = Math.max(
+            8,
+            Math.min(point.x, root.contentItem.width - categoryContextMenu.width - 8)
+        );
+        categoryContextMenu.y = Math.max(
+            8,
+            Math.min(point.y, root.contentItem.height - categoryContextMenu.implicitHeight - 8)
+        );
+        categoryContextMenu.open();
+    }
+
     function dateFromIso(value) {
         if (!value)
             return null;
@@ -644,6 +660,7 @@ ApplicationWindow {
         return cryptoWalletDialog.visible
             || accountDialog.visible
             || deleteAccountDialog.visible
+            || deleteCategoryDialog.visible
             || deleteTransactionDialog.visible
             || projectDialog.visible
             || deleteProjectDialog.visible
@@ -687,6 +704,7 @@ ApplicationWindow {
         context: Qt.ApplicationShortcut
         enabled: !root.modalDialogVisible()
               && !accountContextMenu.visible
+              && !categoryContextMenu.visible
               && !transactionContextMenu.visible
               && (financeController.selectedAsset === "fiat"
                   || (financeController.selectedAsset === "investment"
@@ -3460,6 +3478,21 @@ ApplicationWindow {
                                         color: root.muted
                                     }
                                 }
+
+                                MouseArea {
+                                    id: incomeCategoryMenuArea
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.RightButton
+                                    onPressed: function(mouse) {
+                                        if (mouse.button === Qt.RightButton)
+                                            root.openCategoryContextMenu(
+                                                modelData,
+                                                incomeCategoryMenuArea,
+                                                mouse.x,
+                                                mouse.y
+                                            );
+                                    }
+                                }
                             }
 
                             Label {
@@ -3543,6 +3576,21 @@ ApplicationWindow {
                                     Text {
                                         text: qsTr("Расход")
                                         color: root.muted
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: expenseCategoryMenuArea
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.RightButton
+                                    onPressed: function(mouse) {
+                                        if (mouse.button === Qt.RightButton)
+                                            root.openCategoryContextMenu(
+                                                modelData,
+                                                expenseCategoryMenuArea,
+                                                mouse.x,
+                                                mouse.y
+                                            );
                                     }
                                 }
                             }
@@ -4776,6 +4824,160 @@ ApplicationWindow {
                     text: accountDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
                     highlighted: true
                     onClicked: accountDialog.submit()
+                }
+            }
+        }
+    }
+
+    Menu {
+        id: categoryContextMenu
+        width: 224
+        padding: 6
+        property var categoryData: null
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        AppMenuItem {
+            width: categoryContextMenu.availableWidth
+            text: qsTr("Редактировать")
+            enabled: categoryContextMenu.categoryData !== null
+            onTriggered: {
+                if (categoryContextMenu.categoryData)
+                    categoryDialog.openForEdit(categoryContextMenu.categoryData);
+            }
+        }
+
+        MenuSeparator {
+            width: categoryContextMenu.availableWidth
+            topPadding: 4
+            bottomPadding: 4
+            contentItem: Rectangle {
+                implicitHeight: 1
+                color: root.line
+            }
+        }
+
+        AppMenuItem {
+            width: categoryContextMenu.availableWidth
+            text: qsTr("Удалить")
+            destructive: true
+            enabled: categoryContextMenu.categoryData !== null
+            onTriggered: {
+                if (categoryContextMenu.categoryData)
+                    deleteCategoryDialog.openFor(categoryContextMenu.categoryData);
+            }
+        }
+
+        onClosed: categoryData = null
+
+        background: Rectangle {
+            color: root.panel
+            radius: 12
+            border.width: 1
+            border.color: root.line
+        }
+    }
+
+    Dialog {
+        id: deleteCategoryDialog
+        width: 460
+        modal: true
+        anchors.centerIn: parent
+        padding: 24
+        closePolicy: Popup.CloseOnEscape
+        property var categoryData: null
+
+        function openFor(row) {
+            categoryData = row;
+            deleteCategoryError.text = "";
+            open();
+        }
+
+        function confirmDelete() {
+            const ok = categoryData
+                    && financeController.deleteCategory(categoryData.value);
+            if (ok)
+                close();
+            else
+                deleteCategoryError.text = qsTr("Не удалось удалить категорию");
+        }
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.ApplicationShortcut
+            enabled: deleteCategoryDialog.visible
+                  && !deleteCategoryCancelButton.activeFocus
+                  && !deleteCategorySubmitButton.activeFocus
+            onActivated: deleteCategoryDialog.confirmDelete()
+        }
+
+        onClosed: categoryData = null
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: qsTr("Удалить категорию?")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Категория исчезнет из доступных для новых операций. Уже созданные операции сохранятся.")
+                color: root.muted
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            Panel {
+                Layout.fillWidth: true
+                implicitHeight: 54
+                color: root.soft
+
+                Text {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    text: deleteCategoryDialog.categoryData
+                          ? deleteCategoryDialog.categoryData.label
+                          : ""
+                    color: root.accent
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+            }
+
+            Text {
+                id: deleteCategoryError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Item {
+                    Layout.fillWidth: true
+                }
+                SoftButton {
+                    id: deleteCategoryCancelButton
+                    text: qsTr("Отмена")
+                    onClicked: deleteCategoryDialog.close()
+                }
+                SoftButton {
+                    id: deleteCategorySubmitButton
+                    text: qsTr("Удалить")
+                    destructive: true
+                    onClicked: deleteCategoryDialog.confirmDelete()
                 }
             }
         }
@@ -6382,23 +6584,51 @@ ApplicationWindow {
         modal: true
         anchors.centerIn: parent
         padding: 22
+        property var editingData: null
+        readonly property string editingId: editingData ? editingData.value : ""
+
         function openForManagement() {
+            editingData = null;
             categoryNameField.clear();
+            categoryType.currentIndex = 0;
             categoryError.text = "";
             open();
         }
+
+        function openForEdit(row) {
+            editingData = row;
+            categoryNameField.text = row.label || "";
+            categoryType.currentIndex = row.type === "expense" ? 1 : 0;
+            categoryError.text = "";
+            open();
+            categoryNameField.forceActiveFocus();
+            categoryNameField.selectAll();
+        }
+
         function submit() {
-            const ok = financeController.addCategory(
-                categoryNameField.text,
-                categoryType.currentIndex === 0 ? "income" : "expense"
-            );
+            const ok = editingId.length > 0
+                    ? financeController.renameCategory(
+                          editingId,
+                          categoryNameField.text
+                      )
+                    : financeController.addCategory(
+                          categoryNameField.text,
+                          categoryType.currentIndex === 0 ? "income" : "expense"
+                      );
             if (ok) {
+                if (editingId.length > 0) {
+                    close();
+                    return;
+                }
                 categoryNameField.clear();
                 categoryError.text = "";
             } else {
                 categoryError.text = qsTr("Не удалось сохранить категорию");
             }
         }
+
+        onClosed: editingData = null
+
         background: Rectangle {
             color: root.panel
             radius: 18
@@ -6408,7 +6638,9 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
             Text {
-                text: qsTr("Категории")
+                text: categoryDialog.editingId.length > 0
+                      ? qsTr("Изменить категорию")
+                      : qsTr("Категории")
                 color: root.accent
                 font.pixelSize: 21
                 font.weight: Font.Bold
@@ -6424,6 +6656,7 @@ ApplicationWindow {
                 AppComboBox {
                     id: categoryType
                     model: [qsTr("Доход"), qsTr("Расход")]
+                    enabled: categoryDialog.editingId.length === 0
                 }
             }
             Text {
