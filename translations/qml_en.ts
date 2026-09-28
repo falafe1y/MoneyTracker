@@ -131,6 +131,8 @@
     <message><source>Русский</source><translation>Russian</translation></message>
     <message><source>Сначала добавьте категорию</source><translation>Add a category first</translation></message>
     <message><source>Сначала добавьте счёт</source><translation>Add an account first</translation></message>
+    <message><source>Добавьте категорию</source><translation>Add a category</translation></message>
+    <message><source>Добавьте счёт</source><translation>Add an account</translation></message>
     <message><source>Сохранить</source><translation>Save</translation></message>
     <message><source>Сохранить курсы</source><translation>Save rates</translation></message>
     <message><source>Сегодня</source><translation>Today</translation></message>

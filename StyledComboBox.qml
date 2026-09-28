@@ -12,6 +12,7 @@ ComboBox {
     property color appAccentColor: "#315C9B"
     property color appHoverColor: "#E4E8F1"
     property int controlHeight: 44
+    property string emptyText: ""
 
     hoverEnabled: true
     implicitHeight: controlHeight
@@ -20,7 +21,7 @@ ComboBox {
     font.pixelSize: 14
 
     contentItem: Text {
-        text: control.displayText
+        text: control.count > 0 ? control.displayText : control.emptyText
         color: control.enabled ? control.appTextColor : control.appMutedColor
         font: control.font
         verticalAlignment: Text.AlignVCenter

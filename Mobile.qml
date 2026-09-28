@@ -3784,6 +3784,8 @@ ApplicationWindow {
                      ? financeController.allAccounts
                      : financeController.accounts
                 textRole: operationType.currentIndex === 2 ? "displayName" : "name"
+                enabled: count > 0
+                emptyText: qsTr("Добавьте счёт")
             }
             Text {
                 visible: operationType.currentIndex === 2
@@ -3824,6 +3826,8 @@ ApplicationWindow {
                     return result;
                 }
                 textRole: "label"
+                enabled: count > 0
+                emptyText: qsTr("Добавьте категорию")
             }
             AppTextField {
                 id: operationAmount
