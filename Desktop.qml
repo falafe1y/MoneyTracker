@@ -653,7 +653,8 @@ ApplicationWindow {
             || categoryDialog.visible
             || investmentPositionDialog.visible
             || bankCsvImportDialog.visible
-            || recurringTransactionsDialog.visible;
+            || recurringTransactionsDialog.visible
+            || clearDataDialog.visible;
     }
 
     function selectedInvestmentAccountId() {
@@ -4121,36 +4122,103 @@ ApplicationWindow {
 
     Dialog {
         id: clearDataDialog
+        width: 470
         modal: true
-        title: qsTr("Удалить все данные?")
-        standardButtons: Dialog.NoButton
         anchors.centerIn: parent
-        width: 420
+        padding: 24
+        closePolicy: Popup.CloseOnEscape
+
+        function confirmClear() {
+            const result = financeController.clearAllData();
+            if (result.ok) {
+                root.csvStatusOk = true;
+                root.csvStatus = qsTr("Все пользовательские данные удалены");
+                close();
+                return;
+            }
+            clearDataError.text = result.error
+                ? qsTr("Не удалось очистить данные: %1").arg(result.error)
+                : qsTr("Не удалось очистить данные");
+        }
+
+        onAboutToShow: clearDataError.text = ""
+
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.ApplicationShortcut
+            enabled: clearDataDialog.visible
+                  && !clearDataCancelButton.activeFocus
+                  && !clearDataSubmitButton.activeFocus
+            onActivated: clearDataDialog.confirmClear()
+        }
+
+        background: Rectangle {
+            color: root.panel
+            radius: 18
+            border.width: 1
+            border.color: root.line
+        }
+
         contentItem: ColumnLayout {
-            spacing: 16
+            spacing: 14
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Удалить все данные?")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+                wrapMode: Text.WordWrap
+            }
+
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Все счета, операции, цели, бюджеты, кошельки и другие пользовательские данные будут удалены. Это действие нельзя отменить.")
-                color: root.accent
+                color: root.muted
+                font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 52
+                radius: 10
+                color: root.expensePanel
+
+                Text {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    text: qsTr("Перед удалением рекомендуем создать резервную копию базы данных.")
+                    color: root.red
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    verticalAlignment: Text.AlignVCenter
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            Text {
+                id: clearDataError
+                Layout.fillWidth: true
+                color: root.red
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
             RowLayout {
-                Layout.alignment: Qt.AlignRight
+                Item {
+                    Layout.fillWidth: true
+                }
                 SoftButton {
+                    id: clearDataCancelButton
                     text: qsTr("Отмена")
                     onClicked: clearDataDialog.close()
                 }
                 SoftButton {
+                    id: clearDataSubmitButton
                     text: qsTr("Удалить всё")
-                    highlighted: true
-                    onClicked: {
-                        const result = financeController.clearAllData();
-                        root.csvStatusOk = result.ok;
-                        root.csvStatus = result.ok
-                            ? qsTr("Все пользовательские данные удалены")
-                            : qsTr("Не удалось очистить данные: %1").arg(result.error);
-                        clearDataDialog.close();
-                    }
+                    destructive: true
+                    onClicked: clearDataDialog.confirmClear()
                 }
             }
         }
