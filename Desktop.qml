@@ -666,8 +666,6 @@ ApplicationWindow {
     }
 
     function selectedInvestmentAccountAcceptsPositions() {
-        if (financeController.selectedAccountId.length === 0)
-            return financeController.investmentAccounts.length > 0;
         return selectedInvestmentAccountId().length > 0;
     }
 
@@ -1894,6 +1892,7 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 42
                 Layout.leftMargin: 13
                 Layout.rightMargin: 13
                 Layout.topMargin: 13
