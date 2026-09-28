@@ -6425,11 +6425,6 @@ ApplicationWindow {
                     id: categoryType
                     model: [qsTr("Доход"), qsTr("Расход")]
                 }
-                SoftButton {
-                    text: qsTr("Сохранить")
-                    highlighted: true
-                    onClicked: categoryDialog.submit()
-                }
             }
             Text {
                 id: categoryError
@@ -6443,6 +6438,11 @@ ApplicationWindow {
                 SoftButton {
                     text: qsTr("Закрыть")
                     onClicked: categoryDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Сохранить")
+                    highlighted: true
+                    onClicked: categoryDialog.submit()
                 }
             }
         }
