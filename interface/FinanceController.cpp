@@ -2367,7 +2367,9 @@ QVariantList FinanceController::categories() const
     result.reserve(categories_.size());
 
     for (const Category& category : categories_) {
-        if (archivedCategoryIds_.contains(category.id())) {
+        if (archivedCategoryIds_.contains(category.id()) ||
+            category.id() == QStringLiteral("transfer-in") ||
+            category.id() == QStringLiteral("transfer-out")) {
             continue;
         }
 

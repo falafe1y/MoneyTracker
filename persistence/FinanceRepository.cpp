@@ -52,6 +52,34 @@ bool isTransferCategory(const QString& categoryId)
            categoryId == QStringLiteral("transfer-out");
 }
 
+bool ensureTransferCategories(QSqlDatabase& database, QString& error)
+{
+    struct TransferCategory
+    {
+        const char* id;
+        int type;
+    };
+    const TransferCategory categories[] = {
+        {"transfer-in", 0},
+        {"transfer-out", 1}};
+
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral(
+        "INSERT OR IGNORE INTO categories(id,name,type,is_system,created_at) "
+        "VALUES (?, 'Перевод', ?, 1, ?)"));
+    const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    for (const TransferCategory& category : categories) {
+        query.bindValue(0, QString::fromLatin1(category.id));
+        query.bindValue(1, category.type);
+        query.bindValue(2, now);
+        if (!query.exec()) {
+            error = query.lastError().text();
+            return false;
+        }
+    }
+    return true;
+}
+
 struct TransferComponentIds
 {
     QString outgoing;
@@ -297,7 +325,7 @@ bool FinanceRepository::clearAllUserData()
         QStringLiteral("DELETE FROM investment_instruments"),
         QStringLiteral("DELETE FROM projects"),
         QStringLiteral("DELETE FROM accounts"),
-        QStringLiteral("DELETE FROM categories WHERE is_system = 0"),
+        QStringLiteral("DELETE FROM categories"),
         QStringLiteral("DELETE FROM settings")};
     QSqlQuery query(database_);
     for (const QString& statement : statements) {
@@ -316,7 +344,8 @@ bool FinanceRepository::clearAllUserData()
         QStringLiteral("INSERT INTO settings(key,value) VALUES('manual_rub_to_rub_rate','1')"),
         QStringLiteral("INSERT INTO settings(key,value) VALUES('manual_usd_to_rub_rate','90.909090909')"),
         QStringLiteral("INSERT INTO settings(key,value) VALUES('manual_eur_to_rub_rate','106.363636364')"),
-        QStringLiteral("INSERT INTO settings(key,value) VALUES('accounts_initialized','1')")};
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('accounts_initialized','1')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('categories_initialized','1')")};
     for (const QString& statement : defaults) {
         if (!query.exec(statement)) {
             setLastError(query.lastError().text());
@@ -998,6 +1027,14 @@ bool FinanceRepository::insertTransaction(const Transaction& transaction)
         return false;
     }
 
+    QString error;
+    if (isTransferCategory(transaction.categoryId()) &&
+        !ensureTransferCategories(database_, error)) {
+        setLastError(error);
+        database_.rollback();
+        return false;
+    }
+
     QSqlQuery query(database_);
     prepareTransactionInsert(query);
 
@@ -1022,6 +1059,13 @@ bool FinanceRepository::insertTransfer(
 {
     if (!database_.transaction()) {
         setLastError(database_.lastError().text());
+        return false;
+    }
+
+    QString error;
+    if (!ensureTransferCategories(database_, error)) {
+        setLastError(error);
+        database_.rollback();
         return false;
     }
 
@@ -1050,6 +1094,20 @@ bool FinanceRepository::insertTransactions(
     }
     if (!database_.transaction()) {
         setLastError(database_.lastError().text());
+        return false;
+    }
+
+    bool containsTransfer = false;
+    for (const Transaction& transaction : transactions) {
+        if (isTransferCategory(transaction.categoryId())) {
+            containsTransfer = true;
+            break;
+        }
+    }
+    QString error;
+    if (containsTransfer && !ensureTransferCategories(database_, error)) {
+        setLastError(error);
+        database_.rollback();
         return false;
     }
 
@@ -1112,6 +1170,12 @@ bool FinanceRepository::replaceTransaction(
     }
 
     QString error;
+    if (isTransferCategory(replacement.categoryId()) &&
+        !ensureTransferCategories(database_, error)) {
+        setLastError(error);
+        database_.rollback();
+        return false;
+    }
     QSqlQuery insertion(database_);
     prepareTransactionInsert(insertion);
     const bool succeeded =
@@ -1146,6 +1210,11 @@ bool FinanceRepository::replaceTransactionWithTransfer(
     }
 
     QString error;
+    if (!ensureTransferCategories(database_, error)) {
+        setLastError(error);
+        database_.rollback();
+        return false;
+    }
     QSqlQuery insertion(database_);
     prepareTransactionInsert(insertion);
     const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
@@ -3319,6 +3388,15 @@ bool FinanceRepository::seedDefaults()
         return false;
     }
     const bool shouldSeedAccounts = !seededAccounts.next();
+    QSqlQuery seededCategories(database_);
+    seededCategories.prepare(QStringLiteral(
+        "SELECT value FROM settings WHERE key='categories_initialized'"));
+    if (!seededCategories.exec()) {
+        setLastError(seededCategories.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    const bool shouldSeedCategories = !seededCategories.next();
     QSqlQuery account(database_);
     account.prepare(QStringLiteral(
         "INSERT OR IGNORE INTO accounts(id,name,asset_type,account_type,currency,created_at) "
@@ -3360,15 +3438,17 @@ bool FinanceRepository::seedDefaults()
     category.prepare(QStringLiteral(
         "INSERT OR IGNORE INTO categories(id,name,type,is_system,created_at) "
         "VALUES (?, ?, ?, 1, ?)"));
-    for (const Seed& seed : seeds) {
-        category.bindValue(0, seed.id);
-        category.bindValue(1, seed.name);
-        category.bindValue(2, seed.type);
-        category.bindValue(3, now);
-        if (!category.exec()) {
-            setLastError(category.lastError().text());
-            database_.rollback();
-            return false;
+    if (shouldSeedCategories) {
+        for (const Seed& seed : seeds) {
+            category.bindValue(0, seed.id);
+            category.bindValue(1, seed.name);
+            category.bindValue(2, seed.type);
+            category.bindValue(3, now);
+            if (!category.exec()) {
+                setLastError(category.lastError().text());
+                database_.rollback();
+                return false;
+            }
         }
     }
 
@@ -3397,6 +3477,9 @@ bool FinanceRepository::seedDefaults()
         !setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) "
             "VALUES('accounts_initialized','1')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) "
+            "VALUES('categories_initialized','1')")) ||
         !database_.commit()) {
         setLastError(setting.lastError().isValid()
                          ? setting.lastError().text()

@@ -81,12 +81,34 @@ void FinanceRepositoryTest::clearsAllUserDataAndResetsSettings()
     QVERIFY(repository.loadFinancialGoals().isEmpty());
     QVERIFY(repository.loadCapitalSnapshots().isEmpty());
     QVERIFY(repository.loadBankCsvProfiles().isEmpty());
-    QVERIFY(!repository.loadCategories().isEmpty()); // Built-in categories remain usable.
+    QVERIFY(repository.loadCategories().isEmpty());
     QCOMPARE(repository.loadAppCurrency(), QStringLiteral("RUB"));
     QCOMPARE(repository.loadUiLanguage(), QStringLiteral("ru"));
     FinanceRepository reopened(directory.filePath(QStringLiteral("clear.sqlite3")));
     QVERIFY2(reopened.isOpen(), qPrintable(reopened.lastError()));
     QVERIFY(reopened.loadAccounts().isEmpty());
+    QVERIFY(reopened.loadCategories().isEmpty());
+
+    const Account source(
+        QStringLiteral("source"), QStringLiteral("Source"),
+        AssetType::Fiat, AccountType::DebitCard, Currency::RUB);
+    const Account target(
+        QStringLiteral("target"), QStringLiteral("Target"),
+        AssetType::Fiat, AccountType::DebitCard, Currency::RUB);
+    QVERIFY(reopened.insertAccount(source));
+    QVERIFY(reopened.insertAccount(target));
+    const QDateTime occurredAt = QDateTime::currentDateTimeUtc();
+    const Transaction outgoing(
+        QStringLiteral("after-clear-out"), source.id(),
+        QStringLiteral("transfer-out"), Money(1'000, Currency::RUB),
+        TransactionType::Expense, occurredAt);
+    const Transaction incoming(
+        QStringLiteral("after-clear-in"), target.id(),
+        QStringLiteral("transfer-in"), Money(1'000, Currency::RUB),
+        TransactionType::Income, occurredAt);
+    QVERIFY2(reopened.insertTransfer(outgoing, incoming),
+             qPrintable(reopened.lastError()));
+    QCOMPARE(reopened.loadTransactions().size(), 2);
 }
 
 void FinanceRepositoryTest::storesCapitalSnapshotsAndTrajectorySettings()
