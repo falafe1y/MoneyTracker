@@ -2417,16 +2417,6 @@ ApplicationWindow {
                                 }
                             }
                         }
-
-                        Label {
-                            anchors.centerIn: parent
-                            visible: budgetList.count === 0
-                            width: parent.width - 30
-                            text: qsTr("Создайте первый месячный бюджет")
-                            color: root.muted
-                            horizontalAlignment: Text.AlignHCenter
-                            wrapMode: Text.WordWrap
-                        }
                     }
                 }
             }
@@ -2850,18 +2840,6 @@ ApplicationWindow {
                             }
                         }
                     }
-
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        visible: financeController.projects.length === 0
-                        text: qsTr("Создайте первый проект, чтобы учитывать его доходы и расходы")
-                        color: root.muted
-                        font.pixelSize: 14
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        wrapMode: Text.WordWrap
-                    }
                 }
             }
 
@@ -2974,9 +2952,9 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: qsTr("Создайте проект слева, а затем добавляйте его доходы и расходы прямо здесь")
                         color: root.muted
-                        font.pixelSize: 14
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
+                        // font.pixelSize: 14
                     }
                 }
             }
