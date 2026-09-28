@@ -555,6 +555,7 @@ FinanceController::FinanceController(QObject* parent)
             const QDateTime& fetchedAtUtc
             )
         {
+            if (cryptoWallets_.isEmpty()) return;
             if (!repository_.saveCryptoPrice(
                     symbol, priceUsdMicros, fetchedAtUtc)) {
                 qWarning() << "Failed to save crypto price:"
@@ -572,6 +573,7 @@ FinanceController::FinanceController(QObject* parent)
         this,
         [this](const QString& walletId, const QString& message)
         {
+            if (cryptoWallets_.isEmpty()) return;
             if (!walletId.isEmpty()) {
                 finishCryptoWalletRequest(walletId);
             }
@@ -1051,6 +1053,119 @@ QVariantMap FinanceController::exportTransactionsCsv(const QUrl& fileUrl) const
     result["count"] = rows.size() - 1;
     result["path"] = QFileInfo(filePath).absoluteFilePath();
     return result;
+}
+
+QVariantMap FinanceController::backupDatabase(const QUrl& fileUrl)
+{
+    QString path = fileUrl.toLocalFile();
+    if (path.isEmpty()) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("error"), tr("Не выбрано место для резервной копии")}};
+    }
+    if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".sqlite3");
+    if (!repository_.backupDatabase(path)) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("error"), repository_.lastError()}};
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("path"), path}};
+}
+
+QVariantMap FinanceController::clearAllData()
+{
+    if (!repository_.clearAllUserData()) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("error"), repository_.lastError()}};
+    }
+
+    recurringTimer_.stop();
+    recurringMaterializationScheduled_ = false;
+    transactions_.clear();
+    projects_.clear();
+    recurringTransactions_.clear();
+    categories_ = repository_.loadCategories();
+    accounts_.clear();
+    depositSettings_.clear();
+    budgets_.clear();
+    financialGoals_.clear();
+    trajectorySettings_ = repository_.loadFinancialTrajectorySettings();
+    cryptoWallets_.clear();
+    cryptoTransactions_.clear();
+    investmentInstruments_.clear();
+    investmentPositions_.clear();
+    investmentQuotes_.clear();
+    investmentSearchResults_.clear();
+    selectedInvestmentSearchIndex_ = -1;
+    requestedSearchQuoteId_.clear();
+    investmentSearchBusy_ = false;
+    investmentQuoteBusy_ = false;
+    investmentRefreshing_ = false;
+    refreshingInvestmentIds_.clear();
+    investmentLastError_.clear();
+    bankCsvProfiles_.clear();
+    archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
+    cryptoPricesUsdMicros_.clear();
+    cryptoPricesFetchedAtUtc_.clear();
+    cryptoPricesUsdMicros_.insert(QStringLiteral("USDT"), 1'000'000);
+    lastCryptoRefreshAttemptUtc_ = {};
+    refreshingCryptoWalletIds_.clear();
+    pendingCryptoWalletRequests_.clear();
+    pendingCryptoRequests_ = 0;
+    cryptoRefreshing_ = false;
+    cryptoLastError_.clear();
+    selectedAccountId_.clear();
+    selectedCryptoWalletId_.clear();
+    selectedProjectId_.clear();
+    selectedBudgetId_.clear();
+    selectedBudgetMonth_ = QDate(QDate::currentDate().year(), QDate::currentDate().month(), 1);
+    budgetMonthLimits_.clear();
+    dateFilterFrom_ = {};
+    dateFilterTo_ = {};
+    lastCapitalSnapshotDate_ = {};
+    appCurrency_ = Currency::RUB;
+    analyticsCurrency_ = Currency::USD;
+    uiLanguage_ = QStringLiteral("ru");
+    automaticCurrencyRates_ = true;
+    manualRubToRubRate_ = 1.0;
+    manualUsdToRubRate_ = 90.909090909;
+    manualEurToRubRate_ = 106.363636364;
+    selectedAsset_ = AssetType::Fiat;
+    rateProvider_.setManualRates(
+        manualRubToRubRate_, manualUsdToRubRate_, manualEurToRubRate_);
+    rateProvider_.setAutomaticUpdatesEnabled(true);
+    summary_ = repository_.loadSummary();
+
+    emit transactionsChanged();
+    emit categoriesChanged();
+    emit accountsChanged();
+    emit cryptoWalletsChanged();
+    emit cryptoRefreshingChanged();
+    emit cryptoLastErrorChanged();
+    emit cryptoTransactionsChanged();
+    emit investmentPositionsChanged();
+    emit investmentSearchResultsChanged();
+    emit investmentSearchStateChanged();
+    emit investmentRefreshingChanged();
+    emit projectsChanged();
+    emit scheduledTransactionsChanged();
+    emit budgetsChanged();
+    emit financialGoalsChanged();
+    emit bankCsvProfilesChanged();
+    emit selectedAssetChanged();
+    emit selectedAccountIdChanged();
+    emit selectedCryptoWalletIdChanged();
+    emit selectedProjectIdChanged();
+    emit selectedBudgetIdChanged();
+    emit selectedBudgetMonthChanged();
+    emit appCurrencyChanged();
+    emit analyticsChanged();
+    emit uiLanguageChanged();
+    emit automaticCurrencyRatesChanged();
+    emit manualCurrencyRatesChanged();
+    emit currencyRatesChanged();
+    emit dateFilterChanged();
+    emit financialTrajectoryChanged();
+    emit balanceChanged();
+    return {{QStringLiteral("ok"), true}};
 }
 
 QVariantMap FinanceController::importTransactionsCsv(const QUrl& fileUrl)
@@ -5697,6 +5812,7 @@ bool FinanceController::deleteFinancialGoal(const QString& id)
 void FinanceController::captureCapitalSnapshot(const bool overwriteToday)
 {
     if (!repository_.isOpen()) return;
+    if (accounts_.isEmpty() && cryptoWallets_.isEmpty()) return;
     const QDate today = QDate::currentDate();
     if (!overwriteToday && lastCapitalSnapshotDate_ == today) return;
     qint64 total = 0;

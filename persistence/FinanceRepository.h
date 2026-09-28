@@ -92,6 +92,8 @@ public:
 
     bool isOpen() const;
     QString lastError() const;
+    bool backupDatabase(const QString& destinationPath);
+    bool clearAllUserData();
     QVector<Transaction> loadTransactions();
     QVector<Project> loadProjects();
     QVector<RecurringTransaction> loadRecurringTransactions();

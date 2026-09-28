@@ -2,6 +2,7 @@
 
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QFileInfo>
 #include <QSet>
 #include <QTemporaryDir>
 #include <QTimeZone>
@@ -36,7 +37,57 @@ private slots:
     void deletesAccountWithRelatedOperations();
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
+    void createsConsistentDatabaseBackup();
+    void clearsAllUserDataAndResetsSettings();
 };
+
+void FinanceRepositoryTest::createsConsistentDatabaseBackup()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString sourcePath = directory.filePath(QStringLiteral("source.sqlite3"));
+    const QString backupPath = directory.filePath(QStringLiteral("backup.sqlite3"));
+    FinanceRepository source(sourcePath);
+    QVERIFY2(source.isOpen(), qPrintable(source.lastError()));
+    QVERIFY(source.backupDatabase(backupPath));
+    QVERIFY(QFileInfo::exists(backupPath));
+
+    {
+        FinanceRepository backup(backupPath);
+        QVERIFY2(backup.isOpen(), qPrintable(backup.lastError()));
+        QCOMPARE(backup.loadAccounts().size(), source.loadAccounts().size());
+    }
+    QVERIFY(source.backupDatabase(backupPath)); // Replaces an existing backup atomically.
+}
+
+void FinanceRepositoryTest::clearsAllUserDataAndResetsSettings()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    FinanceRepository repository(directory.filePath(QStringLiteral("clear.sqlite3")));
+    QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+    QVERIFY(!repository.loadAccounts().isEmpty());
+    QVERIFY(repository.saveCapitalSnapshot({QDate(2026, 9, 21), Currency::USD, 100'000}));
+    const FinancialGoal goal{
+        QStringLiteral("goal"), QStringLiteral("Цель"), Currency::RUB,
+        100'000, {}, true, {}};
+    QVERIFY(repository.saveFinancialGoal(goal, false));
+    QVERIFY(repository.saveBankCsvProfile(
+        QStringLiteral("profile"), QStringLiteral("Импорт"), QStringLiteral("{}")));
+
+    QVERIFY2(repository.clearAllUserData(), qPrintable(repository.lastError()));
+    QVERIFY(repository.loadAccounts().isEmpty());
+    QVERIFY(repository.loadTransactions().isEmpty());
+    QVERIFY(repository.loadFinancialGoals().isEmpty());
+    QVERIFY(repository.loadCapitalSnapshots().isEmpty());
+    QVERIFY(repository.loadBankCsvProfiles().isEmpty());
+    QVERIFY(!repository.loadCategories().isEmpty()); // Built-in categories remain usable.
+    QCOMPARE(repository.loadAppCurrency(), QStringLiteral("RUB"));
+    QCOMPARE(repository.loadUiLanguage(), QStringLiteral("ru"));
+    FinanceRepository reopened(directory.filePath(QStringLiteral("clear.sqlite3")));
+    QVERIFY2(reopened.isOpen(), qPrintable(reopened.lastError()));
+    QVERIFY(reopened.loadAccounts().isEmpty());
+}
 
 void FinanceRepositoryTest::storesCapitalSnapshotsAndTrajectorySettings()
 {

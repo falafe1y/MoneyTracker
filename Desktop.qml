@@ -4002,7 +4002,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX, сопоставление столбцов и сохранённые профили. Полный архив приложения будет отдельной функцией.")
+                    text: qsTr("CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX, сопоставление столбцов и сохранённые профили.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -4032,6 +4032,107 @@ ApplicationWindow {
                     color: root.csvStatusOk ? root.income : root.red
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
+                }
+                Rectangle {
+                    Layout.topMargin: 12
+                    Layout.preferredWidth: 360
+                    height: 1
+                    color: root.line
+                }
+                Text {
+                    Layout.topMargin: 8
+                    text: qsTr("Резервная копия")
+                    color: root.accent
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.preferredWidth: 520
+                    text: qsTr("Сохранить полную копию базы данных со счетами, операциями и настройками. Функция доступна в настольной версии для Linux и Windows.")
+                    color: root.muted
+                    wrapMode: Text.WordWrap
+                }
+                SoftButton {
+                    text: qsTr("Создать резервную копию")
+                    highlighted: true
+                    implicitWidth: 230
+                    onClicked: databaseBackupDialog.open()
+                }
+                Rectangle {
+                    Layout.topMargin: 12
+                    Layout.preferredWidth: 360
+                    height: 1
+                    color: root.line
+                }
+                Text {
+                    Layout.topMargin: 8
+                    text: qsTr("Удаление данных")
+                    color: root.red
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    Layout.preferredWidth: 520
+                    text: qsTr("Удалить все счета, операции и остальные пользовательские данные. Это действие нельзя отменить.")
+                    color: root.muted
+                    wrapMode: Text.WordWrap
+                }
+                SoftButton {
+                    text: qsTr("Очистить все данные")
+                    implicitWidth: 210
+                    onClicked: clearDataDialog.open()
+                }
+            }
+        }
+    }
+
+    FileDialog {
+        id: databaseBackupDialog
+        title: qsTr("Сохранить резервную копию базы данных")
+        fileMode: FileDialog.SaveFile
+        nameFilters: [qsTr("База данных SQLite (*.sqlite3 *.db)")]
+        defaultSuffix: "sqlite3"
+        onAccepted: {
+            const result = financeController.backupDatabase(selectedFile);
+            root.csvStatusOk = result.ok;
+            root.csvStatus = result.ok
+                ? qsTr("Резервная копия сохранена: %1").arg(result.path)
+                : qsTr("Не удалось создать копию: %1").arg(result.error);
+        }
+    }
+
+    Dialog {
+        id: clearDataDialog
+        modal: true
+        title: qsTr("Удалить все данные?")
+        standardButtons: Dialog.NoButton
+        anchors.centerIn: parent
+        width: 420
+        contentItem: ColumnLayout {
+            spacing: 16
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Все счета, операции, цели, бюджеты, кошельки и другие пользовательские данные будут удалены. Это действие нельзя отменить.")
+                color: root.accent
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: clearDataDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Удалить всё")
+                    highlighted: true
+                    onClicked: {
+                        const result = financeController.clearAllData();
+                        root.csvStatusOk = result.ok;
+                        root.csvStatus = result.ok
+                            ? qsTr("Все пользовательские данные удалены")
+                            : qsTr("Не удалось очистить данные: %1").arg(result.error);
+                        clearDataDialog.close();
+                    }
                 }
             }
         }

@@ -6,8 +6,10 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QFileInfo>
+#include <QFile>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QTimeZone>
@@ -201,6 +203,134 @@ FinanceRepository::~FinanceRepository()
 
 bool FinanceRepository::isOpen() const { return database_.isOpen(); }
 QString FinanceRepository::lastError() const { return lastError_; }
+
+bool FinanceRepository::backupDatabase(const QString& destinationPath)
+{
+    const QString path = QDir::cleanPath(QFileInfo(destinationPath).absoluteFilePath());
+    if (!database_.isOpen() || destinationPath.trimmed().isEmpty()) {
+        setLastError(QStringLiteral("Не выбрано место для резервной копии"));
+        return false;
+    }
+    const QString sourcePath = QDir::cleanPath(
+        QFileInfo(database_.databaseName()).absoluteFilePath());
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity pathSensitivity = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity pathSensitivity = Qt::CaseSensitive;
+#endif
+    if (path.compare(sourcePath, pathSensitivity) == 0) {
+        setLastError(QStringLiteral("Нельзя сохранить копию поверх рабочей базы"));
+        return false;
+    }
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        setLastError(QStringLiteral("Не удалось создать папку для копии"));
+        return false;
+    }
+
+    const QString temporaryPath = path + QStringLiteral(".tmp-")
+        + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QString escapedPath = temporaryPath;
+    escapedPath.replace(QLatin1Char('\''), QStringLiteral("''"));
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral("VACUUM INTO '%1'").arg(escapedPath))) {
+        setLastError(query.lastError().text());
+        QFile::remove(temporaryPath);
+        return false;
+    }
+    query.finish();
+
+    QFile source(temporaryPath);
+    QSaveFile destination(path);
+    if (!source.open(QIODevice::ReadOnly) || !destination.open(QIODevice::WriteOnly)) {
+        setLastError(source.errorString().isEmpty()
+                         ? destination.errorString() : source.errorString());
+        source.close();
+        QFile::remove(temporaryPath);
+        return false;
+    }
+    QByteArray buffer;
+    while (!(buffer = source.read(1024 * 1024)).isEmpty()) {
+        if (destination.write(buffer) != buffer.size()) {
+            setLastError(destination.errorString());
+            source.close();
+            destination.cancelWriting();
+            QFile::remove(temporaryPath);
+            return false;
+        }
+    }
+    if (source.error() != QFileDevice::NoError || !destination.commit()) {
+        setLastError(source.error() != QFileDevice::NoError
+                         ? source.errorString() : destination.errorString());
+        source.close();
+        QFile::remove(temporaryPath);
+        return false;
+    }
+    source.close();
+    QFile::remove(temporaryPath);
+    return true;
+}
+
+bool FinanceRepository::clearAllUserData()
+{
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+    const QStringList statements{
+        QStringLiteral("DELETE FROM recurring_transaction_occurrences"),
+        QStringLiteral("DELETE FROM deposit_interest_occurrences"),
+        QStringLiteral("DELETE FROM crypto_transactions"),
+        QStringLiteral("DELETE FROM investment_quotes"),
+        QStringLiteral("DELETE FROM investment_positions"),
+        QStringLiteral("DELETE FROM budget_accounts"),
+        QStringLiteral("DELETE FROM budget_category_limits"),
+        QStringLiteral("DELETE FROM budget_months"),
+        QStringLiteral("DELETE FROM transactions"),
+        QStringLiteral("DELETE FROM deposit_settings"),
+        QStringLiteral("DELETE FROM recurring_transactions"),
+        QStringLiteral("DELETE FROM budgets"),
+        QStringLiteral("DELETE FROM financial_goals"),
+        QStringLiteral("DELETE FROM capital_snapshots"),
+        QStringLiteral("DELETE FROM bank_csv_profiles"),
+        QStringLiteral("DELETE FROM crypto_wallets"),
+        QStringLiteral("DELETE FROM crypto_prices"),
+        QStringLiteral("DELETE FROM investment_instruments"),
+        QStringLiteral("DELETE FROM projects"),
+        QStringLiteral("DELETE FROM accounts"),
+        QStringLiteral("DELETE FROM categories WHERE is_system = 0"),
+        QStringLiteral("DELETE FROM settings")};
+    QSqlQuery query(database_);
+    for (const QString& statement : statements) {
+        if (!query.exec(statement)) {
+            setLastError(query.lastError().text());
+            database_.rollback();
+            return false;
+        }
+    }
+    const QStringList defaults{
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('app_currency','RUB')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('analytics_currency','USD')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('selected_asset','fiat')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('ui_language','ru')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('automatic_currency_rates','1')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('manual_rub_to_rub_rate','1')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('manual_usd_to_rub_rate','90.909090909')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('manual_eur_to_rub_rate','106.363636364')"),
+        QStringLiteral("INSERT INTO settings(key,value) VALUES('accounts_initialized','1')")};
+    for (const QString& statement : defaults) {
+        if (!query.exec(statement)) {
+            setLastError(query.lastError().text());
+            database_.rollback();
+            return false;
+        }
+    }
+    if (!database_.commit()) {
+        setLastError(database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
 
 QVector<Transaction> FinanceRepository::loadTransactions()
 {
@@ -3180,21 +3310,32 @@ bool FinanceRepository::seedDefaults()
     }
 
     const qint64 now = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+    QSqlQuery seededAccounts(database_);
+    seededAccounts.prepare(QStringLiteral(
+        "SELECT value FROM settings WHERE key='accounts_initialized'"));
+    if (!seededAccounts.exec()) {
+        setLastError(seededAccounts.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    const bool shouldSeedAccounts = !seededAccounts.next();
     QSqlQuery account(database_);
     account.prepare(QStringLiteral(
         "INSERT OR IGNORE INTO accounts(id,name,asset_type,account_type,currency,created_at) "
         "VALUES (?, ?, 0, 4, ?, ?)"));
     const std::array<QString, 3> currencies{
         QStringLiteral("RUB"), QStringLiteral("USD"), QStringLiteral("EUR")};
-    for (const QString& currency : currencies) {
-        account.bindValue(0, QStringLiteral("household-") + currency.toLower());
-        account.bindValue(1, QStringLiteral("Основной ") + currency);
-        account.bindValue(2, currency);
-        account.bindValue(3, now);
-        if (!account.exec()) {
-            setLastError(account.lastError().text());
-            database_.rollback();
-            return false;
+    if (shouldSeedAccounts) {
+        for (const QString& currency : currencies) {
+            account.bindValue(0, QStringLiteral("household-") + currency.toLower());
+            account.bindValue(1, QStringLiteral("Основной ") + currency);
+            account.bindValue(2, currency);
+            account.bindValue(3, now);
+            if (!account.exec()) {
+                setLastError(account.lastError().text());
+                database_.rollback();
+                return false;
+            }
         }
     }
 
@@ -3253,6 +3394,9 @@ bool FinanceRepository::seedDefaults()
         !setting.exec(QStringLiteral(
             "INSERT OR IGNORE INTO settings(key,value) "
             "VALUES('manual_eur_to_rub_rate','106.363636364')")) ||
+        !setting.exec(QStringLiteral(
+            "INSERT OR IGNORE INTO settings(key,value) "
+            "VALUES('accounts_initialized','1')")) ||
         !database_.commit()) {
         setLastError(setting.lastError().isValid()
                          ? setting.lastError().text()
