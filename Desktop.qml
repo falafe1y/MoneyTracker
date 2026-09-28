@@ -5840,6 +5840,8 @@ ApplicationWindow {
                 visible: operationType.currentIndex === 2
                 model: financeController.allAccounts
                 textRole: "displayName"
+                enabled: count > 0
+                emptyText: qsTr("Добавьте счёт")
             }
             AppComboBox {
                 id: operationCategory
