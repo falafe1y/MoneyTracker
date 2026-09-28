@@ -21,6 +21,10 @@
 #include <QUuid>
 
 #include <QFileInfo>
+#include <QFile>
+#include <QDir>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <QRegularExpression>
 
 #include <algorithm>
@@ -418,6 +422,14 @@ FinanceController::FinanceController(QObject* parent)
     , currencyConverter_(rateProvider_)
     , balanceCalculator_(currencyConverter_)
 {
+    notesSaveTimer_.setSingleShot(true);
+    notesSaveTimer_.setInterval(700);
+    connect(&notesSaveTimer_, &QTimer::timeout, this,
+            [this]() { saveNotes(); });
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
+            this, [this]() { saveNotes(); });
+    loadNotes();
+
     QObject::connect(
         this,
         &FinanceController::balanceChanged,
@@ -785,6 +797,103 @@ FinanceController::FinanceController(QObject* parent)
     }
 }
 
+QString FinanceController::notesText() const
+{
+    return notesText_;
+}
+
+bool FinanceController::notesDirty() const
+{
+    return notesDirty_;
+}
+
+bool FinanceController::notesAvailable() const
+{
+    return notesAvailable_;
+}
+
+QString FinanceController::notesError() const
+{
+    return notesError_;
+}
+
+void FinanceController::loadNotes()
+{
+    const QString directory = QStandardPaths::writableLocation(
+        QStandardPaths::AppDataLocation);
+    if (directory.isEmpty()) {
+        notesAvailable_ = false;
+        notesError_ = tr("Не удалось найти каталог для заметок");
+        emit notesChanged();
+        return;
+    }
+
+    notesFilePath_ = QDir(directory).filePath(QStringLiteral("notes.txt"));
+    if (!QFile::exists(notesFilePath_)) {
+        return;
+    }
+
+    QFile file(notesFilePath_);
+    if (!file.open(QIODevice::ReadOnly)) {
+        notesAvailable_ = false;
+        notesError_ = tr("Не удалось открыть заметки: %1").arg(file.errorString());
+        emit notesChanged();
+        return;
+    }
+    const QByteArray contents = file.readAll();
+    if (file.error() != QFileDevice::NoError) {
+        notesAvailable_ = false;
+        notesError_ = tr("Не удалось прочитать заметки: %1").arg(file.errorString());
+        emit notesChanged();
+        return;
+    }
+    notesText_ = QString::fromUtf8(contents);
+    emit notesChanged();
+}
+
+void FinanceController::setNotesText(const QString& text)
+{
+    if (!notesAvailable_ || notesText_ == text) {
+        return;
+    }
+    notesText_ = text;
+    notesDirty_ = true;
+    notesError_.clear();
+    notesSaveTimer_.start();
+    emit notesChanged();
+}
+
+bool FinanceController::saveNotes()
+{
+    if (!notesDirty_) {
+        return notesError_.isEmpty();
+    }
+    const QString directory = QFileInfo(notesFilePath_).absolutePath();
+    if (notesFilePath_.isEmpty() || !QDir().mkpath(directory)) {
+        notesError_ = tr("Не удалось создать каталог для заметок");
+        emit notesChanged();
+        return false;
+    }
+
+    QSaveFile file(notesFilePath_);
+    if (!file.open(QIODevice::WriteOnly)) {
+        notesError_ = tr("Не удалось сохранить заметки: %1").arg(file.errorString());
+        emit notesChanged();
+        return false;
+    }
+    const QByteArray contents = notesText_.toUtf8();
+    if (file.write(contents) != contents.size() || !file.commit()) {
+        notesError_ = tr("Не удалось сохранить заметки: %1").arg(file.errorString());
+        emit notesChanged();
+        return false;
+    }
+    notesSaveTimer_.stop();
+    notesDirty_ = false;
+    notesError_.clear();
+    emit notesChanged();
+    return true;
+}
+
 qint64 FinanceController::balanceMinorUnits() const
 {
     using Int128 = __int128_t;
@@ -1077,6 +1186,19 @@ QVariantMap FinanceController::clearAllData()
                 {QStringLiteral("error"), repository_.lastError()}};
     }
 
+    notesSaveTimer_.stop();
+    const bool notesRemoved = notesFilePath_.isEmpty() ||
+        !QFile::exists(notesFilePath_) || QFile::remove(notesFilePath_);
+    if (notesRemoved) {
+        notesText_.clear();
+        notesDirty_ = false;
+        notesAvailable_ = true;
+        notesError_.clear();
+    } else {
+        notesError_ = tr("Не удалось удалить файл заметок");
+    }
+    emit notesChanged();
+
     recurringTimer_.stop();
     recurringMaterializationScheduled_ = false;
     transactions_.clear();
@@ -1165,6 +1287,11 @@ QVariantMap FinanceController::clearAllData()
     emit dateFilterChanged();
     emit financialTrajectoryChanged();
     emit balanceChanged();
+    if (!notesRemoved) {
+        return {{QStringLiteral("ok"), false},
+                {QStringLiteral("error"),
+                 tr("Финансовые данные очищены, но файл заметок удалить не удалось")}};
+    }
     return {{QStringLiteral("ok"), true}};
 }
 

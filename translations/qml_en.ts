@@ -329,6 +329,12 @@
   </context>
   <context>
     <name>Desktop</name>
+    <message><source>Заметки</source><translation>Notes</translation></message>
+    <message><source>Один документ. Изменения сохраняются автоматически.</source><translation>One document. Changes are saved automatically.</translation></message>
+    <message><source>Ошибка заметок</source><translation>Notes error</translation></message>
+    <message><source>Есть несохранённые изменения</source><translation>Unsaved changes</translation></message>
+    <message><source>Сохранено</source><translation>Saved</translation></message>
+    <message><source>Запишите мысли, планы или важные детали…</source><translation>Write down thoughts, plans, or important details…</translation></message>
     <message><source>Плановые операции</source><translation>Scheduled transactions</translation></message>
     <message><source>Проекты</source><translation>Projects</translation></message>
     <message><source>Мои проекты</source><translation>My projects</translation></message>
@@ -409,6 +415,13 @@
   </context>
   <context>
     <name>FinanceController</name>
+    <message><source>Не удалось найти каталог для заметок</source><translation>Could not find the notes directory</translation></message>
+    <message><source>Не удалось открыть заметки: %1</source><translation>Could not open notes: %1</translation></message>
+    <message><source>Не удалось прочитать заметки: %1</source><translation>Could not read notes: %1</translation></message>
+    <message><source>Не удалось создать каталог для заметок</source><translation>Could not create the notes directory</translation></message>
+    <message><source>Не удалось сохранить заметки: %1</source><translation>Could not save notes: %1</translation></message>
+    <message><source>Не удалось удалить файл заметок</source><translation>Could not delete the notes file</translation></message>
+    <message><source>Финансовые данные очищены, но файл заметок удалить не удалось</source><translation>Financial data was cleared, but the notes file could not be deleted</translation></message>
     <message><source>Без категории</source><translation>Uncategorized</translation></message>
     <message><source>Другое</source><translation>Other</translation></message>
     <message><source>Другой доход</source><translation>Other income</translation></message>

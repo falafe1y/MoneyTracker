@@ -1153,6 +1153,12 @@ ApplicationWindow {
                 }
                 NavButton {
                     Layout.fillWidth: true
+                    text: qsTr("Заметки")
+                    iconSource: "qrc:/icons/notes.svg"
+                    target: "notes"
+                }
+                NavButton {
+                    Layout.fillWidth: true
                     text: qsTr("Траектория")
                     iconSource: "qrc:/icons/trajectory.svg"
                     target: "trajectory"
@@ -1207,6 +1213,7 @@ ApplicationWindow {
                         : page === "operations" ? qsTr("Операции")
                         : page === "budgets" ? qsTr("Бюджеты")
                         : page === "goals" ? qsTr("Цели")
+                        : page === "notes" ? qsTr("Заметки")
                         : page === "trajectory" ? qsTr("Финансовая траектория")
                         : page === "projects" ? qsTr("Проекты")
                         : page === "analytics" ? qsTr("Аналитика")
@@ -1261,6 +1268,7 @@ ApplicationWindow {
                                : page === "operations" ? operationsPage
                                : page === "budgets" ? budgetsPage
                                : page === "goals" ? goalsPage
+                               : page === "notes" ? notesPage
                                : page === "trajectory" ? trajectoryPage
                                : page === "projects" ? projectsPage
                                : page === "analytics" ? analyticsPage
@@ -3783,6 +3791,127 @@ ApplicationWindow {
                 }
                 }
             }
+        }
+    }
+
+    Component {
+        id: notesPage
+
+        Panel {
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 22
+                spacing: 14
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 16
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Один документ. Изменения сохраняются автоматически.")
+                        color: root.muted
+                        font.pixelSize: 14
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        text: financeController.notesError.length > 0
+                              ? qsTr("Ошибка заметок")
+                              : financeController.notesDirty
+                                ? qsTr("Есть несохранённые изменения")
+                                : qsTr("Сохранено")
+                        color: financeController.notesError.length > 0
+                               ? root.red : root.muted
+                        font.pixelSize: 14
+                        elide: Text.ElideRight
+                        Layout.maximumWidth: 310
+                    }
+
+                    SoftButton {
+                        text: qsTr("Сохранить")
+                        highlighted: true
+                        enabled: financeController.notesAvailable
+                                 && financeController.notesDirty
+                        onClicked: financeController.saveNotes()
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: financeController.notesError.length > 0
+                    text: financeController.notesError
+                    color: root.red
+                    font.pixelSize: 14
+                    wrapMode: Text.WordWrap
+                }
+
+                ScrollView {
+                    id: notesScroll
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    background: Rectangle {
+                        color: root.soft
+                        radius: 12
+                        border.width: 1
+                        border.color: root.line
+                    }
+                    ScrollBar.horizontal: ScrollBar {
+                        policy: ScrollBar.AlwaysOff
+                    }
+                    ScrollBar.vertical: StyledScrollBar {
+                        policy: ScrollBar.AlwaysOff
+                        appAccentColor: root.accentSoft
+                        appTrackColor: root.line
+                    }
+
+                    TextArea {
+                        id: notesEditor
+                        property bool loaded: false
+                        width: notesScroll.availableWidth
+                        height: Math.max(notesScroll.availableHeight,
+                                         contentHeight + topPadding + bottomPadding)
+                        readOnly: !financeController.notesAvailable
+                        textFormat: TextEdit.PlainText
+                        wrapMode: TextEdit.Wrap
+                        selectByMouse: true
+                        placeholderText: qsTr("Запишите мысли, планы или важные детали…")
+                        color: root.accent
+                        placeholderTextColor: root.muted
+                        selectionColor: root.navSelected
+                        selectedTextColor: root.white
+                        font.pixelSize: 15
+                        leftPadding: 18
+                        rightPadding: 18
+                        topPadding: 16
+                        bottomPadding: 16
+                        background: null
+
+                        Component.onCompleted: {
+                            text = financeController.notesText;
+                            loaded = true;
+                        }
+                        onTextChanged: {
+                            if (loaded)
+                                financeController.setNotesText(text);
+                        }
+                        onActiveFocusChanged: {
+                            if (!activeFocus && loaded)
+                                financeController.saveNotes();
+                        }
+                    }
+                }
+
+                Shortcut {
+                    sequence: StandardKey.Save
+                    context: Qt.WindowShortcut
+                    enabled: root.page === "notes"
+                    onActivated: financeController.saveNotes()
+                }
+            }
+
+            Component.onDestruction: financeController.saveNotes()
         }
     }
 

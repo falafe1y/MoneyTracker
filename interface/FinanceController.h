@@ -330,6 +330,10 @@ class FinanceController final : public QObject
     Q_PROPERTY(QVariantList financialGoals READ financialGoals NOTIFY financialGoalsChanged)
     Q_PROPERTY(QVariantList goalSources READ goalSources NOTIFY financialGoalsChanged)
     Q_PROPERTY(QVariantMap financialTrajectory READ financialTrajectory NOTIFY financialTrajectoryChanged)
+    Q_PROPERTY(QString notesText READ notesText NOTIFY notesChanged)
+    Q_PROPERTY(bool notesDirty READ notesDirty NOTIFY notesChanged)
+    Q_PROPERTY(bool notesAvailable READ notesAvailable NOTIFY notesChanged)
+    Q_PROPERTY(QString notesError READ notesError NOTIFY notesChanged)
 
 public:
     QVariantList financialGoals() const;
@@ -340,6 +344,13 @@ public:
     Q_INVOKABLE QVariantMap saveFinancialTrajectorySettings(const QVariantMap& values);
 
     explicit FinanceController(QObject* parent = nullptr);
+
+    QString notesText() const;
+    bool notesDirty() const;
+    bool notesAvailable() const;
+    QString notesError() const;
+    Q_INVOKABLE void setNotesText(const QString& text);
+    Q_INVOKABLE bool saveNotes();
 
     qint64 balanceMinorUnits() const;
     QString balanceCurrency() const;
@@ -612,6 +623,7 @@ signals:
     void financialTrajectoryChanged();
     void selectedBudgetIdChanged();
     void selectedBudgetMonthChanged();
+    void notesChanged();
 
 private:
     static int currencyIndex(Currency currency);
@@ -643,6 +655,7 @@ private:
         const Budget& budget
         ) const;
     void refreshBudgetMonthLimits();
+    void loadNotes();
 
     qint64 accountBalanceMinor(const Account& account) const;
     qint64 investmentAccountValueMinor(const QString& accountId) const;
@@ -748,6 +761,12 @@ private:
     QDateTime lastCryptoRefreshAttemptUtc_;
     QTimer cryptoRefreshTimer_;
     QTimer recurringTimer_;
+    QTimer notesSaveTimer_;
+    QString notesFilePath_;
+    QString notesText_;
+    QString notesError_;
+    bool notesDirty_ = false;
+    bool notesAvailable_ = true;
     QSet<QString> refreshingCryptoWalletIds_;
     QHash<QString, int> pendingCryptoWalletRequests_;
     int pendingCryptoRequests_ = 0;
