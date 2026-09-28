@@ -3763,10 +3763,27 @@ ApplicationWindow {
     Component {
         id: settingsPage
         Panel {
-            ColumnLayout {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.margins: 28
+            ScrollView {
+                id: settingsScroll
+
+                anchors.fill: parent
+                clip: true
+                contentWidth: availableWidth
+                contentHeight: settingsContent.implicitHeight + 56
+
+                ScrollBar.horizontal: ScrollBar {
+                    policy: ScrollBar.AlwaysOff
+                }
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AlwaysOff
+                }
+
+                ColumnLayout {
+                    id: settingsContent
+
+                    x: 28
+                    y: 28
+                    width: Math.max(0, settingsScroll.availableWidth - 56)
                 Text {
                     text: qsTr("Основная валюта")
                     color: root.accent
@@ -4081,6 +4098,7 @@ ApplicationWindow {
                     text: qsTr("Очистить все данные")
                     implicitWidth: 210
                     onClicked: clearDataDialog.open()
+                }
                 }
             }
         }
