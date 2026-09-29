@@ -119,7 +119,6 @@ ApplicationWindow {
         if (type === "cash") return qsTr("Наличные");
         if (type === "debit_card") return qsTr("Дебетовая карта");
         if (type === "credit_card") return qsTr("Кредитная карта");
-        if (type === "savings") return qsTr("Накопительный");
         if (type === "crypto_wallet") return qsTr("Криптокошелёк");
         if (type === "brokerage") return qsTr("Брокер");
         if (type === "deposit") return qsTr("Вклад");
@@ -2930,10 +2929,6 @@ ApplicationWindow {
                 {
                     label: qsTr("Кредитная карта"),
                     value: "credit_card"
-                },
-                {
-                    label: qsTr("Накопительный"),
-                    value: "savings"
                 },
                 {
                     label: qsTr("Другой"),

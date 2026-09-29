@@ -3120,10 +3120,17 @@ bool FinanceController::addAccount(
         }
     }
 
-    const AccountType accountType = accountTypeFromString(type);
+    const std::optional<AccountType> parsedType = accountTypeFromString(type);
+    if (!parsedType) {
+        return false;
+    }
+    const AccountType accountType = *parsedType;
     const bool validType =
         (selectedAsset_ == AssetType::Fiat &&
-         static_cast<int>(accountType) <= static_cast<int>(AccountType::Other)) ||
+         (accountType == AccountType::Cash ||
+          accountType == AccountType::DebitCard ||
+          accountType == AccountType::CreditCard ||
+          accountType == AccountType::Other)) ||
         (selectedAsset_ == AssetType::Crypto &&
          (accountType == AccountType::CryptoWallet ||
           accountType == AccountType::Other)) ||
@@ -3244,10 +3251,17 @@ bool FinanceController::updateAccount(
         }
     }
 
-    const AccountType accountType = accountTypeFromString(type);
+    const std::optional<AccountType> parsedType = accountTypeFromString(type);
+    if (!parsedType) {
+        return false;
+    }
+    const AccountType accountType = *parsedType;
     const bool validType =
         (original.assetType() == AssetType::Fiat &&
-         static_cast<int>(accountType) <= static_cast<int>(AccountType::Other)) ||
+         (accountType == AccountType::Cash ||
+          accountType == AccountType::DebitCard ||
+          accountType == AccountType::CreditCard ||
+          accountType == AccountType::Other)) ||
         (original.assetType() == AssetType::Crypto &&
          (accountType == AccountType::CryptoWallet ||
           accountType == AccountType::Other)) ||
@@ -5723,17 +5737,18 @@ QString FinanceController::assetTypeToString(const AssetType asset)
     return QStringLiteral("fiat");
 }
 
-AccountType FinanceController::accountTypeFromString(const QString& type)
+std::optional<AccountType> FinanceController::accountTypeFromString(
+    const QString& type)
 {
     const QString value = type.trimmed().toLower();
     if (value == QStringLiteral("cash")) return AccountType::Cash;
     if (value == QStringLiteral("debit_card")) return AccountType::DebitCard;
     if (value == QStringLiteral("credit_card")) return AccountType::CreditCard;
-    if (value == QStringLiteral("savings")) return AccountType::Savings;
     if (value == QStringLiteral("crypto_wallet")) return AccountType::CryptoWallet;
     if (value == QStringLiteral("brokerage")) return AccountType::Brokerage;
     if (value == QStringLiteral("deposit")) return AccountType::Deposit;
-    return AccountType::Other;
+    if (value == QStringLiteral("other")) return AccountType::Other;
+    return std::nullopt;
 }
 
 QString FinanceController::accountTypeToString(const AccountType type)
@@ -5742,7 +5757,6 @@ QString FinanceController::accountTypeToString(const AccountType type)
     case AccountType::Cash: return QStringLiteral("cash");
     case AccountType::DebitCard: return QStringLiteral("debit_card");
     case AccountType::CreditCard: return QStringLiteral("credit_card");
-    case AccountType::Savings: return QStringLiteral("savings");
     case AccountType::CryptoWallet: return QStringLiteral("crypto_wallet");
     case AccountType::Brokerage: return QStringLiteral("brokerage");
     case AccountType::Deposit: return QStringLiteral("deposit");

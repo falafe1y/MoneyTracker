@@ -8,14 +8,14 @@
 #include <utility>
 
 enum class AccountType {
-    Cash,
-    DebitCard,
-    CreditCard,
-    Savings,
-    Other,
-    CryptoWallet,
-    Brokerage,
-    Deposit
+    Cash = 0,
+    DebitCard = 1,
+    CreditCard = 2,
+    // Value 3 belonged to the removed savings type in existing databases.
+    Other = 4,
+    CryptoWallet = 5,
+    Brokerage = 6,
+    Deposit = 7
 };
 
 class Account

@@ -93,7 +93,6 @@
     <message><source>Мои финансы</source><translation>My finances</translation></message>
     <message><source>Название категории</source><translation>Category name</translation></message>
     <message><source>Название счёта</source><translation>Account name</translation></message>
-    <message><source>Накопительный</source><translation>Savings</translation></message>
     <message><source>Наличные</source><translation>Cash</translation></message>
     <message><source>Настройки</source><translation>Settings</translation></message>
     <message><source>Начальный баланс</source><translation>Initial balance</translation></message>
@@ -196,7 +195,6 @@
     <message><source>Ещё</source><translation>More</translation></message>
     <message><source>Месяц</source><translation>Month</translation></message>
     <message><source>Название</source><translation>Name</translation></message>
-    <message><source>Накопительный счёт</source><translation>Savings account</translation></message>
     <message><source>Новая категория</source><translation>New category</translation></message>
     <message><source>Обновлять автоматически</source><translation>Update automatically</translation></message>
     <message><source>Общий баланс</source><translation>Total balance</translation></message>

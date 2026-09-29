@@ -24,6 +24,7 @@
 #include <QTimer>
 
 #include <array>
+#include <optional>
 
 class FinanceController final : public QObject
 {
@@ -629,7 +630,7 @@ private:
     static int currencyIndex(Currency currency);
     static AssetType assetTypeFromString(const QString& asset);
     static QString assetTypeToString(AssetType asset);
-    static AccountType accountTypeFromString(const QString& type);
+    static std::optional<AccountType> accountTypeFromString(const QString& type);
     static QString accountTypeToString(AccountType type);
 
     qint64 convertedTotal(

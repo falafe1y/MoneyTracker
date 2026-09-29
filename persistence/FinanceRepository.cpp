@@ -2663,7 +2663,7 @@ bool FinanceRepository::initializeSchema()
         QStringLiteral("CREATE TABLE IF NOT EXISTS accounts ("
                        "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
                        "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
-                       "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,3,4,5,6,7)), "
+                       "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,4,5,6,7)), "
                        "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
                        "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
                        "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
@@ -2976,8 +2976,9 @@ bool FinanceRepository::migrateLegacySchema()
     }
     const QString accountTableSql = accountSchema.value(0).toString();
     accountSchema.finish();
-    const bool needsAccountTypeExpansion =
-        !accountTableSql.contains(QStringLiteral(",5,6,7"));
+    const bool needsAccountTypeMigration =
+        !accountTableSql.contains(QStringLiteral(",5,6,7")) ||
+        accountTableSql.contains(QStringLiteral(",2,3,4"));
 
     QSqlQuery recurringSchema(database_);
     if (!recurringSchema.exec(QStringLiteral(
@@ -3012,7 +3013,7 @@ bool FinanceRepository::migrateLegacySchema()
     if (!needsAssetTypeRename && hasCreditLimit &&
         hasCryptoHistoryFetchedAt && hasCryptoDecimals &&
         hasInvestmentMarketCode && hasInvestmentPrimaryBoardId &&
-        !needsAccountTypeExpansion && !needsRecurringTypeExpansion &&
+        !needsAccountTypeMigration && !needsRecurringTypeExpansion &&
         hasRecurringAmountCurrency && hasTransactionProjectId &&
         hasProjectArchived && hasProjectCreatedAt && hasProjectUpdatedAt) {
         QSqlQuery projectIndex(database_);
@@ -3185,7 +3186,7 @@ bool FinanceRepository::migrateLegacySchema()
         return false;
     }
 
-    if (needsAccountTypeExpansion) {
+    if (needsAccountTypeMigration) {
         QSqlQuery foreignKeys(database_);
         if (!foreignKeys.exec(QStringLiteral("PRAGMA foreign_keys = OFF"))) {
             setLastError(foreignKeys.lastError().text());
@@ -3203,7 +3204,7 @@ bool FinanceRepository::migrateLegacySchema()
                 "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
                 "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
                 "account_type INTEGER NOT NULL "
-                "CHECK(account_type IN (0,1,2,3,4,5,6,7)), "
+                "CHECK(account_type IN (0,1,2,4,5,6,7)), "
                 "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
                 "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
                 "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
@@ -3214,7 +3215,9 @@ bool FinanceRepository::migrateLegacySchema()
                 "INSERT INTO accounts_v2("
                 "id,name,asset_type,account_type,currency,"
                 "initial_balance_minor,credit_limit_minor,is_archived,created_at) "
-                "SELECT id,name,asset_type,account_type,currency,"
+                "SELECT id,name,asset_type,"
+                "CASE WHEN account_type = 3 THEN 4 ELSE account_type END,"
+                "currency,"
                 "initial_balance_minor,credit_limit_minor,is_archived,created_at "
                 "FROM accounts"),
             QStringLiteral("DROP TABLE accounts"),

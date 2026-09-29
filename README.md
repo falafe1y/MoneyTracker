@@ -26,7 +26,7 @@ accounts:
 `Asset (Fiat / Crypto / Investment) -> Account -> Transaction`
 
 An account represents a concrete source of value: cash, a debit or credit
-card, a savings account, a crypto wallet, a broker, or a deposit. In SQLite,
+card, another fiat account, a crypto wallet, a broker, or an investment deposit. In SQLite,
 `accounts.asset_type` assigns every account to its top-level asset section.
 
 The selected asset is exposed by `FinanceController.selectedAsset` and saved in

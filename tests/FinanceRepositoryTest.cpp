@@ -9,6 +9,8 @@
 #include <QUuid>
 #include <QtTest>
 
+#include <algorithm>
+
 class FinanceRepositoryTest : public QObject
 {
     Q_OBJECT
@@ -28,6 +30,7 @@ private slots:
     void storesAndMaterializesDepositInterest();
     void storesCreditCardTerms();
     void migratesCreditLimitForExistingDatabase();
+    void migratesSavingsAccountsWithoutLosingTransactions();
     void updatesAndDeletesTransaction();
     void storesTransferAtomicallyWithoutAffectingIncomeAndExpense();
     void replacesIncomeWithTransferAtomically();
@@ -873,6 +876,92 @@ void FinanceRepositoryTest::migratesCreditLimitForExistingDatabase()
     QVERIFY(restoredLimit);
 }
 
+void FinanceRepositoryTest::migratesSavingsAccountsWithoutLosingTransactions()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString databasePath = directory.filePath(
+        QStringLiteral("legacy-savings.sqlite3"));
+    const QString connectionName = QStringLiteral("legacy-savings-")
+        + QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    {
+        QSqlDatabase database = QSqlDatabase::addDatabase(
+            QStringLiteral("QSQLITE"), connectionName);
+        database.setDatabaseName(databasePath);
+        QVERIFY(database.open());
+        QSqlQuery query(database);
+        QVERIFY2(query.exec(QStringLiteral(
+            "CREATE TABLE accounts ("
+            "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+            "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
+            "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,3,4,5,6,7)), "
+            "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+            "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
+            "credit_limit_minor INTEGER NOT NULL DEFAULT 0, "
+            "is_archived INTEGER NOT NULL DEFAULT 0, "
+            "created_at INTEGER NOT NULL)")), qPrintable(query.lastError().text()));
+        QVERIFY2(query.exec(QStringLiteral(
+            "CREATE TABLE categories ("
+            "id TEXT PRIMARY KEY, name TEXT NOT NULL, type INTEGER NOT NULL, "
+            "is_system INTEGER NOT NULL DEFAULT 0, "
+            "is_archived INTEGER NOT NULL DEFAULT 0, "
+            "created_at INTEGER NOT NULL)")), qPrintable(query.lastError().text()));
+        QVERIFY2(query.exec(QStringLiteral(
+            "CREATE TABLE transactions ("
+            "id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id), "
+            "category_id TEXT NOT NULL REFERENCES categories(id), "
+            "type INTEGER NOT NULL CHECK(type IN (0,1)), "
+            "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
+            "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
+            "project_id TEXT, created_at INTEGER NOT NULL)")),
+            qPrintable(query.lastError().text()));
+        QVERIFY2(query.exec(QStringLiteral(
+            "INSERT INTO accounts VALUES("
+            "'old-savings','Старый счёт',0,3,'RUB',12500,0,0,1)")),
+            qPrintable(query.lastError().text()));
+        QVERIFY2(query.exec(QStringLiteral(
+            "INSERT INTO categories VALUES('legacy-income','Доход',0,0,0,1)")),
+            qPrintable(query.lastError().text()));
+        QVERIFY2(query.exec(QStringLiteral(
+            "INSERT INTO transactions VALUES("
+            "'old-income','old-savings','legacy-income',0,2500,1,'',NULL,1)")),
+            qPrintable(query.lastError().text()));
+        database.close();
+    }
+    QSqlDatabase::removeDatabase(connectionName);
+
+    {
+        FinanceRepository repository(databasePath);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        const QVector<Account> accounts = repository.loadAccounts();
+        const auto account = std::find_if(accounts.cbegin(), accounts.cend(),
+            [](const Account& value) {
+                return value.id() == QStringLiteral("old-savings");
+            });
+        QVERIFY(account != accounts.cend());
+        QCOMPARE(account->type(), AccountType::Other);
+        QCOMPARE(account->assetType(), AssetType::Fiat);
+        QCOMPARE(account->initialBalanceMinor(), qint64(12'500));
+
+        const QVector<Transaction> transactions = repository.loadTransactions();
+        QCOMPARE(transactions.size(), 1);
+        QCOMPARE(transactions.constFirst().accountId(), account->id());
+        QCOMPARE(transactions.constFirst().money().minorUnits(), qint64(2'500));
+    }
+
+    FinanceRepository reopened(databasePath);
+    QVERIFY2(reopened.isOpen(), qPrintable(reopened.lastError()));
+    const QVector<Account> accounts = reopened.loadAccounts();
+    const auto account = std::find_if(accounts.cbegin(), accounts.cend(),
+        [](const Account& value) {
+            return value.id() == QStringLiteral("old-savings");
+        });
+    QVERIFY(account != accounts.cend());
+    QCOMPARE(account->type(), AccountType::Other);
+    QCOMPARE(reopened.loadTransactions().size(), 1);
+}
+
 void FinanceRepositoryTest::storesUiLanguage()
 {
     QTemporaryDir temporaryDirectory;
@@ -1426,7 +1515,7 @@ void FinanceRepositoryTest::storesAndMaterializesDepositInterest()
 
     const Account account(
         QStringLiteral("alpha-deposit"),
-        QStringLiteral("Альфа Накопительный"),
+        QStringLiteral("Альфа Вклад"),
         AssetType::Investment,
         AccountType::Deposit,
         Currency::RUB,
