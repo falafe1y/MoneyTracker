@@ -991,7 +991,7 @@ ApplicationWindow {
                 }
                 Panel {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 145
+                    Layout.preferredHeight: 188
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 14
@@ -1057,7 +1057,7 @@ ApplicationWindow {
                             delegate: Rectangle {
                                 required property var modelData
                                 width: 245
-                                height: 64
+                                height: 106
                                 radius: 13
                                 color: financeController.selectedAccountId === modelData.id ? root.accent : root.panel
                                 border.width: 1
@@ -1090,17 +1090,18 @@ ApplicationWindow {
                                             );
                                     }
                                 }
-                                RowLayout {
+                                ColumnLayout {
                                     anchors.fill: parent
                                     anchors.margins: 13
-                                    Text {
-                                        text: "▣"
-                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
-                                        font.pixelSize: 20
-                                    }
-                                    ColumnLayout {
+                                    spacing: 5
+                                    RowLayout {
                                         Layout.fillWidth: true
-                                        spacing: 1
+                                        spacing: 6
+                                        Text {
+                                            text: "▣"
+                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
+                                            font.pixelSize: 20
+                                        }
                                         Text {
                                             Layout.fillWidth: true
                                             text: modelData.name
@@ -1110,17 +1111,37 @@ ApplicationWindow {
                                             elide: Text.ElideRight
                                         }
                                         Text {
-                                            text: root.accountCompactAmount(modelData)
-                                            color: financeController.selectedAccountId === modelData.id ? root.paleText : root.muted
-                                            font.pixelSize: 14
-                                            elide: Text.ElideRight
-                                            Layout.fillWidth: true
+                                            text: financeController.selectedAccountId === modelData.id ? "✓" : "›"
+                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
+                                            font.pixelSize: 18
                                         }
                                     }
                                     Text {
-                                        text: financeController.selectedAccountId === modelData.id ? "✓" : "›"
+                                        Layout.fillWidth: true
+                                        text: modelData.isCreditCard
+                                              ? qsTr("Долг: %1").arg(root.money(
+                                                    modelData.debtMinor, modelData.currency, false))
+                                              : root.accountCompactAmount(modelData)
                                         color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
                                         font.pixelSize: 18
+                                        font.weight: Font.Bold
+                                        fontSizeMode: Text.Fit
+                                        minimumPixelSize: 14
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        visible: modelData.isCreditCard === true
+                                        text: modelData.isCreditCard
+                                              ? qsTr("Доступно: %1").arg(root.money(
+                                                    modelData.availableCreditMinor,
+                                                    modelData.currency, false)) : ""
+                                        color: financeController.selectedAccountId === modelData.id ? root.paleText : root.muted
+                                        font.pixelSize: 14
+                                        font.weight: Font.Medium
+                                        fontSizeMode: Text.Fit
+                                        minimumPixelSize: 12
+                                        elide: Text.ElideRight
                                     }
                                 }
                             }

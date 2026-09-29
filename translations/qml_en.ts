@@ -41,11 +41,13 @@
     <message><source>Для выбранной операции нет доступного счёта</source><translation>No account is available for the selected transaction</translation></message>
     <message><source>Для перевода нужны два счёта</source><translation>A transfer requires two accounts</translation></message>
     <message><source>Долг %1 · доступно %2</source><translation>Debt %1 · available %2</translation></message>
+    <message><source>Долг: %1</source><translation>Debt: %1</translation></message>
     <message><source>Добавить</source><translation>Add</translation></message>
     <message><source>Добавьте расходы — здесь появится график</source><translation>Add expenses to see a chart here</translation></message>
     <message><source>Доход</source><translation>Income</translation></message>
     <message><source>Доходы</source><translation>Income</translation></message>
     <message><source>Доступно: %1 из %2</source><translation>Available: %1 of %2</translation></message>
+    <message><source>Доступно: %1</source><translation>Available: %1</translation></message>
     <message><source>Другой</source><translation>Other</translation></message>
     <message><source>Другой счёт</source><translation>Other account</translation></message>
     <message><source>Закрыть</source><translation>Close</translation></message>
