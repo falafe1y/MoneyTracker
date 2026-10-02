@@ -1513,6 +1513,19 @@ void FinanceRepositoryTest::storesAndMaterializesDepositInterest()
     FinanceRepository repository(databasePath);
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
+    // Reproduce an existing database predating the built-in interest category.
+    const QString connection = QStringLiteral("missing-interest-category-")
+        + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        db.setDatabaseName(databasePath);
+        QVERIFY(db.open());
+        QSqlQuery remove(db);
+        QVERIFY(remove.exec(QStringLiteral("DELETE FROM categories WHERE id = 'deposit_interest'")));
+        db.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+
     const Account account(
         QStringLiteral("alpha-deposit"),
         QStringLiteral("Альфа Вклад"),

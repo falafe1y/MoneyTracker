@@ -706,7 +706,7 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: StandardKey.New
+        sequences: [StandardKey.New]
         context: Qt.ApplicationShortcut
         enabled: !root.modalDialogVisible()
               && !accountContextMenu.visible
@@ -1683,7 +1683,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     expandToContent: true
                     title: qsTr("История операций")
-                    rows: root.dashboardHistoryRows()
+                    rows: visible ? root.dashboardHistoryRows() : []
+                    viewportFlickable: overviewScroll.contentItem
                     showSearch: true
                     addInvestmentPositionAction:
                         financeController.selectedAsset === "investment"
@@ -1895,6 +1896,7 @@ ApplicationWindow {
         property string title: qsTr("История операций")
         property var rows: []
         property bool expandToContent: false
+        property var viewportFlickable: null
         property bool addInvestmentPositionAction: false
         property bool showSearch: false
         property string projectId: ""
@@ -1963,6 +1965,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 rows: transactionBlock.rows
                 expandToContent: transactionBlock.expandToContent
+                viewportFlickable: transactionBlock.viewportFlickable
                 bottomCornerRadius: transactionBlock.radius - 1
             }
         }
@@ -2001,6 +2004,28 @@ ApplicationWindow {
         property var rows: []
         property real bottomCornerRadius: 0
         property bool expandToContent: false
+        property var viewportFlickable: null
+
+        // Keep the overview's single scroll surface without constructing off-screen rows.
+        function bodyOffsetInScrollContent() {
+            let offset = 0;
+            let item = overviewRows.parent;
+            const target = viewportFlickable ? viewportFlickable.contentItem : null;
+            while (item && item !== target) {
+                offset += item.y;
+                item = item.parent;
+            }
+            return offset;
+        }
+        readonly property int firstVisibleRow: viewportFlickable
+            ? Math.min(rows.length, Math.max(0, Math.floor(
+                (viewportFlickable.contentY - bodyOffsetInScrollContent()) / rowHeight) - 3))
+            : 0
+        readonly property int lastVisibleRow: viewportFlickable
+            ? Math.max(firstVisibleRow, Math.min(rows.length, Math.ceil(
+                (viewportFlickable.contentY + viewportFlickable.height
+                 - bodyOffsetInScrollContent()) / rowHeight) + 3))
+            : rows.length
 
         readonly property int tableHeaderHeight: 40
         readonly property int rowHeight: 48
@@ -2103,11 +2128,16 @@ ApplicationWindow {
                 // OVERVIEW MODE: ordinary non-flickable content.
                 // The whole overview page scrolls as one document.
                 Column {
-                    anchors.fill: parent
+                    id: overviewRows
+                    width: parent.width
+                    y: transactionTable.firstVisibleRow * transactionTable.rowHeight
                     visible: transactionTable.expandToContent
 
                     Repeater {
-                        model: transactionTable.rows
+                        model: transactionTable.expandToContent && transactionTable.visible
+                               ? transactionTable.rows.slice(transactionTable.firstVisibleRow,
+                                                             transactionTable.lastVisibleRow)
+                               : []
 
                         delegate: Item {
                             required property int index
@@ -2215,7 +2245,9 @@ ApplicationWindow {
                         appAccentColor: root.accentSoft
                         appTrackColor: root.line
                     }
-                    model: transactionTable.rows
+                    reuseItems: true
+                    model: !transactionTable.expandToContent && transactionTable.visible
+                           ? transactionTable.rows : []
 
                     delegate: Item {
                         required property int index
@@ -3921,7 +3953,7 @@ ApplicationWindow {
                 }
 
                 Shortcut {
-                    sequence: StandardKey.Save
+                    sequences: [StandardKey.Save]
                     context: Qt.WindowShortcut
                     enabled: root.page === "notes"
                     onActivated: financeController.saveNotes()

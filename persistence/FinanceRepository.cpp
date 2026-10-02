@@ -1771,6 +1771,21 @@ bool FinanceRepository::materializeDepositInterest(
         return false;
     }
 
+    // Older or cleared databases may not contain this built-in category.
+    // Create it atomically with the interest; preserve an existing user's category.
+    if (!occurrences.isEmpty()) {
+        QSqlQuery category(database_);
+        category.prepare(QStringLiteral(
+            "INSERT OR IGNORE INTO categories(id,name,type,is_system,created_at) "
+            "VALUES ('deposit_interest', 'Проценты по вкладу', 0, 1, ?)"));
+        category.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+        if (!category.exec()) {
+            setLastError(category.lastError().text());
+            database_.rollback();
+            return false;
+        }
+    }
+
     QSqlQuery occurrenceLookup(database_);
     occurrenceLookup.prepare(QStringLiteral(
         "SELECT 1 FROM deposit_interest_occurrences "

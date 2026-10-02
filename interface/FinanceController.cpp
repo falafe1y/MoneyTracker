@@ -5100,6 +5100,9 @@ void FinanceController::materializeRecurringTransactions()
     if (totalInserted <= 0) {
         return;
     }
+    categories_ = repository_.loadCategories();
+    archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
+    emit categoriesChanged();
     transactions_ = repository_.loadTransactions();
     summary_ = repository_.loadSummary();
     emit transactionsChanged();
