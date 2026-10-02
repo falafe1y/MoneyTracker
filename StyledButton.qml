@@ -15,6 +15,7 @@ Button {
     property color appHoverColor: "#E4E8F1"
     property color appOnAccentColor: "#FFFFFF"
     property color appErrorColor: "#B94F48"
+    property int cornerRadius: 9
     property int controlHeight: 40
 
     activeFocusOnTab: true
@@ -39,7 +40,7 @@ Button {
     }
 
     background: Rectangle {
-        radius: 9
+        radius: control.cornerRadius
         opacity: control.enabled ? 1 : 0.55
         color: control.flat
                ? (control.hovered ? control.appHoverColor : "transparent")

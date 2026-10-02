@@ -5,14 +5,20 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: root
-    width: 1440
-    height: 900
+    width: 1600
+    height: 960
     minimumWidth: 1080
     minimumHeight: 720
     visible: true
     title: "Ledgera"
     color: root.canvas
+    font.family: "Inter"
     font.pixelSize: 14
+
+    readonly property int pageGap: 24
+    readonly property int cardGap: 16
+    readonly property int panelPadding: 24
+    readonly property int cardRadius: 12
 
     // Color palette
     // Ivory + indigo foundation. Indigo is the only primary accent;
@@ -40,7 +46,7 @@ ApplicationWindow {
     readonly property color chartAccent4: "#31c7ed"
     readonly property color chartAccent5: "#70d6f0"
     readonly property var chartColors: [chartAccent1, chartAccent2, chartAccent3, chartAccent4, chartAccent5]
-    readonly property color tableHeader: "#F1F0DF"
+    readonly property color tableHeader: "#EEEAD1"
     readonly property color tableRowAlt: "#FAF9EC"
     readonly property color categoryRow: "#FFFFF0"
     readonly property color categoryEditRow: "#F4F3E3"
@@ -66,7 +72,7 @@ ApplicationWindow {
         },
         {
             code: "crypto",
-            title: qsTr("Крипта"),
+            title: qsTr("Криптовалюта"),
             icon: ""
         },
         {
@@ -94,9 +100,10 @@ ApplicationWindow {
         const cents = absoluteMinor % 100;
         const decimals = Math.abs(roundedMinor) % 100 === 0 ? 0 : 2;
         const decimalSeparator = financeController.uiLanguage === "en" ? "." : ",";
+        const groupedWhole = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
         const formatted = decimals === 0
-                        ? String(whole)
-                        : String(whole) + decimalSeparator
+                        ? groupedWhole
+                        : groupedWhole + decimalSeparator
                           + (cents < 10 ? "0" : "") + String(cents);
         const prefix = sign
                      ? (roundedMinor >= 0 ? "+" : "−")
@@ -806,7 +813,7 @@ ApplicationWindow {
                 const labelWidth = ctx.measureText(sampleLabel).width;
                 const labelCount = data.length === 1 || lastTime === firstTime ? 1
                     : Math.max(2, Math.min(5,
-                        Math.floor(plotWidth / (labelWidth + 16)) + 1));
+                        Math.floor(plotWidth / (labelWidth + 32))));
                 for (let label = 0; label < labelCount; ++label) {
                     const fraction = labelCount === 1 ? 0.5
                         : label / (labelCount - 1);
@@ -986,6 +993,7 @@ ApplicationWindow {
         }
     }
     component SoftButton: StyledButton {
+        cornerRadius: 8
         primary: highlighted
         controlHeight: 42
         appTextColor: root.accent
@@ -1056,12 +1064,14 @@ ApplicationWindow {
         property string target: ""
         flat: true
         hoverEnabled: true
-        implicitHeight: 54
+        implicitHeight: 48
+        leftPadding: 16
+        rightPadding: 16
         contentItem: RowLayout {
-            spacing: 14
+            spacing: 16
             Item {
-                Layout.preferredWidth: 26
-                Layout.preferredHeight: 26
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
 
                 Text {
                     anchors.fill: parent
@@ -1075,23 +1085,24 @@ ApplicationWindow {
                 Image {
                     id: navIconImage
                     anchors.centerIn: parent
-                    width: 22
-                    height: 22
+                    width: 20
+                    height: 20
                     visible: nav.iconSource.length > 0
                     source: nav.iconSource
-                    sourceSize: Qt.size(22, 22)
+                    sourceSize: Qt.size(20, 20)
                     fillMode: Image.PreserveAspectFit
                 }
             }
             Text {
                 text: nav.text
+                font.weight: root.page === nav.target ? Font.Bold : Font.Normal
                 color: root.page === nav.target ? root.white : root.paleText
                 font.pixelSize: 16
                 Layout.fillWidth: true
             }
         }
         background: Rectangle {
-            radius: 14
+            radius: 12
             color: root.page === nav.target ? root.navSelected : (nav.hovered ? root.navHovered : root.transparentColor)
         }
         onClicked: root.page = target
@@ -1099,38 +1110,49 @@ ApplicationWindow {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 6
-        spacing: 24
+        anchors.margins: 8
+        spacing: 32
         Panel {
-            Layout.preferredWidth: 252
+            Layout.preferredWidth: 248
             Layout.fillHeight: true
             color: root.accent
             border.color: root.accent
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 20
+                anchors.margins: 16
                 spacing: 8
                 RowLayout {
-                    Layout.bottomMargin: 34
-                    spacing: 12
+                    Layout.leftMargin: 8
+                    Layout.topMargin: 8
+                    Layout.bottomMargin: 8
+                    spacing: 16
                     Rectangle {
-                        width: 36
-                        height: 36
+                        Layout.preferredWidth: 40
+                        Layout.preferredHeight: 40
                         radius: 12
                         color: root.soft
                         Text {
                             anchors.centerIn: parent
-                            text: "◆"
+                            text: "L"
                             color: root.accent
-                            font.pixelSize: 17
+                            font.pixelSize: 23
+                            font.weight: Font.Bold
                         }
                     }
                     Text {
                         text: "Ledgera"
                         color: root.soft
-                        font.pixelSize: 25
+                        font.pixelSize: 26
                         font.weight: Font.Bold
                     }
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    Layout.bottomMargin: 16
+                    Layout.preferredHeight: 1
+                    color: root.navSelected
                 }
                 NavButton {
                     Layout.fillWidth: true
@@ -1185,8 +1207,11 @@ ApplicationWindow {
                 }
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 1
-                    color: root.accentSoft
+                    Layout.preferredHeight: 1
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    Layout.bottomMargin: 8
+                    color: root.navSelected
                 }
                 NavButton {
                     Layout.fillWidth: true
@@ -1200,11 +1225,14 @@ ApplicationWindow {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.topMargin: 12
-            Layout.rightMargin: 18
-            spacing: 14
+            Layout.topMargin: 24
+            Layout.rightMargin: 24
+            Layout.bottomMargin: 24
+            spacing: root.pageGap
             RowLayout {
                 Layout.fillWidth: true
+                Layout.preferredHeight: 48
+                spacing: root.cardGap
                 Text {
                     text: page === "overview" ? qsTr("Мои финансы")
                         : page === "accounts" ? qsTr("Счета")
@@ -1218,44 +1246,36 @@ ApplicationWindow {
                         : page === "analytics" ? qsTr("Аналитика")
                         : qsTr("Настройки")
                     color: root.accent
-                    font.pixelSize: 28
+                    font.pixelSize: root.width < 1360 ? 26 : 30
                     font.weight: Font.Bold
                 }
                 Item {
                     Layout.fillWidth: true
                 }
-                AppComboBox {
-                    id: currencyBox
-                    Layout.preferredWidth: 126
-                    implicitHeight: 42
-                    model: ["RUB", "USD", "EUR"]
-                    currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
-                    onActivated: financeController.appCurrency = currentText
-                }
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                visible: page === "overview"
-                      || page === "accounts"
-                      || page === "operations"
-                      || page === "analytics"
-
-                Item {
-                    Layout.fillWidth: true
-                }
                 SoftButton {
-                    visible: page === "overview"
-                          && financeController.selectedAsset === "fiat"
-                    implicitWidth: 190
-                    implicitHeight: 42
+                    visible: page === "overview" && financeController.selectedAsset === "fiat"
+                    Layout.preferredWidth: root.width < 1360 ? 208 : 218
+                    controlHeight: 40
+                    font.weight: Font.Bold
                     text: qsTr("Плановые операции")
                     onClicked: recurringTransactionsDialog.openManager()
                 }
                 SoftButton {
-                    implicitWidth: 205
-                    implicitHeight: 42
+                    visible: page === "overview" || page === "accounts"
+                          || page === "operations" || page === "analytics"
+                    Layout.preferredWidth: root.width < 1360 ? 144 : 218
+                    controlHeight: 40
+                    font.weight: Font.Bold
                     text: root.dateFilterLabel()
                     onClicked: dateFilterDialog.openForCurrent()
+                }
+                AppComboBox {
+                    id: currencyBox
+                    Layout.preferredWidth: 104
+                    implicitHeight: 40
+                    model: ["RUB", "USD", "EUR"]
+                    currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
+                    onActivated: financeController.appCurrency = currentText
                 }
             }
             Loader {
@@ -1292,7 +1312,7 @@ ApplicationWindow {
             // ===== CONTENT CLIP SAFETY MARGIN =====
             // Keep panel borders one physical pixel away from ScrollView's clip edge.
             // If outlines ever need to touch the viewport again, set this to 0.
-            readonly property int contentEdgeMargin: 2
+            readonly property int contentEdgeMargin: 0
 
             contentWidth: availableWidth
             contentHeight: dashboard.implicitHeight
@@ -1301,115 +1321,88 @@ ApplicationWindow {
                 id: dashboard
                 x: overviewScroll.contentEdgeMargin
                 width: Math.max(0, overviewScroll.availableWidth - overviewScroll.contentEdgeMargin * 2)
-                spacing: 14
+                spacing: root.pageGap
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 14
-
+                    spacing: root.cardGap
                     Panel {
-                        Layout.preferredWidth: (dashboard.width - 42) / 4
-                        Layout.minimumWidth: 180
-                        Layout.preferredHeight: 118
-                        color: root.soft
-                        border.color: root.accentSoft
-
-                        ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: (dashboard.width - 3 * root.cardGap) / 4
+                        Layout.minimumWidth: 160
+                        Layout.preferredHeight: 120
+                        color: root.accent
+                        Column {
                             anchors.fill: parent
-                            anchors.margins: 18
-                            spacing: 10
-
-                            RowLayout {
-                                Rectangle {
-                                    width: 38
-                                    height: 38
-                                    radius: 19
-                                    color: root.accent
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "∑"
-                                        color: root.white
-                                        font.pixelSize: 19
-                                        font.weight: Font.DemiBold
-                                    }
-                                }
-
-                                Text {
-                                    text: qsTr("Все активы")
-                                    color: root.accent
-                                    font.pixelSize: 17
-                                    font.weight: Font.DemiBold
-                                }
-                            }
-
+                            anchors.margins: root.panelPadding
+                            spacing: 16
                             Text {
-                                text: root.money(
-                                    financeController.balanceMinorUnits,
-                                    financeController.appCurrency,
-                                    false
-                                )
-                                color: root.navSelected
-                                font.pixelSize: 25
+                                text: qsTr("Все активы")
+                                color: root.panel
+                                font.pixelSize: 16
                                 font.weight: Font.Bold
+                            }
+                            Text {
+                                width: parent.width
+                                text: root.money(financeController.balanceMinorUnits,
+                                                 financeController.appCurrency, false)
+                                color: root.panel
+                                font.pixelSize: 28
+                                font.weight: Font.Bold
+                                fontSizeMode: Text.Fit
+                                minimumPixelSize: 16
+                                elide: Text.ElideRight
                             }
                         }
                     }
-
                     Repeater {
                         model: root.assets
                         delegate: Panel {
                             required property var modelData
-                            Layout.preferredWidth: (dashboard.width - 42) / 4
-                            Layout.minimumWidth: 180
-                            Layout.preferredHeight: 118
-                            color: financeController.selectedAsset === modelData.code ? root.accent : root.panel
+                            readonly property bool selected: financeController.selectedAsset === modelData.code
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: (dashboard.width - 3 * root.cardGap) / 4
+                            Layout.minimumWidth: 160
+                            Layout.preferredHeight: 120
+                            color: root.panel
+                            border.width: selected ? 3 : 1
+                            border.color: selected ? root.accent : root.line
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: root.panelPadding
+                                spacing: selected ? 12 : 16
+                                Text {
+                                    text: modelData.title
+                                    color: parent.parent.selected ? root.accent : root.muted
+                                    font.pixelSize: parent.parent.selected ? 20 : 16
+                                    font.weight: parent.parent.selected ? Font.ExtraBold : Font.Bold
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
+                                    color: root.accent
+                                    font.pixelSize: parent.parent.selected ? 30 : 28
+                                    font.weight: Font.Bold
+                                    fontSizeMode: Text.Fit
+                                    minimumPixelSize: 16
+                                    elide: Text.ElideRight
+                                }
+                            }
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: financeController.selectedAsset = modelData.code
-                            }
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 18
-                                spacing: 10
-                                RowLayout {
-                                    Rectangle {
-                                        width: 38
-                                        height: 38
-                                        radius: 19
-                                        color: financeController.selectedAsset === modelData.code ? root.accentSoft : root.pale
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: modelData.icon
-                                            color: financeController.selectedAsset === modelData.code ? root.white : root.accent
-                                            font.pixelSize: 19
-                                        }
-                                    }
-                                    Text {
-                                        text: modelData.title
-                                        color: financeController.selectedAsset === modelData.code ? root.white : root.accent
-                                        font.pixelSize: 17
-                                        font.weight: Font.DemiBold
-                                    }
-                                }
-                                Text {
-                                    text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
-                                    color: financeController.selectedAsset === modelData.code ? root.white : root.accent
-                                    font.pixelSize: 25
-                                    font.weight: Font.Bold
-                                }
                             }
                         }
                     }
                 }
                 Panel {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 188
+                    Layout.preferredHeight: 208
                     ColumnLayout {
                         anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 8
+                        anchors.margins: root.panelPadding
+                        spacing: root.cardGap
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
@@ -1418,8 +1411,8 @@ ApplicationWindow {
                                        : qsTr("Счета"))
                                       + " · " + root.assetTitle(financeController.selectedAsset)
                                 color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
+                                font.pixelSize: 18
+                                font.weight: Font.Bold
                             }
                             Item {
                                 Layout.fillWidth: true
@@ -1433,7 +1426,8 @@ ApplicationWindow {
 
                                 contentItem: Text {
                                     text: addAccountButton.text
-                                    color: root.navSelected
+                                    color: root.accent
+                                    font.weight: Font.Bold
                                     font.pixelSize: 14
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
@@ -1451,7 +1445,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             orientation: ListView.Horizontal
-                            spacing: 12
+                            spacing: root.cardGap
                             clip: true
                             ScrollBar.horizontal: StyledScrollBar {
                                 policy: ScrollBar.AlwaysOff
@@ -1473,13 +1467,11 @@ ApplicationWindow {
                                      : financeController.accounts)
                             delegate: Rectangle {
                                 required property var modelData
-                                width: 245
-                                height: 106
-                                radius: 13
-                                color: root.overviewAccountSelected(modelData)
-                                     ? root.accent
-                                     : root.panel
-                                border.width: 1
+                                width: Math.max(192, (ListView.view.width - 4 * root.cardGap) / 5)
+                                height: 96
+                                radius: root.cardRadius
+                                color: root.soft
+                                border.width: root.overviewAccountSelected(modelData) ? 2 : 1
                                 border.color: root.overviewAccountSelected(modelData)
                                             ? root.accent
                                             : root.line
@@ -1506,63 +1498,42 @@ ApplicationWindow {
                                             );
                                     }
                                 }
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 13
-                                    spacing: 5
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 6
-                                        Text {
-                                            text: "▣"
-                                            color: root.overviewAccountSelected(modelData)
-                                                 ? root.white : root.accent
-                                            font.pixelSize: 20
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: modelData.name
-                                            color: root.overviewAccountSelected(modelData)
-                                                 ? root.white
-                                                 : root.accent
-                                            font.pixelSize: 14
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            text: root.overviewAccountSelected(modelData) ? "✓" : "›"
-                                            color: root.overviewAccountSelected(modelData)
-                                                 ? root.white : root.accent
-                                            font.pixelSize: 18
-                                        }
-                                    }
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.leftMargin: 16
+                                    anchors.rightMargin: 16
+                                    anchors.topMargin: 12
+                                    spacing: 4
                                     Text {
-                                        Layout.fillWidth: true
-                                        text: modelData.isCreditCard
-                                              ? qsTr("Долг: %1").arg(root.money(
-                                                    modelData.debtMinor, modelData.currency, false))
-                                              : root.accountCompactAmount(modelData)
-                                        color: root.overviewAccountSelected(modelData)
-                                             ? root.white : root.accent
-                                        font.pixelSize: 18
+                                        width: parent.width
+                                        text: modelData.name
+                                        color: root.overviewAccountSelected(modelData) ? root.accent : root.muted
+                                        font.pixelSize: 14
                                         font.weight: Font.Bold
-                                        fontSizeMode: Text.Fit
-                                        minimumPixelSize: 14
                                         elide: Text.ElideRight
                                     }
                                     Text {
-                                        Layout.fillWidth: true
+                                        width: parent.width
+                                        text: modelData.isCreditCard
+                                              ? root.money(modelData.availableCreditMinor, modelData.currency, false)
+                                              : root.accountCompactAmount(modelData)
+                                        color: root.accent
+                                        font.pixelSize: 22
+                                        font.weight: Font.Bold
+                                        fontSizeMode: Text.Fit
+                                        minimumPixelSize: 18
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
                                         visible: modelData.isCreditCard === true
                                         text: modelData.isCreditCard
-                                              ? qsTr("Доступно: %1").arg(root.money(
-                                                    modelData.availableCreditMinor,
-                                                    modelData.currency, false)) : ""
-                                        color: root.overviewAccountSelected(modelData)
-                                             ? root.paleText : root.muted
+                                              ? qsTr("Долг: %1").arg(root.money(modelData.debtMinor, modelData.currency, false)) : ""
+                                        color: root.muted
                                         font.pixelSize: 14
-                                        font.weight: Font.Medium
-                                        fontSizeMode: Text.Fit
-                                        minimumPixelSize: 12
+                                        font.weight: Font.Bold
                                         elide: Text.ElideRight
                                     }
                                 }
@@ -1572,24 +1543,27 @@ ApplicationWindow {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 14
+                    spacing: root.pageGap
                     Panel {
-                        Layout.preferredWidth: (dashboard.width - 14) / 2
+                        Layout.preferredWidth: (dashboard.width - root.pageGap) / 2
                         Layout.minimumWidth: 360
-                        Layout.preferredHeight: 210
+                        Layout.preferredHeight: 208
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 16
+                            anchors.margins: root.panelPadding
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text {
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
                                     text: qsTr("История капитала в рублях")
                                     color: root.accent
-                                    font.pixelSize: 16
-                                    font.weight: Font.DemiBold
+                                    font.pixelSize: 18
+                                    font.weight: Font.Bold
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
+                                    visible: parent.width > 440
                                     text: root.historyResolutionLabel(
                                         financeController.capitalHistoryRub
                                     )
@@ -1611,17 +1585,17 @@ ApplicationWindow {
                         }
                     }
                     Panel {
-                        Layout.preferredWidth: (dashboard.width - 14) / 2
+                        Layout.preferredWidth: (dashboard.width - root.pageGap) / 2
                         Layout.minimumWidth: 360
-                        Layout.preferredHeight: 210
+                        Layout.preferredHeight: 208
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 16
+                            anchors.margins: root.panelPadding
                             Text {
                                 text: qsTr("Структура расходов")
                                 color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
+                                font.pixelSize: 18
+                                font.weight: Font.Bold
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -1629,8 +1603,8 @@ ApplicationWindow {
                                 spacing: 24
                                 Canvas {
                                     id: donut
-                                    width: 145
-                                    height: 145
+                                    Layout.preferredWidth: 120
+                                    Layout.preferredHeight: 120
                                     onPaint: {
                                         const ctx = getContext("2d");
                                         ctx.clearRect(0, 0, width, height);
@@ -1641,18 +1615,18 @@ ApplicationWindow {
                                         let angle = -Math.PI / 2;
                                         if (total === 0) {
                                             ctx.strokeStyle = root.line;
-                                            ctx.lineWidth = 25;
+                                            ctx.lineWidth = 24;
                                             ctx.beginPath();
-                                            ctx.arc(72, 72, 48, 0, Math.PI * 2);
+                                            ctx.arc(60, 60, 48, 0, Math.PI * 2);
                                             ctx.stroke();
                                             return;
                                         }
                                         for (let j = 0; j < data.length; ++j) {
                                             const next = angle + data[j].amount / total * Math.PI * 2;
                                             ctx.strokeStyle = root.chartColors[j % root.chartColors.length];
-                                            ctx.lineWidth = 25;
+                                            ctx.lineWidth = 24;
                                             ctx.beginPath();
-                                            ctx.arc(72, 72, 48, angle, next);
+                                            ctx.arc(60, 60, 48, angle, next);
                                             ctx.stroke();
                                             angle = next;
                                         }
@@ -1679,9 +1653,8 @@ ApplicationWindow {
                                             required property var modelData
                                             Layout.fillWidth: true
                                             Rectangle {
-                                                width: 9
-                                                height: 9
-                                                radius: 5
+                                                Layout.preferredWidth: 8
+                                                Layout.preferredHeight: 8
                                                 color: root.chartColors[index % root.chartColors.length]
                                             }
                                             Text {
@@ -1693,6 +1666,7 @@ ApplicationWindow {
                                                 text: root.money(modelData.amount, financeController.appCurrency, false)
                                                 color: root.accent
                                                 font.pixelSize: 14
+                                                font.weight: Font.Bold
                                             }
                                         }
                                     }
@@ -1925,9 +1899,9 @@ ApplicationWindow {
         property bool showSearch: false
         property string projectId: ""
 
-        // 68 px block header + 34 px table header + 38 px per transaction + 2 px frame inset.
+        // 72 px block header + 40 px table header + 48 px per transaction + 2 px frame inset.
         // Keep these values in sync with TransactionTable row/header heights below.
-        implicitHeight: expandToContent ? 104 + rows.length * 38 : 245
+        implicitHeight: expandToContent ? 114 + rows.length * 48 : 245
 
         ColumnLayout {
             anchors.fill: parent
@@ -1936,17 +1910,17 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 42
-                Layout.leftMargin: 13
-                Layout.rightMargin: 13
-                Layout.topMargin: 13
-                Layout.bottomMargin: 13
+                Layout.preferredHeight: 40
+                Layout.leftMargin: 24
+                Layout.rightMargin: 24
+                Layout.topMargin: 16
+                Layout.bottomMargin: 16
 
                 Text {
                     text: transactionBlock.title
                     color: root.accent
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
+                    font.pixelSize: 18
+                    font.weight: Font.Bold
                 }
 
                 Item {
@@ -1956,16 +1930,17 @@ ApplicationWindow {
                 AppTextField {
                     visible: transactionBlock.showSearch
                     Layout.preferredWidth: 265
-                    implicitHeight: 38
+                    implicitHeight: 40
                     placeholderText: qsTr("Поиск по операциям...")
                     text: root.searchText
                     onTextEdited: root.searchText = text
                 }
 
                 SoftButton {
-                    text: qsTr("+  Операция")
-                    highlighted: true
-                    implicitWidth: 132
+                    text: qsTr("+ Добавить операцию")
+                    flat: true
+                    font.weight: Font.Bold
+                    implicitWidth: 224
                     visible: !transactionBlock.addInvestmentPositionAction
                           || root.selectedInvestmentAccountAcceptsPositions()
                     enabled: !transactionBlock.addInvestmentPositionAction
@@ -2027,8 +2002,8 @@ ApplicationWindow {
         property real bottomCornerRadius: 0
         property bool expandToContent: false
 
-        readonly property int tableHeaderHeight: 34
-        readonly property int rowHeight: 38
+        readonly property int tableHeaderHeight: 40
+        readonly property int rowHeight: 48
         readonly property int operationColumnWidth: 100
         readonly property int accountColumnWidth: 150
         readonly property int categoryColumnWidth: 160
@@ -2041,7 +2016,7 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.fillWidth: true
-                height: transactionTable.tableHeaderHeight
+                Layout.preferredHeight: transactionTable.tableHeaderHeight
                 color: root.tableHeader
 
                 // Only the header/content divider is drawn here.
@@ -2055,43 +2030,49 @@ ApplicationWindow {
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 22
-                    anchors.rightMargin: 22
+                    anchors.leftMargin: 24
+                    anchors.rightMargin: 24
 
+                    Text {
+                        text: qsTr("Дата")
+                        color: root.muted
+                        font.pixelSize: 14
+                        font.weight: Font.Bold
+                        Layout.preferredWidth: transactionTable.dateColumnWidth
+                    }
                     Text {
                         text: qsTr("Операция")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: transactionTable.operationColumnWidth
                     }
                     Text {
                         text: qsTr("Счёт")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: transactionTable.accountColumnWidth
                     }
                     Text {
                         text: qsTr("Категория")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: transactionTable.categoryColumnWidth
                     }
                     Text {
                         text: qsTr("Описание")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.fillWidth: true
-                    }
-                    Text {
-                        text: qsTr("Дата")
-                        color: root.muted
-                        font.pixelSize: 14
-                        Layout.preferredWidth: transactionTable.dateColumnWidth
                     }
                     Text {
                         text: qsTr("Сумма")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: transactionTable.amountColumnWidth
                         horizontalAlignment: Text.AlignRight
                     }
@@ -2136,25 +2117,40 @@ ApplicationWindow {
 
                             Rectangle {
                                 anchors.fill: parent
-                                color: index % 2 ? root.tableRowAlt : root.panel
+                                color: root.panel
+                            }
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.leftMargin: 24
+                                anchors.rightMargin: 24
+                                height: 1
+                                color: root.line
                             }
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 22
-                                anchors.rightMargin: 22
+                                anchors.leftMargin: 24
+                                anchors.rightMargin: 24
 
+                                Text {
+                                    text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
+                                    color: root.accent
+                                    font.pixelSize: 14
+                                    Layout.preferredWidth: transactionTable.dateColumnWidth
+                                }
                                 Text {
                                     text: root.transactionTypeLabel(modelData)
                                     color: root.accent
                                     font.pixelSize: 14
-                                    font.weight: Font.Medium
+                                    font.weight: Font.Normal
                                     Layout.preferredWidth: transactionTable.operationColumnWidth
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     text: root.accountName(modelData.accountId)
-                                    color: root.muted
+                                    color: root.accent
                                     font.pixelSize: 14
                                     Layout.preferredWidth: transactionTable.accountColumnWidth
                                     elide: Text.ElideRight
@@ -2168,16 +2164,10 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: modelData.rawDescription || "—"
-                                    color: root.muted
+                                    color: root.accent
                                     font.pixelSize: 14
                                     Layout.fillWidth: true
                                     elide: Text.ElideRight
-                                }
-                                Text {
-                                    text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
-                                    color: root.muted
-                                    font.pixelSize: 14
-                                    Layout.preferredWidth: transactionTable.dateColumnWidth
                                 }
                                 Text {
                                     text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
@@ -2235,25 +2225,40 @@ ApplicationWindow {
 
                         Rectangle {
                             anchors.fill: parent
-                            color: index % 2 ? root.tableRowAlt : root.panel
+                            color: root.panel
+                        }
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: 24
+                            anchors.rightMargin: 24
+                            height: 1
+                            color: root.line
                         }
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 22
-                            anchors.rightMargin: 22
+                            anchors.leftMargin: 24
+                            anchors.rightMargin: 24
 
+                            Text {
+                                text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
+                                color: root.accent
+                                font.pixelSize: 14
+                                Layout.preferredWidth: transactionTable.dateColumnWidth
+                            }
                             Text {
                                 text: root.transactionTypeLabel(modelData)
                                 color: root.accent
                                 font.pixelSize: 14
-                                font.weight: Font.Medium
+                                font.weight: Font.Normal
                                 Layout.preferredWidth: transactionTable.operationColumnWidth
                                 elide: Text.ElideRight
                             }
                             Text {
                                 text: root.accountName(modelData.accountId)
-                                color: root.muted
+                                color: root.accent
                                 font.pixelSize: 14
                                 Layout.preferredWidth: transactionTable.accountColumnWidth
                                 elide: Text.ElideRight
@@ -2267,16 +2272,10 @@ ApplicationWindow {
                             }
                             Text {
                                 text: modelData.rawDescription || "—"
-                                color: root.muted
+                                color: root.accent
                                 font.pixelSize: 14
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
-                            }
-                            Text {
-                                text: Qt.formatDateTime(new Date(modelData.date), "dd.MM.yyyy")
-                                color: root.muted
-                                font.pixelSize: 14
-                                Layout.preferredWidth: transactionTable.dateColumnWidth
                             }
                             Text {
                                 text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
