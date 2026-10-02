@@ -4191,7 +4191,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX, сопоставление столбцов и сохранённые профили.")
+                    text: qsTr("CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX и PDF-выписки Альфы и Сбера, сопоставление столбцов и сохранённые профили.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -4415,7 +4415,7 @@ ApplicationWindow {
         id: bankCsvFileDialog
         title: qsTr("Выберите банковскую выписку")
         fileMode: FileDialog.OpenFile
-        nameFilters: [qsTr("Банковские выписки (*.csv *.xlsx)"), qsTr("Все файлы (*)")]
+        nameFilters: [qsTr("Банковские выписки (*.csv *.xlsx *.pdf)"), qsTr("Все файлы (*)")]
         onAccepted: bankCsvImportDialog.openForFile(selectedFile)
     }
 

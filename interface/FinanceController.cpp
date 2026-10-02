@@ -1608,13 +1608,14 @@ QVariantMap FinanceController::inspectBankCsv(
         result[QStringLiteral("error")] = csv.error;
         return result;
     }
-    if (headerRow < 0 || headerRow >= csv.rows.size()) {
+    const int effectiveHeaderRow = filePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive) ? 0 : headerRow;
+    if (effectiveHeaderRow < 0 || effectiveHeaderRow >= csv.rows.size()) {
         result[QStringLiteral("error")] = tr("Строка заголовков вне файла");
         return result;
     }
 
     QVariantList headers;
-    const QStringList& sourceHeaders = csv.rows[headerRow];
+    const QStringList& sourceHeaders = csv.rows[effectiveHeaderRow];
     headers.reserve(sourceHeaders.size());
     for (qsizetype index = 0; index < sourceHeaders.size(); ++index) {
         QString label = sourceHeaders[index].trimmed();
@@ -1628,8 +1629,9 @@ QVariantMap FinanceController::inspectBankCsv(
     }
 
     QVariantList preview;
-    for (qsizetype index = headerRow + 1;
-         index < csv.rows.size() && preview.size() < 5; ++index) {
+    const int previewLimit = filePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive) ? 1000 : 5;
+    for (qsizetype index = effectiveHeaderRow + 1;
+         index < csv.rows.size() && preview.size() < previewLimit; ++index) {
         bool empty = true;
         for (const QString& field : csv.rows[index]) {
             if (!field.trimmed().isEmpty()) {
@@ -1638,7 +1640,10 @@ QVariantMap FinanceController::inspectBankCsv(
             }
         }
         if (!empty) {
-            preview.append(csv.rows[index].join(QStringLiteral(" | ")));
+            QStringList fields = csv.rows[index];
+            if (previewLimit > 5 && fields.size() > 1 && fields[1].isEmpty())
+                fields[1] = tr("Сумма не распознана — строка будет отклонена");
+            preview.append(fields.join(QStringLiteral(" | ")));
         }
     }
 
@@ -1662,10 +1667,11 @@ QVariantMap FinanceController::inspectBankCsv(
     result[QStringLiteral("headers")] = headers;
     result[QStringLiteral("preview")] = preview;
     result[QStringLiteral("rowCount")] = csv.rows.size();
+    result[QStringLiteral("previewTruncated")] = csv.rows.size() - effectiveHeaderRow - 1 > previewLimit;
     result[QStringLiteral("detectedDelimiter")] = detectedDelimiter;
     result[QStringLiteral("detectedEncoding")] = detectedEncoding;
     result[QStringLiteral("encodingLabel")] = csv.encoding;
-    result[QStringLiteral("delimiterLabel")] = csv.encoding == QStringLiteral("XLSX")
+    result[QStringLiteral("delimiterLabel")] = (csv.encoding == QStringLiteral("XLSX") || csv.encoding.startsWith(QStringLiteral("PDF")))
         ? tr("не используется")
         : csv.delimiter == QLatin1Char('\t') ? tr("табуляция")
                                              : QString(csv.delimiter);

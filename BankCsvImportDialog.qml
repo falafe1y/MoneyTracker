@@ -21,6 +21,7 @@ Dialog {
     property color errorColor: "#b94f48"
     property color successColor: "#3f735f"
 
+    readonly property bool pdfFile: String(csvFile).toLowerCase().endsWith(".pdf")
     property url csvFile
     property var headers: []
     property var previewRows: []
@@ -126,6 +127,7 @@ Dialog {
     }
 
     function inspectFile(profile) {
+        previewSummary = "";
         const result = controller.inspectBankCsv(
             csvFile,
             Math.max(0, Number(headerRowField.text || "1") - 1),
@@ -142,7 +144,17 @@ Dialog {
             .arg(result.encodingLabel)
             .arg(result.delimiterLabel)
             .arg(result.rowCount);
-        if (profile) {
+        if (pdfFile && result.previewTruncated)
+            detectedInfo += qsTr(" · Показаны первые 1000 строк");
+        if (pdfFile) {
+            setValue(dateColumnBox, 0); setValue(amountColumnBox, 1);
+            setValue(descriptionColumnBox, 2); setValue(idColumnBox, 3);
+            setValue(currencyColumnBox, 4); setValue(categoryColumnBox, -1);
+            setValue(directionColumnBox, -1); setValue(amountModeBox, "signed");
+            setValue(dateFormatBox, "auto"); positiveIncomeCheck.checked = true;
+            headerRowField.text = "1";
+            if (!profileNameField.text.trim()) profileNameField.text = result.encodingLabel;
+        } else if (profile) {
             setValue(dateColumnBox, profile.dateColumn);
             setValue(amountColumnBox, profile.amountColumn);
             setValue(incomeColumnBox, profile.incomeColumn);
@@ -250,6 +262,8 @@ Dialog {
             .arg(formatMinor(result.expenseMinor, result.currency))
             .arg(result.rejected)
             .arg(result.currencyMismatches);
+        if (result.warnings && result.warnings.length)
+            statusText = result.warnings.join("\n");
         return result.operationCount > 0;
     }
 
@@ -383,6 +397,7 @@ Dialog {
                     Text { text: qsTr("Кодировка"); color: dialog.mutedColor }
                     FormCombo {
                         id: encodingBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: [
                             { label: qsTr("Определить автоматически"), value: "auto" },
@@ -395,6 +410,7 @@ Dialog {
                     Text { text: qsTr("Разделитель"); color: dialog.mutedColor }
                     FormCombo {
                         id: delimiterBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: [
                             { label: qsTr("Определить автоматически"), value: "auto" },
@@ -407,6 +423,7 @@ Dialog {
                     Text { text: qsTr("Строка заголовков"); color: dialog.mutedColor }
                     FormField {
                         id: headerRowField
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         text: "1"
                         validator: IntValidator { bottom: 1; top: 1000 }
@@ -421,7 +438,10 @@ Dialog {
 
                 Text {
                     Layout.fillWidth: true
-                    text: dialog.detectedInfo
+                    text: dialog.pdfFile
+                          ? dialog.detectedInfo + "\n" + qsTr("Сверьте операции и итоговые суммы перед импортом. Поддерживаются PDF с текстом; сканы и выписки с паролем не поддерживаются.")
+                          : dialog.detectedInfo
+                    wrapMode: Text.WordWrap
                     color: dialog.mutedColor
                     font.pixelSize: 14
                 }
@@ -443,6 +463,7 @@ Dialog {
                     Text { text: qsTr("Формат даты"); color: dialog.mutedColor }
                     FormCombo {
                         id: dateFormatBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: [
                             { label: qsTr("Определить автоматически"), value: "auto" },
@@ -458,12 +479,14 @@ Dialog {
                     Text { text: qsTr("Столбец даты"); color: dialog.mutedColor }
                     FormCombo {
                         id: dateColumnBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(false)
                     }
                     Text { text: qsTr("Хранение суммы"); color: dialog.mutedColor }
                     FormCombo {
                         id: amountModeBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: [
                             { label: qsTr("Один столбец со знаком"), value: "signed" },
@@ -479,12 +502,14 @@ Dialog {
                     }
                     FormCombo {
                         id: amountColumnBox
+                        enabled: !dialog.pdfFile
                         visible: amountModeBox.currentValue === "signed"
                         Layout.fillWidth: true
                         model: dialog.columnItems(false)
                     }
                     FormCheckBox {
                         id: positiveIncomeCheck
+                        enabled: !dialog.pdfFile
                         visible: amountModeBox.currentValue === "signed"
                         Layout.columnSpan: 2
                         checked: true
@@ -498,6 +523,7 @@ Dialog {
                     }
                     FormCombo {
                         id: incomeColumnBox
+                        enabled: !dialog.pdfFile
                         visible: amountModeBox.currentValue === "separate"
                         Layout.fillWidth: true
                         model: dialog.columnItems(false)
@@ -509,6 +535,7 @@ Dialog {
                     }
                     FormCombo {
                         id: expenseColumnBox
+                        enabled: !dialog.pdfFile
                         visible: amountModeBox.currentValue === "separate"
                         Layout.fillWidth: true
                         model: dialog.columnItems(false)
@@ -517,31 +544,36 @@ Dialog {
                     Text { text: qsTr("Описание"); color: dialog.mutedColor }
                     FormCombo {
                         id: descriptionColumnBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
                     Text { text: qsTr("Идентификатор операции"); color: dialog.mutedColor }
                     FormCombo {
                         id: idColumnBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
 
-                    Text { text: qsTr("Категория из CSV"); color: dialog.mutedColor }
+                    Text { text: qsTr("Категория из файла"); color: dialog.mutedColor }
                     FormCombo {
                         id: categoryColumnBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
                     Text { text: qsTr("Направление операции"); color: dialog.mutedColor }
                     FormCombo {
                         id: directionColumnBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
                     Text { text: qsTr("Валюта строки"); color: dialog.mutedColor }
                     FormCombo {
                         id: currencyColumnBox
+                        enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
@@ -569,15 +601,22 @@ Dialog {
                     color: dialog.textColor
                     font.weight: Font.DemiBold
                 }
-                Repeater {
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(240, dialog.previewRows.length * 48)
+                    clip: true
                     model: dialog.previewRows
-                    Text {
-                        Layout.fillWidth: true
+                    ScrollBar.vertical: StyledScrollBar { policy: ScrollBar.AsNeeded }
+                    delegate: Text {
+                        required property string modelData
+                        width: ListView.view.width - 12
+                        height: 48
                         text: modelData
                         color: dialog.mutedColor
-                        font.family: "monospace"
                         font.pixelSize: 14
+                        wrapMode: Text.WordWrap
                         elide: Text.ElideRight
+                        maximumLineCount: 2
                     }
                 }
 

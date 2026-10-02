@@ -1,5 +1,6 @@
 #include "BankCsvImporter.h"
 #include "XlsxReader.h"
+#include "PdfStatementReader.h"
 
 #include <QCryptographicHash>
 #include <QLocale>
@@ -157,6 +158,8 @@ CsvCodec::ReadResult BankCsvImporter::readTable(
     const QString& filePath,
     const BankCsvProfile& profile)
 {
+    if (filePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
+        return PdfStatementReader::read(filePath);
     if (filePath.endsWith(QStringLiteral(".xlsx"), Qt::CaseInsensitive)) {
         const auto xlsx = XlsxReader::readFirstSheet(filePath);
         return {xlsx.rows, xlsx.error, {}, QStringLiteral("XLSX")};
@@ -310,9 +313,18 @@ QDateTime BankCsvImporter::parseDateTime(
 
 BankCsvParseResult BankCsvImporter::parse(
     const QString& filePath,
-    const BankCsvProfile& profile
+    const BankCsvProfile& requestedProfile
     )
 {
+    BankCsvProfile profile = requestedProfile;
+    if (filePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
+        profile.headerRow = 0;
+        profile.dateColumn = 0; profile.amountColumn = 1;
+        profile.descriptionColumn = 2; profile.idColumn = 3;
+        profile.currencyColumn = 4; profile.directionColumn = -1;
+        profile.categoryColumn = -1; profile.amountMode = QStringLiteral("signed");
+        profile.dateFormat = QStringLiteral("auto"); profile.positiveMeansIncome = true;
+    }
     BankCsvParseResult result;
     const CsvCodec::ReadResult csv = readTable(filePath, profile);
     result.delimiter = csv.delimiter;
@@ -378,7 +390,7 @@ BankCsvParseResult BankCsvImporter::parse(
             ++result.rejected;
             if (result.errors.size() < 5) {
                 result.errors.append(QStringLiteral(
-                    "Row %1 has an invalid date or amount").arg(rowIndex + 1));
+                    "Строка %1: некорректная дата или сумма (для PDF также проверьте направление и валюту)").arg(rowIndex + 1));
             }
             continue;
         }

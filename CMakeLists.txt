@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network LinguistTools Svg)
+find_package(Qt6 QUIET COMPONENTS Pdf)
 find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.10)
@@ -75,6 +76,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CsvCodec.cpp
         SOURCES services/BankCsvImporter.h
         SOURCES services/BankCsvImporter.cpp
+        SOURCES services/PdfStatementReader.h
+        SOURCES services/PdfStatementReader.cpp
         SOURCES services/XlsxReader.h
         SOURCES services/XlsxReader.cpp
         SOURCES services/CapitalHistoryCalculator.h
@@ -318,6 +321,7 @@ add_test(
 add_executable(BankCsvImporterTest
     tests/BankCsvImporterTest.cpp
     services/BankCsvImporter.cpp
+    services/PdfStatementReader.cpp
     services/CsvCodec.cpp
     services/XlsxReader.cpp
 )
@@ -413,4 +417,22 @@ add_test(
     NAME RecurringScheduleCalculatorTest
     COMMAND RecurringScheduleCalculatorTest
 )
+endif()
+
+add_executable(PdfStatementReaderTest
+    tests/PdfStatementReaderTest.cpp
+    services/PdfStatementReader.cpp
+    services/BankCsvImporter.cpp
+    services/CsvCodec.cpp
+    services/XlsxReader.cpp
+)
+target_link_libraries(PdfStatementReaderTest PRIVATE Qt6::Core Qt6::Gui Qt6::Test ZLIB::ZLIB)
+add_test(NAME PdfStatementReaderTest COMMAND PdfStatementReaderTest)
+
+# Qt PDF is unavailable for MinGW; those builds use Poppler's pdftotext.
+if(TARGET Qt6::Pdf)
+    foreach(pdf_target appMoneyTracker BankCsvImporterTest PdfStatementReaderTest)
+        target_compile_definitions(${pdf_target} PRIVATE MONEYTRACKER_HAS_QTPDF)
+        target_link_libraries(${pdf_target} PRIVATE Qt6::Pdf)
+    endforeach()
 endif()
