@@ -288,7 +288,18 @@ Dialog {
         open();
     }
 
+    component FormLabel: Text {
+        Layout.preferredWidth: 180
+        Layout.maximumWidth: 180
+        color: dialog.mutedColor
+        font.pixelSize: 14
+        wrapMode: Text.WordWrap
+    }
+
     component FormField: StyledTextField {
+        Layout.minimumWidth: 0
+        Layout.preferredWidth: Math.max(0, (importScroll.width - 390) / 2)
+        Layout.maximumWidth: Layout.preferredWidth
         controlHeight: 42
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
@@ -300,6 +311,9 @@ Dialog {
     }
 
     component FormCombo: StyledComboBox {
+        Layout.minimumWidth: 0
+        Layout.preferredWidth: Math.max(0, (importScroll.width - 390) / 2)
+        Layout.maximumWidth: Layout.preferredWidth
         controlHeight: 42
         textRole: "label"
         valueRole: "value"
@@ -362,17 +376,24 @@ Dialog {
 
         Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
 
-        ScrollView {
+        Flickable {
+            id: importScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.leftMargin: 22
+            Layout.rightMargin: 22
+            Layout.topMargin: 16
+            Layout.bottomMargin: 16
+            contentWidth: width
+            contentHeight: importContent.implicitHeight
+            flickableDirection: Flickable.VerticalFlick
+            boundsBehavior: Flickable.StopAtBounds
             clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
             ColumnLayout {
-                width: Math.max(840, dialog.width - 44)
+                id: importContent
+                width: importScroll.width
                 spacing: 12
-                anchors.margins: 20
 
                 GridLayout {
                     Layout.fillWidth: true
@@ -380,21 +401,21 @@ Dialog {
                     columnSpacing: 10
                     rowSpacing: 8
 
-                    Text { text: qsTr("Профиль"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Профиль"); color: dialog.mutedColor }
                     FormCombo {
                         id: profileBox
                         Layout.fillWidth: true
                         model: dialog.profileItems()
                         onActivated: dialog.loadProfile(currentValue)
                     }
-                    Text { text: qsTr("Название профиля"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Название профиля"); color: dialog.mutedColor }
                     FormField {
                         id: profileNameField
                         Layout.fillWidth: true
                         placeholderText: qsTr("Например, Альфа-Банк")
                     }
 
-                    Text { text: qsTr("Кодировка"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Кодировка"); color: dialog.mutedColor }
                     FormCombo {
                         id: encodingBox
                         enabled: !dialog.pdfFile
@@ -407,7 +428,7 @@ Dialog {
                             { label: "UTF-16BE", value: "utf16be" }
                         ]
                     }
-                    Text { text: qsTr("Разделитель"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Разделитель"); color: dialog.mutedColor }
                     FormCombo {
                         id: delimiterBox
                         enabled: !dialog.pdfFile
@@ -420,7 +441,7 @@ Dialog {
                         ]
                     }
 
-                    Text { text: qsTr("Строка заголовков"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Строка заголовков"); color: dialog.mutedColor }
                     FormField {
                         id: headerRowField
                         enabled: !dialog.pdfFile
@@ -454,13 +475,13 @@ Dialog {
                     columnSpacing: 10
                     rowSpacing: 8
 
-                    Text { text: qsTr("Счёт"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Счёт"); color: dialog.mutedColor }
                     FormCombo {
                         id: accountBox
                         Layout.fillWidth: true
                         model: dialog.fiatAccounts()
                     }
-                    Text { text: qsTr("Формат даты"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Формат даты"); color: dialog.mutedColor }
                     FormCombo {
                         id: dateFormatBox
                         enabled: !dialog.pdfFile
@@ -476,14 +497,14 @@ Dialog {
                         ]
                     }
 
-                    Text { text: qsTr("Столбец даты"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Столбец даты"); color: dialog.mutedColor }
                     FormCombo {
                         id: dateColumnBox
                         enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(false)
                     }
-                    Text { text: qsTr("Хранение суммы"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Хранение суммы"); color: dialog.mutedColor }
                     FormCombo {
                         id: amountModeBox
                         enabled: !dialog.pdfFile
@@ -494,9 +515,8 @@ Dialog {
                         ]
                     }
 
-                    Text {
+                    FormLabel {
                         visible: amountModeBox.currentValue === "signed"
-                                 && directionColumnBox.currentValue < 0
                         text: qsTr("Столбец суммы")
                         color: dialog.mutedColor
                     }
@@ -516,7 +536,7 @@ Dialog {
                         text: qsTr("Положительное значение — доход")
                     }
 
-                    Text {
+                    FormLabel {
                         visible: amountModeBox.currentValue === "separate"
                         text: qsTr("Столбец прихода")
                         color: dialog.mutedColor
@@ -528,7 +548,7 @@ Dialog {
                         Layout.fillWidth: true
                         model: dialog.columnItems(false)
                     }
-                    Text {
+                    FormLabel {
                         visible: amountModeBox.currentValue === "separate"
                         text: qsTr("Столбец расхода")
                         color: dialog.mutedColor
@@ -541,14 +561,14 @@ Dialog {
                         model: dialog.columnItems(false)
                     }
 
-                    Text { text: qsTr("Описание"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Описание"); color: dialog.mutedColor }
                     FormCombo {
                         id: descriptionColumnBox
                         enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
-                    Text { text: qsTr("Идентификатор операции"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Идентификатор операции"); color: dialog.mutedColor }
                     FormCombo {
                         id: idColumnBox
                         enabled: !dialog.pdfFile
@@ -556,28 +576,28 @@ Dialog {
                         model: dialog.columnItems(true)
                     }
 
-                    Text { text: qsTr("Категория из файла"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Категория из файла"); color: dialog.mutedColor }
                     FormCombo {
                         id: categoryColumnBox
                         enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
-                    Text { text: qsTr("Направление операции"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Направление операции"); color: dialog.mutedColor }
                     FormCombo {
                         id: directionColumnBox
                         enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
-                    Text { text: qsTr("Валюта строки"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Валюта строки"); color: dialog.mutedColor }
                     FormCombo {
                         id: currencyColumnBox
                         enabled: !dialog.pdfFile
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
-                    Text { text: qsTr("Категория дохода по умолчанию"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Категория дохода по умолчанию"); color: dialog.mutedColor }
                     FormCombo {
                         id: incomeCategoryBox
                         Layout.fillWidth: true
@@ -586,7 +606,7 @@ Dialog {
 
                     Item { Layout.preferredHeight: 1 }
                     Item { Layout.preferredHeight: 1 }
-                    Text { text: qsTr("Категория расхода по умолчанию"); color: dialog.mutedColor }
+                    FormLabel { text: qsTr("Категория расхода по умолчанию"); color: dialog.mutedColor }
                     FormCombo {
                         id: expenseCategoryBox
                         Layout.fillWidth: true
@@ -598,6 +618,7 @@ Dialog {
 
                 Text {
                     text: qsTr("Предварительный просмотр")
+                    font.pixelSize: 14
                     color: dialog.textColor
                     font.weight: Font.DemiBold
                 }
@@ -606,7 +627,7 @@ Dialog {
                     Layout.preferredHeight: Math.min(240, dialog.previewRows.length * 48)
                     clip: true
                     model: dialog.previewRows
-                    ScrollBar.vertical: StyledScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: StyledScrollBar { policy: ScrollBar.AlwaysOff }
                     delegate: Text {
                         required property string modelData
                         width: ListView.view.width - 12
@@ -624,6 +645,7 @@ Dialog {
                     Layout.fillWidth: true
                     visible: dialog.previewSummary.length > 0
                     text: dialog.previewSummary
+                    font.pixelSize: 14
                     color: dialog.textColor
                     wrapMode: Text.WordWrap
                 }
@@ -632,6 +654,7 @@ Dialog {
                     Layout.fillWidth: true
                     visible: dialog.statusText.length > 0
                     text: dialog.statusText
+                    font.pixelSize: 14
                     color: dialog.statusOk ? dialog.successColor : dialog.errorColor
                     wrapMode: Text.WordWrap
                 }
