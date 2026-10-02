@@ -1568,8 +1568,8 @@ ApplicationWindow {
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: root.panelPadding
-                                anchors.topMargin: dashboard.wideOverview ? 32 : root.panelPadding
-                                spacing: dashboard.wideOverview ? 24 : root.cardGap
+                                anchors.topMargin: root.panelPadding
+                                spacing: root.cardGap
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Text {
@@ -1578,7 +1578,7 @@ ApplicationWindow {
                                                : qsTr("Счета"))
                                               + " · " + root.assetTitle(financeController.selectedAsset)
                                         color: root.accent
-                                        font.pixelSize: dashboard.wideOverview ? 20 : 18
+                                        font.pixelSize: 18
                                         font.weight: Font.Bold
                                     }
                                     Item {
@@ -1595,7 +1595,7 @@ ApplicationWindow {
                                             text: addAccountButton.text
                                             color: root.accent
                                             font.weight: Font.Bold
-                                            font.pixelSize: dashboard.wideOverview ? 16 : 14
+                                            font.pixelSize: 14
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                         }
@@ -1679,7 +1679,7 @@ ApplicationWindow {
                                                 width: parent.width
                                                 text: modelData.name
                                                 color: root.overviewAccountSelected(modelData) ? root.accent : root.muted
-                                                font.pixelSize: dashboard.wideOverview ? 16 : 14
+                                                font.pixelSize: 14
                                                 font.weight: Font.Bold
                                                 elide: Text.ElideRight
                                             }
@@ -1689,7 +1689,7 @@ ApplicationWindow {
                                                       ? root.money(modelData.availableCreditMinor, modelData.currency, false)
                                                       : root.accountCompactAmount(modelData)
                                                 color: root.accent
-                                                font.pixelSize: dashboard.wideOverview ? 24 : 22
+                                                font.pixelSize: 22
                                                 font.weight: Font.Bold
                                                 fontSizeMode: Text.Fit
                                                 minimumPixelSize: 18
@@ -1701,7 +1701,7 @@ ApplicationWindow {
                                                 text: modelData.isCreditCard
                                                       ? qsTr("Долг: %1").arg(root.money(modelData.debtMinor, modelData.currency, false)) : ""
                                                 color: root.muted
-                                                font.pixelSize: dashboard.wideOverview ? 16 : 14
+                                                font.pixelSize: 14
                                                 font.weight: Font.Bold
                                                 elide: Text.ElideRight
                                             }
@@ -1783,8 +1783,8 @@ ApplicationWindow {
                                 spacing: 24
                                 Canvas {
                                     id: donut
-                                    Layout.preferredWidth: dashboard.wideOverview ? 134 : 120
-                                    Layout.preferredHeight: dashboard.wideOverview ? 134 : 120
+                                    Layout.preferredWidth: 120
+                                    Layout.preferredHeight: 120
                                     onPaint: {
                                         const ctx = getContext("2d");
                                         ctx.clearRect(0, 0, width, height);
