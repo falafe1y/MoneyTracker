@@ -61,7 +61,10 @@ ApplicationWindow {
     readonly property color transparentColor: "transparent"
 
     property string page: "overview"
+    onPageChanged: browserScroll.stop()
     property var activeHistorySelection: null
+    readonly property var scrollController: browserScroll
+    AutoScrollController { id: browserScroll; parent: root.contentItem }
     property string searchText: ""
     property string csvStatus: ""
     property bool csvStatusOk: true
@@ -1381,6 +1384,7 @@ ApplicationWindow {
                 }
 
                 ListView {
+                    MiddleScrollArea { parent: upcomingOperations; scroller: browserScroll; scrollTarget: upcomingOperations }
                     id: upcomingOperations
                     objectName: "upcomingOperations"
                     anchors.fill: parent
@@ -1458,6 +1462,7 @@ ApplicationWindow {
     Component {
         id: overviewPage
         ScrollView {
+            MiddleScrollArea { parent: overviewScroll; scroller: browserScroll; scrollTarget: overviewScroll.contentItem }
             id: overviewScroll
             objectName: "overviewScroll"
             clip: true
@@ -1940,7 +1945,6 @@ ApplicationWindow {
             if (index < 0 || index >= rows.length) return;
             root.activeHistorySelection = this;
             if (selectedRows.length < 2) {
-                const next = ({}); next[key(rows[index])] = true; selectedKeys = next;
                 root.openTransactionContextMenu(rows[index], area, x, y);
                 return;
             }
@@ -2551,6 +2555,7 @@ ApplicationWindow {
                 // OPERATIONS PAGE MODE: virtualized scrollable list remains useful for
                 // potentially large transaction histories. Scrollbar itself stays hidden.
                 ListView {
+                    MiddleScrollArea { parent: transactionList; scroller: browserScroll; scrollTarget: transactionList }
                     id: transactionList
                     anchors.fill: parent
                     visible: !transactionTable.expandToContent
@@ -2694,6 +2699,7 @@ ApplicationWindow {
                     }
 
                     ListView {
+                        MiddleScrollArea { parent: budgetList; scroller: browserScroll; scrollTarget: budgetList }
                         id: budgetList
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -2926,6 +2932,7 @@ ApplicationWindow {
                                 font.pixelSize: 14
                             }
                             ListView {
+                                MiddleScrollArea { parent: budgetCategoryList; scroller: browserScroll; scrollTarget: budgetCategoryList }
                                 id: budgetCategoryList
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
@@ -3008,6 +3015,7 @@ ApplicationWindow {
                                 font.weight: Font.Bold
                             }
                             ListView {
+                                MiddleScrollArea { parent: budgetOperationList; scroller: browserScroll; scrollTarget: budgetOperationList }
                                 id: budgetOperationList
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
@@ -3137,6 +3145,7 @@ ApplicationWindow {
                     }
 
                     ListView {
+                        MiddleScrollArea { parent: projectList; scroller: browserScroll; scrollTarget: projectList }
                         id: projectList
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -3662,6 +3671,9 @@ ApplicationWindow {
                         Layout.fillHeight: true
 
                         ListView {
+            id: middleViewport8
+            MiddleScrollArea { parent: middleViewport8; scroller: browserScroll; scrollTarget: middleViewport8 }
+
                             anchors.fill: parent
                             clip: true
                             model: financeController.cryptoTransactions
@@ -3803,6 +3815,9 @@ ApplicationWindow {
                         // }
 
                         ListView {
+            id: middleViewport9
+            MiddleScrollArea { parent: middleViewport9; scroller: browserScroll; scrollTarget: middleViewport9 }
+
                             Layout.fillWidth: true
                             Layout.fillHeight: true
 
@@ -3905,6 +3920,9 @@ ApplicationWindow {
                         // }
 
                         ListView {
+            id: middleViewport10
+            MiddleScrollArea { parent: middleViewport10; scroller: browserScroll; scrollTarget: middleViewport10 }
+
                             Layout.fillWidth: true
                             Layout.fillHeight: true
 
@@ -4001,6 +4019,7 @@ ApplicationWindow {
     Component {
         id: analyticsPage
         ScrollView {
+            MiddleScrollArea { parent: analyticsScroll; scroller: browserScroll; scrollTarget: analyticsScroll.contentItem }
             id: analyticsScroll
             property int expenseYear: new Date().getFullYear()
             clip: true
@@ -4219,6 +4238,7 @@ ApplicationWindow {
                 }
 
                 ScrollView {
+                    MiddleScrollArea { parent: notesScroll; scroller: browserScroll; scrollTarget: notesScroll.contentItem }
                     id: notesScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -4293,6 +4313,7 @@ ApplicationWindow {
         id: settingsPage
         Panel {
             ScrollView {
+                MiddleScrollArea { parent: settingsScroll; scroller: browserScroll; scrollTarget: settingsScroll.contentItem }
                 id: settingsScroll
 
                 anchors.fill: parent
@@ -5791,6 +5812,7 @@ ApplicationWindow {
         enabled: root.activeHistorySelection !== null
                  && root.activeHistorySelection.selectedRows.length > 0
                  && !root.modalDialogVisible()
+                 && !browserScroll.active
         onActivated: {
             root.activeHistorySelection.clear();
             historySelectionMenu.close();

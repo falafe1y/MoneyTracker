@@ -75,6 +75,7 @@ ColumnLayout {
         Action { text: qsTr("+ Цель"); primary: true; onClicked: editor.openForm(null) }
     }
     ListView {
+        MiddleScrollArea { parent: list; scroller: theme.scrollController; scrollTarget: list }
         id: list
         Layout.fillWidth: true; Layout.fillHeight: true
         clip: true; spacing: 14

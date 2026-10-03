@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 ScrollView {
+    MiddleScrollArea { parent: page; scroller: theme.scrollController; scrollTarget: page.contentItem }
     id: page
     required property var controller
     required property var theme
