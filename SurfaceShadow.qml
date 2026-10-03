@@ -8,7 +8,7 @@ RectangularShadow {
     radius: parent.radius
     blur: 8
     spread: -1
-    offset: Qt.vector2d(0, 2)
+    offset: Qt.vector2d(0, 4)
     color: "#18031528"
     cached: false
 }

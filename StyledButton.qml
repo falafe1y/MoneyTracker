@@ -40,7 +40,7 @@ Button {
     }
 
     background: Rectangle {
-        SurfaceShadow { blur: 6; spread: -1; offset: Qt.vector2d(0, 1); color: control.enabled ? "#14031528" : "#09031528" }
+        SurfaceShadow { visible: !control.flat; blur: 6; spread: -1; offset: Qt.vector2d(0, 4); color: control.enabled ? "#14031528" : "#09031528" }
 
         radius: control.cornerRadius
         opacity: control.enabled ? 1 : 0.55
