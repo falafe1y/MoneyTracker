@@ -1887,19 +1887,51 @@ ApplicationWindow {
     // On Overview expandToContent=true: the transaction history grows with its rows,
     // so the OUTER overview ScrollView owns vertical scrolling.
     // On Operations expandToContent=false: the block fills the page and keeps its own ListView.
-    component DashboardCryptoHistoryBlock: Panel {
+    component HistoryPanel: Panel {
+        id: historyPanel
+        clip: true
+
+        BottomCornerMask {
+            width: historyPanel.radius
+            height: historyPanel.radius
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            z: 999
+        }
+
+        BottomCornerMask {
+            width: historyPanel.radius
+            height: historyPanel.radius
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            mirrored: true
+            z: 999
+        }
+
+        // IMPORTANT: frame is deliberately rendered ABOVE all table content.
+        Rectangle {
+            anchors.fill: parent
+            color: root.transparentColor
+            radius: historyPanel.radius
+            border.width: 1
+            border.color: root.line
+            z: 1000
+        }
+    }
+
+    component DashboardCryptoHistoryBlock: HistoryPanel {
         id: dashboardCryptoHistory
 
         property var rows: financeController.cryptoTransactions
         property bool expandToContent: false
 
-        readonly property int dateColumnWidth: 125
-        readonly property int directionColumnWidth: 105
+        readonly property int dateColumnWidth: 150
+        readonly property int directionColumnWidth: 125
         readonly property int hashColumnWidth: 175
         readonly property int amountColumnWidth: 135
 
         implicitHeight: expandToContent
-                      ? 84 + Math.max(58, rows.length * 42)
+                      ? 114 + Math.max(58, rows.length * 48)
                       : 230
 
         ColumnLayout {
@@ -1909,18 +1941,21 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
-                Layout.rightMargin: 16
-                Layout.topMargin: 12
-                Layout.bottomMargin: 12
+                Layout.minimumHeight: 40
+                Layout.preferredHeight: 40
+                Layout.maximumHeight: 40
+                Layout.leftMargin: 24
+                Layout.rightMargin: 24
+                Layout.topMargin: 16
+                Layout.bottomMargin: 16
 
                 Text {
                     text: qsTr("История %1").arg(
                         root.selectedCryptoSymbol() || qsTr("криптовалюты")
                     )
                     color: root.accent
-                    font.pixelSize: 16
-                    font.weight: Font.DemiBold
+                    font.pixelSize: 18
+                    font.weight: Font.Bold
                 }
                 Item { Layout.fillWidth: true }
                 Text {
@@ -1933,42 +1968,55 @@ ApplicationWindow {
 
             Rectangle {
                 Layout.fillWidth: true
-                height: 34
+                Layout.preferredHeight: 40
                 color: root.tableHeader
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: root.line
+                }
 
                 RowLayout {
                     anchors.fill: parent
-                    anchors.leftMargin: 18
-                    anchors.rightMargin: 18
+                    anchors.leftMargin: 24
+                    anchors.rightMargin: 24
 
                     Text {
                         text: qsTr("Дата")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: dashboardCryptoHistory.dateColumnWidth
                     }
                     Text {
                         text: qsTr("Направление")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
                     }
                     Text {
                         text: qsTr("Адрес")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.fillWidth: true
                     }
                     Text {
                         text: qsTr("Хеш")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: dashboardCryptoHistory.hashColumnWidth
                     }
                     Text {
                         text: qsTr("Сумма")
                         color: root.muted
                         font.pixelSize: 14
+                        font.weight: Font.Bold
                         Layout.preferredWidth: dashboardCryptoHistory.amountColumnWidth
                         horizontalAlignment: Text.AlignRight
                     }
@@ -1979,7 +2027,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(
                     58,
-                    dashboardCryptoHistory.rows.length * 42
+                    dashboardCryptoHistory.rows.length * 48
                 )
 
                 Column {
@@ -1992,20 +2040,30 @@ ApplicationWindow {
                             required property int index
                             required property var modelData
                             width: parent.width
-                            height: 42
-                            color: index % 2 ? root.tableRowAlt : root.panel
+                            height: 48
+                            color: root.panel
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.leftMargin: 24
+                                anchors.rightMargin: 24
+                                height: 1
+                                color: root.line
+                            }
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 18
-                                anchors.rightMargin: 18
+                                anchors.leftMargin: 24
+                                anchors.rightMargin: 24
 
                                 Text {
                                     text: Qt.formatDateTime(
                                         modelData.occurredAt,
                                         "dd.MM.yyyy HH:mm"
                                     )
-                                    color: root.muted
+                                    color: root.accent
                                     font.pixelSize: 14
                                     Layout.preferredWidth: dashboardCryptoHistory.dateColumnWidth
                                 }
@@ -2017,19 +2075,19 @@ ApplicationWindow {
                                          ? root.income
                                          : root.red
                                     font.pixelSize: 14
-                                    font.weight: Font.Medium
+                                    font.weight: Font.Normal
                                     Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
                                 }
                                 Text {
                                     text: modelData.counterparty
-                                    color: root.muted
+                                    color: root.accent
                                     font.pixelSize: 14
                                     Layout.fillWidth: true
                                     elide: Text.ElideMiddle
                                 }
                                 Text {
                                     text: modelData.transactionId
-                                    color: root.muted
+                                    color: root.accent
                                     font.pixelSize: 14
                                     Layout.preferredWidth: dashboardCryptoHistory.hashColumnWidth
                                     elide: Text.ElideMiddle
@@ -2064,12 +2122,13 @@ ApplicationWindow {
                             : qsTr("У этого кошелька пока нет переводов %1")
                                   .arg(root.selectedCryptoSymbol())
                     color: root.muted
+                    font.pixelSize: 14
                 }
             }
         }
     }
 
-    component TransactionBlock: Panel {
+    component TransactionBlock: HistoryPanel {
         id: transactionBlock
         objectName: "transactionBlock"
 
@@ -2092,7 +2151,9 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.minimumHeight: 40
                 Layout.preferredHeight: 40
+                Layout.maximumHeight: 40
                 Layout.leftMargin: 24
                 Layout.rightMargin: 24
                 Layout.topMargin: 16
@@ -2121,6 +2182,8 @@ ApplicationWindow {
                 SoftButton {
                     text: qsTr("+ Добавить операцию")
                     flat: true
+                    controlHeight: 40
+                    font.pixelSize: 14
                     font.weight: Font.Bold
                     implicitWidth: 224
                     visible: !transactionBlock.addInvestmentPositionAction
@@ -2150,32 +2213,6 @@ ApplicationWindow {
             }
         }
 
-        BottomCornerMask {
-            width: transactionBlock.radius
-            height: transactionBlock.radius
-            anchors.left: parent.left
-            anchors.bottom: parent.bottom
-            z: 999
-        }
-
-        BottomCornerMask {
-            width: transactionBlock.radius
-            height: transactionBlock.radius
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            mirrored: true
-            z: 999
-        }
-
-        // IMPORTANT: frame is deliberately rendered ABOVE all table content.
-        Rectangle {
-            anchors.fill: parent
-            color: root.transparentColor
-            radius: transactionBlock.radius
-            border.width: 1
-            border.color: root.line
-            z: 1000
-        }
     }
 
     component TransactionTable: Item {
