@@ -236,6 +236,8 @@ Dialog {
     }
 
     background: Rectangle {
+        SurfaceShadow { }
+
         color: dialog.panelColor
         radius: 18
         border.width: 1
@@ -306,6 +308,8 @@ Dialog {
                         model: dialog.controller.scheduledTransactions
 
                         delegate: Rectangle {
+                            SurfaceShadow { }
+
                             required property var modelData
                             width: ListView.view.width
                             height: 98
@@ -595,6 +599,8 @@ Dialog {
             onActivated: deleteDialog.confirmDelete()
         }
         background: Rectangle {
+            SurfaceShadow { }
+
             color: dialog.panelColor
             radius: 16
             border.width: 1
@@ -658,6 +664,8 @@ Dialog {
             displayedYear = shifted.getFullYear();
         }
         background: Rectangle {
+            SurfaceShadow { }
+
             color: dialog.panelColor
             radius: 16
             border.width: 1
@@ -720,6 +728,8 @@ Dialog {
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
+                        SurfaceShadow { }
+
                         radius: 8
                         color: calendarDay.hovered
                              ? dialog.softColor : "transparent"

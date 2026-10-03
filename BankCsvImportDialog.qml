@@ -348,6 +348,8 @@ Dialog {
     }
 
     background: Rectangle {
+        SurfaceShadow { }
+
         color: panelColor
         radius: 18
         border.width: 1

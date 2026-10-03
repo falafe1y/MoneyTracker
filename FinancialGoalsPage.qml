@@ -60,6 +60,8 @@ ColumnLayout {
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
+            SurfaceShadow { }
+
             radius: 8
             color: menuItem.highlighted || menuItem.hovered
                  ? (menuItem.destructive ? theme.expensePanel : theme.controlHovered)
@@ -78,6 +80,8 @@ ColumnLayout {
         clip: true; spacing: 14
         model: controller.financialGoals
         delegate: Rectangle {
+            SurfaceShadow { }
+
             id: card
             required property var modelData
             width: ListView.view.width
@@ -204,6 +208,8 @@ ColumnLayout {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: theme.panel
             radius: 12
             border.width: 1
@@ -219,7 +225,9 @@ ColumnLayout {
         property string errorText: ""
         width: Math.min(470, parent ? parent.width - 40 : 470)
         anchors.centerIn: parent; modal: true; padding: 24
-        background: Rectangle { radius: 18; color: theme.panel; border.color: theme.line }
+        background: Rectangle {
+            SurfaceShadow { }
+ radius: 18; color: theme.panel; border.color: theme.line }
         contentItem: ColumnLayout {
             spacing: 14
             Text { text: qsTr("Удалить цель?"); color: theme.accent; font.pixelSize: 21; font.bold: true }

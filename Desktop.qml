@@ -719,6 +719,8 @@ ApplicationWindow {
     }
 
     component Panel: Rectangle {
+        SurfaceShadow { }
+
         color: root.panel
         radius: 16
         border.width: 1
@@ -1024,6 +1026,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             radius: 8
             color: menuItem.highlighted || menuItem.hovered
                    ? (menuItem.destructive ? root.expensePanel : root.controlHovered)
@@ -1102,6 +1106,8 @@ ApplicationWindow {
             }
         }
         background: Rectangle {
+            SurfaceShadow { }
+
             radius: 12
             color: root.page === nav.target ? root.navSelected : (nav.hovered ? root.navHovered : root.transparentColor)
         }
@@ -1127,6 +1133,8 @@ ApplicationWindow {
                     Layout.bottomMargin: 8
                     spacing: 16
                     Rectangle {
+                        SurfaceShadow { }
+
                         Layout.preferredWidth: 40
                         Layout.preferredHeight: 40
                         radius: 12
@@ -1383,6 +1391,8 @@ ApplicationWindow {
                     ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
 
                     delegate: Rectangle {
+                        SurfaceShadow { }
+
                         required property var modelData
                         readonly property bool isIncome: modelData.type === "income"
                         width: upcomingOperations.width
@@ -1633,6 +1643,8 @@ ApplicationWindow {
                                              ? financeController.cryptoWallets
                                              : financeController.accounts)
                                     delegate: Rectangle {
+                                        SurfaceShadow { }
+
                                         required property var modelData
                                         width: dashboard.wideOverview
                                                ? Math.min(236, Math.max(192, (ListView.view.width - 2 * root.cardGap) / 3))
@@ -1889,7 +1901,7 @@ ApplicationWindow {
     // On Operations expandToContent=false: the block fills the page and keeps its own ListView.
     component HistoryPanel: Panel {
         id: historyPanel
-        clip: true
+        clip: false
 
         BottomCornerMask {
             width: historyPanel.radius
@@ -1935,6 +1947,7 @@ ApplicationWindow {
                       : 230
 
         ColumnLayout {
+            clip: true
             anchors.fill: parent
             anchors.margins: 1
             spacing: 0
@@ -2145,6 +2158,7 @@ ApplicationWindow {
         implicitHeight: expandToContent ? 114 + rows.length * 48 : 245
 
         ColumnLayout {
+            clip: true
             anchors.fill: parent
             anchors.margins: 1
             spacing: 0
@@ -2613,6 +2627,8 @@ ApplicationWindow {
                         }
 
                         delegate: Rectangle {
+                            SurfaceShadow { }
+
                             id: budgetCard
                             required property var modelData
                             width: ListView.view.width
@@ -2838,6 +2854,8 @@ ApplicationWindow {
                                 model: root.selectedBudget()
                                      ? root.selectedBudget().categoryLimits : []
                                 delegate: Rectangle {
+                                    SurfaceShadow { }
+
                                     required property var modelData
                                     width: ListView.view.width
                                     height: modelData.limitMinor > 0 ? 74 : 50
@@ -2917,6 +2935,8 @@ ApplicationWindow {
                                 clip: true
                                 model: financeController.budgetTransactions
                                 delegate: Rectangle {
+                                    SurfaceShadow { }
+
                                     required property var modelData
                                     width: ListView.view.width
                                     height: 64
@@ -3050,6 +3070,8 @@ ApplicationWindow {
                         }
 
                         delegate: Rectangle {
+                            SurfaceShadow { }
+
                             id: projectCard
                             required property var modelData
                             width: ListView.view.width
@@ -3722,6 +3744,8 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
+                                SurfaceShadow { }
+
                                 required property var modelData
 
                                 width: ListView.view.width
@@ -3822,6 +3846,8 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
+                                SurfaceShadow { }
+
                                 required property var modelData
 
                                 width: ListView.view.width
@@ -4118,6 +4144,8 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     clip: true
                     background: Rectangle {
+                        SurfaceShadow { }
+
                         color: root.soft
                         radius: 12
                         border.width: 1
@@ -4243,6 +4271,8 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
                 Rectangle {
+                    SurfaceShadow { }
+
                     id: currentRatesBlock
 
                     Layout.topMargin: 4
@@ -4573,6 +4603,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -4600,6 +4632,8 @@ ApplicationWindow {
             }
 
             Rectangle {
+                SurfaceShadow { }
+
                 Layout.fillWidth: true
                 implicitHeight: 52
                 radius: 10
@@ -4778,6 +4812,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -5055,6 +5091,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -5261,6 +5299,8 @@ ApplicationWindow {
         onClosed: categoryData = null
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 12
             border.width: 1
@@ -5304,6 +5344,8 @@ ApplicationWindow {
         onClosed: categoryData = null
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -5413,6 +5455,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 12
             border.width: 1
@@ -5459,6 +5503,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 12
             border.width: 1
@@ -5509,6 +5555,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 12
             border.width: 1
@@ -5556,6 +5604,8 @@ ApplicationWindow {
         onClosed: accountData = null
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -5699,6 +5749,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 12
             border.width: 1
@@ -5747,6 +5799,8 @@ ApplicationWindow {
         onClosed: transactionData = null
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -5901,6 +5955,8 @@ ApplicationWindow {
         onClosed: editingId = ""
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -5973,6 +6029,8 @@ ApplicationWindow {
         onClosed: projectData = null
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -6052,6 +6110,8 @@ ApplicationWindow {
         onClosed: budgetData = null
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -6355,6 +6415,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -6518,6 +6580,8 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
+                        SurfaceShadow { }
+
                         radius: 11
                         color: operationDateButton.down
                                ? root.panel
@@ -6639,6 +6703,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -6767,6 +6833,8 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
+                        SurfaceShadow { }
+
                         radius: 9
                         color: filterDayButton.rangeEdge
                                ? root.accent
@@ -6843,6 +6911,8 @@ ApplicationWindow {
         }
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1
@@ -6931,6 +7001,8 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
+                        SurfaceShadow { }
+
                         radius: 9
                         color: operationDateDialog.isSameDay(
                                    dayButton.model.date,
@@ -7021,6 +7093,8 @@ ApplicationWindow {
         onClosed: editingData = null
 
         background: Rectangle {
+            SurfaceShadow { }
+
             color: root.panel
             radius: 18
             border.width: 1

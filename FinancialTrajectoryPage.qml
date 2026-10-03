@@ -37,6 +37,8 @@ ScrollView {
         applySettings();
     }
     component Card: Rectangle {
+        SurfaceShadow { }
+
         radius: 16; color: theme.panel; border.color: theme.line
     }
     component Caption: Text { color: theme.muted; font.pixelSize: 14 }

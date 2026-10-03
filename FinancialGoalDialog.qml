@@ -85,7 +85,9 @@ Dialog {
         if (result.ok) close();
         else errorText = result.error;
     }
-    background: Rectangle { radius: 18; color: theme.panel; border.color: theme.line }
+    background: Rectangle {
+        SurfaceShadow { }
+ radius: 18; color: theme.panel; border.color: theme.line }
     component Field: StyledTextField {
         appTextColor: theme.accent
         appMutedColor: theme.muted

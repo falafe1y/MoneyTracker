@@ -156,6 +156,8 @@ Dialog {
     onClosed: editingId = ""
 
     background: Rectangle {
+        SurfaceShadow { }
+
         color: dialog.panelColor
         radius: 18
         border.width: 1

@@ -3,6 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Rectangle {
+    SurfaceShadow { }
+
     id: panel
     signal contextMenuRequested(var position, var sourceItem, real x, real y)
     signal deleteRequested(var position)
@@ -26,6 +28,8 @@ Rectangle {
         appOnAccentColor: panel.panelColor
         appErrorColor: panel.errorColor
     }
+
+    SurfaceShadow { }
 
     color: panelColor
     radius: 14
@@ -60,6 +64,8 @@ Rectangle {
             spacing: 6
             model: panel.controller ? panel.controller.investmentPositions : []
             delegate: Rectangle {
+                SurfaceShadow { }
+
                 required property var modelData
                 width: ListView.view.width
                 height: 72

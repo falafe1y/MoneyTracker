@@ -126,6 +126,8 @@ Dialog {
     }
 
     background: Rectangle {
+        SurfaceShadow { }
+
         color: dialog.panelColor
         radius: 18
         border.color: dialog.lineColor
@@ -212,6 +214,8 @@ Dialog {
         }
 
         Rectangle {
+            SurfaceShadow { }
+
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 180
@@ -228,6 +232,8 @@ Dialog {
                      ? [dialog.editingInstrument]
                      : dialog.controller ? dialog.controller.investmentSearchResults : []
                 delegate: Rectangle {
+                    SurfaceShadow { }
+
                     required property var modelData
                     required property int index
                     width: ListView.view.width
