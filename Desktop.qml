@@ -61,6 +61,7 @@ ApplicationWindow {
     readonly property color transparentColor: "transparent"
 
     property string page: "overview"
+    property var activeHistorySelection: null
     property string searchText: ""
     property string csvStatus: ""
     property bool csvStatusOk: true
@@ -1027,8 +1028,6 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
-
             radius: 8
             color: menuItem.highlighted || menuItem.hovered
                    ? (menuItem.destructive ? root.expensePanel : root.controlHovered)
@@ -1918,6 +1917,8 @@ ApplicationWindow {
         onRowsChanged: clear()
         function press(index) {
             if (index < 0 || index >= rows.length) return;
+            if (root.activeHistorySelection && root.activeHistorySelection !== this) root.activeHistorySelection.clear();
+            root.activeHistorySelection = this;
             dragBase = Object.assign({}, selectedKeys);
             dragStart = index; dragEnd = index;
             const next = Object.assign({}, selectedKeys);
@@ -1936,10 +1937,13 @@ ApplicationWindow {
             selectedKeys = next;
         }
         function context(index, area, x, y) {
-            if (selectedRows.length === 0 && index >= 0 && index < rows.length) {
+            if (index < 0 || index >= rows.length) return;
+            root.activeHistorySelection = this;
+            if (selectedRows.length < 2) {
                 const next = ({}); next[key(rows[index])] = true; selectedKeys = next;
+                root.openTransactionContextMenu(rows[index], area, x, y);
+                return;
             }
-            if (selectedRows.length === 0) return;
             historySelectionMenu.selection = this;
             const point = area.mapToItem(root.contentItem, x, y);
             historySelectionMenu.x = Math.max(8, Math.min(point.x, root.contentItem.width - historySelectionMenu.width - 8));
@@ -5781,12 +5785,31 @@ ApplicationWindow {
         }
     }
 
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.ApplicationShortcut
+        enabled: root.activeHistorySelection !== null
+                 && root.activeHistorySelection.selectedRows.length > 0
+                 && !root.modalDialogVisible()
+        onActivated: {
+            root.activeHistorySelection.clear();
+            historySelectionMenu.close();
+            transactionContextMenu.close();
+        }
+    }
+
     Menu {
         id: historySelectionMenu
         objectName: "historySelectionMenu"
         property var selection: null
         width: 224
         padding: 6
+        AppMenuItem {
+            text: qsTr("Отменить")
+            onTriggered: {
+                if (historySelectionMenu.selection) historySelectionMenu.selection.clear();
+            }
+        }
         AppMenuItem {
             text: qsTr("Удалить")
             destructive: true
@@ -5850,6 +5873,7 @@ ApplicationWindow {
             width: transactionContextMenu.availableWidth
             text: qsTr("Редактировать")
             enabled: transactionContextMenu.transactionData !== null
+                  && !transactionContextMenu.transactionData.transactionId
             onTriggered: {
                 const row = transactionContextMenu.transactionData;
                 if (!row)
@@ -5877,8 +5901,13 @@ ApplicationWindow {
             destructive: true
             enabled: transactionContextMenu.transactionData !== null
             onTriggered: {
-                if (transactionContextMenu.transactionData)
-                    deleteTransactionDialog.openFor(transactionContextMenu.transactionData);
+                const row = transactionContextMenu.transactionData;
+                if (!row) return;
+                if (row.transactionId) {
+                    deleteSelectedHistoryDialog.rows = [row];
+                    deleteSelectedHistoryDialog.errorText = "";
+                    deleteSelectedHistoryDialog.open();
+                } else deleteTransactionDialog.openFor(row);
             }
         }
 
