@@ -1252,6 +1252,68 @@ bool FinanceRepository::deleteTransaction(const QString& id)
     return true;
 }
 
+bool FinanceRepository::deleteHistoryRows(const QVariantList& rows)
+{
+    if (rows.isEmpty() || !database_.transaction()) {
+        setLastError(QStringLiteral("No selection or database transaction unavailable"));
+        return false;
+    }
+    QSet<QString> removedTransactions;
+    QSet<QString> processed;
+    QString error;
+    const auto fail = [&](const QString& message) {
+        setLastError(message);
+        database_.rollback();
+        return false;
+    };
+    for (const QVariant& value : rows) {
+        const QVariantMap row = value.toMap();
+        const QString id = row.value(QStringLiteral("id")).toString();
+        const QString type = row.value(QStringLiteral("type")).toString();
+        const QString cryptoId = row.value(QStringLiteral("transactionId")).toString();
+        const QString walletId = row.value(QStringLiteral("walletId")).toString();
+        if (!cryptoId.isEmpty()) {
+            if (walletId.isEmpty()) return fail(QStringLiteral("Missing crypto wallet"));
+            const QString key = QStringLiteral("crypto:") + walletId + ':' + cryptoId;
+            if (processed.contains(key)) continue;
+            processed.insert(key);
+            QSqlQuery query(database_);
+            query.prepare(QStringLiteral("DELETE FROM crypto_transactions WHERE wallet_id = ? AND transaction_id = ?"));
+            query.addBindValue(walletId);
+            query.addBindValue(cryptoId);
+            if (!query.exec() || query.numRowsAffected() != 1)
+                return fail(query.lastError().isValid() ? query.lastError().text() : QStringLiteral("Crypto operation not found"));
+        } else if (type == QStringLiteral("investment_position")) {
+            if (id.isEmpty()) return fail(QStringLiteral("Missing investment position"));
+            const QString key = QStringLiteral("investment:") + id;
+            if (processed.contains(key)) continue;
+            processed.insert(key);
+            QSqlQuery query(database_);
+            query.prepare(QStringLiteral("DELETE FROM investment_positions WHERE id = ?"));
+            query.addBindValue(id);
+            if (!query.exec() || query.numRowsAffected() != 1)
+                return fail(query.lastError().isValid() ? query.lastError().text() : QStringLiteral("Investment position not found"));
+        } else {
+            if (id.isEmpty()) return fail(QStringLiteral("Missing operation"));
+            if (removedTransactions.contains(id)) continue;
+            QSqlQuery lookup(database_);
+            lookup.prepare(QStringLiteral("SELECT category_id FROM transactions WHERE id = ?"));
+            lookup.addBindValue(id);
+            if (!lookup.exec() || !lookup.next()) return fail(QStringLiteral("Operation not found"));
+            const auto pair = transferComponentIds(id, lookup.value(0).toString());
+            lookup.finish();
+            if (!deleteOperationRows(database_, id, error)) return fail(error);
+            removedTransactions.insert(id);
+            if (pair.valid) {
+                removedTransactions.insert(pair.outgoing);
+                removedTransactions.insert(pair.incoming);
+            }
+        }
+    }
+    if (!database_.commit()) return fail(database_.lastError().text());
+    return true;
+}
+
 bool FinanceRepository::insertRecurringTransaction(
     const RecurringTransaction& recurring
     )

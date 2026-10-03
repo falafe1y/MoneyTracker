@@ -4703,6 +4703,25 @@ QVariantMap FinanceController::transferDetails(const QString& id) const
     return result;
 }
 
+bool FinanceController::deleteHistoryRows(const QVariantList& rows)
+{
+    if (!repository_.isOpen() || !repository_.deleteHistoryRows(rows)) {
+        qWarning() << "Failed to delete selected operations:" << repository_.lastError();
+        return false;
+    }
+    transactions_ = repository_.loadTransactions();
+    investmentPositions_ = repository_.loadInvestmentPositions();
+    cryptoTransactions_ = repository_.loadCryptoTransactions();
+    summary_ = repository_.loadSummary();
+    emit transactionsChanged();
+    emit investmentPositionsChanged();
+    emit cryptoTransactionsChanged();
+    emit balanceChanged();
+    emit accountsChanged();
+    emit projectsChanged();
+    return true;
+}
+
 bool FinanceController::deleteTransaction(const QString& id)
 {
     int transactionIndex = -1;

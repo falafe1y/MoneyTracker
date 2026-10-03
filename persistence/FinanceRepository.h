@@ -20,6 +20,7 @@
 #include <QDateTime>
 #include <QSet>
 #include <QVector>
+#include <QVariant>
 
 #include <array>
 #include <optional>
@@ -129,6 +130,7 @@ public:
         const Transaction& incoming
         );
     bool deleteTransaction(const QString& id);
+    bool deleteHistoryRows(const QVariantList& rows);
     bool insertRecurringTransaction(
         const RecurringTransaction& recurring
         );

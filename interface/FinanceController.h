@@ -560,6 +560,7 @@ public:
     Q_INVOKABLE QVariantMap transferDetails(const QString& id) const;
 
     Q_INVOKABLE bool deleteTransaction(const QString& id);
+    Q_INVOKABLE bool deleteHistoryRows(const QVariantList& rows);
 
     Q_INVOKABLE QVariantMap exportTransactionsCsv(const QUrl& fileUrl) const;
     Q_INVOKABLE QVariantMap backupDatabase(const QUrl& fileUrl);

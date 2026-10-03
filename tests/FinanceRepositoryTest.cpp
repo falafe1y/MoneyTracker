@@ -32,6 +32,7 @@ private slots:
     void migratesCreditLimitForExistingDatabase();
     void migratesSavingsAccountsWithoutLosingTransactions();
     void updatesAndDeletesTransaction();
+    void deletesSelectedHistoryAtomically();
     void storesTransferAtomicallyWithoutAffectingIncomeAndExpense();
     void replacesIncomeWithTransferAtomically();
     void deletesWholeTransferFromEitherComponent();
@@ -1592,6 +1593,38 @@ void FinanceRepositoryTest::storesAndMaterializesDepositInterest()
     QVERIFY(repository.deleteAccount(account.id()));
     QVERIFY(repository.loadDepositSettings().isEmpty());
     QVERIFY(repository.loadTransactions().isEmpty());
+}
+
+
+void FinanceRepositoryTest::deletesSelectedHistoryAtomically()
+{
+    QTemporaryDir temporary;
+    FinanceRepository repository(temporary.filePath(QStringLiteral("selection.sqlite3")));
+    QVERIFY(repository.isOpen());
+    QVERIFY(repository.insertAccount(Account("a", "A", AssetType::Fiat, AccountType::DebitCard, Currency::RUB)));
+    QVERIFY(repository.insertAccount(Account("b", "B", AssetType::Fiat, AccountType::DebitCard, Currency::RUB)));
+    QVERIFY(repository.insertCategory(Category("selection-expense", "Expense", CategoryType::Expense)));
+    const auto now = QDateTime::currentDateTimeUtc();
+    for (int i = 0; i < 3; ++i)
+        QVERIFY(repository.insertTransaction(Transaction(QString::number(i), "a", "selection-expense", Money(100, Currency::RUB), TransactionType::Expense, now, "Test")));
+    const QVariantList invalid{
+        QVariantMap{{"id", "0"}, {"type", "expense"}},
+        QVariantMap{{"id", "missing"}, {"type", "expense"}}
+    };
+    QVERIFY(!repository.deleteHistoryRows(invalid));
+    QCOMPARE(repository.loadTransactions().size(), 3);
+    QVERIFY(repository.insertTransfer(
+        Transaction("selection-out", "a", "transfer-out", Money(100, Currency::RUB), TransactionType::Expense, now, "Transfer"),
+        Transaction("selection-in", "b", "transfer-in", Money(100, Currency::RUB), TransactionType::Income, now, "Transfer")));
+    const QVariantList selected{
+        QVariantMap{{"id", "0"}, {"type", "expense"}},
+        QVariantMap{{"id", "selection-out"}, {"type", "transfer"}},
+        QVariantMap{{"id", "selection-in"}, {"type", "transfer"}},
+        QVariantMap{{"id", "0"}, {"type", "expense"}}
+    };
+    QVERIFY2(repository.deleteHistoryRows(selected), qPrintable(repository.lastError()));
+    QCOMPARE(repository.loadTransactions().size(), 2);
+    QVERIFY(!repository.deleteHistoryRows({}));
 }
 
 QTEST_GUILESS_MAIN(FinanceRepositoryTest)

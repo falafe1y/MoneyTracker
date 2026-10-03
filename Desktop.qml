@@ -668,6 +668,7 @@ ApplicationWindow {
             || deleteAccountDialog.visible
             || deleteCategoryDialog.visible
             || deleteTransactionDialog.visible
+            || deleteSelectedHistoryDialog.visible
             || projectDialog.visible
             || deleteProjectDialog.visible
             || operationDialog.visible
@@ -1899,6 +1900,77 @@ ApplicationWindow {
     // On Overview expandToContent=true: the transaction history grows with its rows,
     // so the OUTER overview ScrollView owns vertical scrolling.
     // On Operations expandToContent=false: the block fills the page and keeps its own ListView.
+    component HistorySelection: QtObject {
+        property var rows: []
+        property var selectedKeys: ({})
+        property var dragBase: ({})
+        property int dragStart: -1
+        property int dragEnd: -1
+        readonly property var selectedRows: rows.filter(function(row) {
+            return selectedKeys[key(row)] === true;
+        })
+        function key(row) {
+            return row.transactionId ? "crypto:" + row.walletId + ":" + row.transactionId
+                                     : (row.type || "operation") + ":" + row.id;
+        }
+        function contains(row) { return selectedKeys[key(row)] === true; }
+        function clear() { selectedKeys = ({}); dragStart = -1; }
+        onRowsChanged: clear()
+        function press(index) {
+            if (index < 0 || index >= rows.length) return;
+            dragBase = Object.assign({}, selectedKeys);
+            dragStart = index; dragEnd = index;
+            const next = Object.assign({}, selectedKeys);
+            const id = key(rows[index]);
+            if (next[id]) delete next[id]; else next[id] = true;
+            selectedKeys = next;
+        }
+        function extend(index) {
+            if (dragStart < 0 || rows.length === 0) return;
+            index = Math.max(0, Math.min(rows.length - 1, index));
+            if (index === dragEnd) return;
+            dragEnd = index;
+            const next = Object.assign({}, dragBase);
+            for (let i = Math.min(dragStart, index); i <= Math.max(dragStart, index); ++i)
+                next[key(rows[i])] = true;
+            selectedKeys = next;
+        }
+        function context(index, area, x, y) {
+            if (selectedRows.length === 0 && index >= 0 && index < rows.length) {
+                const next = ({}); next[key(rows[index])] = true; selectedKeys = next;
+            }
+            if (selectedRows.length === 0) return;
+            historySelectionMenu.selection = this;
+            const point = area.mapToItem(root.contentItem, x, y);
+            historySelectionMenu.x = Math.max(8, Math.min(point.x, root.contentItem.width - historySelectionMenu.width - 8));
+            historySelectionMenu.y = Math.max(8, Math.min(point.y, root.contentItem.height - historySelectionMenu.implicitHeight - 8));
+            historySelectionMenu.open();
+        }
+    }
+
+    component HistoryRowSelectionArea: MouseArea {
+        id: selectionArea
+        required property var selection
+        required property var rowData
+        required property int rowIndex
+        required property var body
+        property real contentOffset: 0
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        preventStealing: true
+        onPressed: function(mouse) {
+            if (mouse.button === Qt.LeftButton) selection.press(rowIndex);
+            else selection.context(rowIndex, selectionArea, mouse.x, mouse.y);
+        }
+        onPositionChanged: function(mouse) {
+            if (!(mouse.buttons & Qt.LeftButton)) return;
+            const point = mapToItem(body, mouse.x, mouse.y);
+            selection.extend(Math.floor((point.y + contentOffset) / 48));
+        }
+        onReleased: selection.dragStart = -1
+        onCanceled: selection.dragStart = -1
+    }
+
     component HistoryPanel: Panel {
         id: historyPanel
         clip: false
@@ -1936,6 +2008,8 @@ ApplicationWindow {
 
         property var rows: financeController.cryptoTransactions
         property bool expandToContent: false
+        HistorySelection { id: cryptoSelection; rows: dashboardCryptoHistory.rows }
+        onVisibleChanged: if (!visible) cryptoSelection.clear()
 
         readonly property int dateColumnWidth: 150
         readonly property int directionColumnWidth: 125
@@ -2037,6 +2111,7 @@ ApplicationWindow {
             }
 
             Item {
+                id: cryptoHistoryBody
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(
                     58,
@@ -2055,6 +2130,7 @@ ApplicationWindow {
                             width: parent.width
                             height: 48
                             color: root.panel
+                            Rectangle { anchors.fill: parent; color: "#332D6CC0"; visible: cryptoSelection.contains(modelData) }
 
                             Rectangle {
                                 anchors.left: parent.left
@@ -2066,6 +2142,13 @@ ApplicationWindow {
                                 color: root.line
                             }
 
+                            HistoryRowSelectionArea {
+                                selection: cryptoSelection
+                                rowData: modelData
+                                rowIndex: index
+                                body: cryptoHistoryBody
+                                z: 2
+                            }
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.leftMargin: 24
@@ -2233,6 +2316,8 @@ ApplicationWindow {
         id: transactionTable
 
         property var rows: []
+        HistorySelection { id: tableSelection; rows: transactionTable.rows }
+        onVisibleChanged: if (!visible) tableSelection.clear()
         property real bottomCornerRadius: 0
         property bool expandToContent: false
         property var viewportFlickable: null
@@ -2336,6 +2421,7 @@ ApplicationWindow {
             }
 
             Item {
+                id: transactionBody
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
@@ -2379,6 +2465,7 @@ ApplicationWindow {
                             Rectangle {
                                 anchors.fill: parent
                                 color: root.panel
+                            Rectangle { anchors.fill: parent; color: "#332D6CC0"; visible: tableSelection.contains(modelData) }
                             }
                             Rectangle {
                                 anchors.left: parent.left
@@ -2445,19 +2532,13 @@ ApplicationWindow {
                                 }
                             }
 
-                            MouseArea {
-                                id: overviewRowMenuArea
-                                anchors.fill: parent
-                                acceptedButtons: Qt.RightButton
-                                onPressed: function (mouse) {
-                                    if (mouse.button === Qt.RightButton)
-                                        root.openTransactionContextMenu(
-                                            modelData,
-                                            overviewRowMenuArea,
-                                            mouse.x,
-                                            mouse.y
-                                        );
-                                }
+                            HistoryRowSelectionArea {
+                                objectName: "overviewRowMenuArea"
+                                selection: tableSelection
+                                rowData: modelData
+                                rowIndex: transactionTable.firstVisibleRow + index
+                                body: transactionBody
+                                contentOffset: 0
                             }
                         }
                     }
@@ -2489,6 +2570,7 @@ ApplicationWindow {
                         Rectangle {
                             anchors.fill: parent
                             color: root.panel
+                            Rectangle { anchors.fill: parent; color: "#332D6CC0"; visible: tableSelection.contains(modelData) }
                         }
                         Rectangle {
                             anchors.left: parent.left
@@ -2555,19 +2637,13 @@ ApplicationWindow {
                             }
                         }
 
-                        MouseArea {
-                            id: operationsRowMenuArea
-                            anchors.fill: parent
-                            acceptedButtons: Qt.RightButton
-                            onPressed: function (mouse) {
-                                if (mouse.button === Qt.RightButton)
-                                    root.openTransactionContextMenu(
-                                        modelData,
-                                        operationsRowMenuArea,
-                                        mouse.x,
-                                        mouse.y
-                                    );
-                            }
+                        HistoryRowSelectionArea {
+                            objectName: "operationsRowMenuArea"
+                            selection: tableSelection
+                            rowData: modelData
+                            rowIndex: index
+                            body: transactionList
+                            contentOffset: transactionList.contentY
                         }
                     }
                 }
@@ -5700,6 +5776,64 @@ ApplicationWindow {
                     text: qsTr("Удалить")
                     destructive: true
                     onClicked: deleteAccountDialog.confirmDelete()
+                }
+            }
+        }
+    }
+
+    Menu {
+        id: historySelectionMenu
+        objectName: "historySelectionMenu"
+        property var selection: null
+        width: 224
+        padding: 6
+        AppMenuItem {
+            text: qsTr("Удалить")
+            destructive: true
+            onTriggered: {
+                deleteSelectedHistoryDialog.rows = historySelectionMenu.selection.selectedRows.slice();
+                deleteSelectedHistoryDialog.errorText = "";
+                deleteSelectedHistoryDialog.open();
+            }
+        }
+        background: Rectangle {
+            color: root.panel; radius: 12; border.color: root.line
+            SurfaceShadow { }
+        }
+    }
+
+    Dialog {
+        id: deleteSelectedHistoryDialog
+        objectName: "deleteSelectedHistoryDialog"
+        property var rows: []
+        property string errorText: ""
+        modal: true
+        anchors.centerIn: parent
+        width: 440
+        padding: 24
+        title: qsTr("Удалить выделенные операции?")
+        background: Rectangle {
+            color: root.panel; radius: 16; border.color: root.line
+            SurfaceShadow { }
+        }
+        contentItem: ColumnLayout {
+            spacing: 16
+            Text { text: qsTr("Выделено операций: %1").arg(deleteSelectedHistoryDialog.rows.length); color: root.accent; font.pixelSize: 14 }
+            Text { Layout.fillWidth: true; text: qsTr("Переводы будут удалены вместе с парной операцией."); color: root.muted; font.pixelSize: 14; wrapMode: Text.WordWrap }
+            Text { visible: text.length > 0; text: deleteSelectedHistoryDialog.errorText; color: root.red; font.pixelSize: 14; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 16
+                SoftButton { text: qsTr("Отмена"); onClicked: deleteSelectedHistoryDialog.close() }
+                SoftButton {
+                    text: qsTr("Удалить")
+                    destructive: true
+                    onClicked: {
+                        if (financeController.deleteHistoryRows(deleteSelectedHistoryDialog.rows)) {
+                            if (historySelectionMenu.selection) historySelectionMenu.selection.clear();
+                            deleteSelectedHistoryDialog.close();
+                        } else deleteSelectedHistoryDialog.errorText = qsTr("Не удалось удалить операции. Данные не изменены.");
+                    }
                 }
             }
         }
