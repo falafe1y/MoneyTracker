@@ -4031,7 +4031,7 @@ ApplicationWindow {
                     neo: true
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: root.panel
+                    color: root.incomePanel
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -4137,7 +4137,7 @@ ApplicationWindow {
                     neo: true
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: root.panel
+                    color: root.expensePanel
 
                     ColumnLayout {
                         anchors.fill: parent
