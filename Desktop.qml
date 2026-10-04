@@ -1334,6 +1334,7 @@ ApplicationWindow {
                     visible: page === "overview" && financeController.selectedAsset === "fiat"
                     Layout.preferredWidth: root.width < 1360 ? 208 : 218
                     controlHeight: 40
+                    neo: true
                     font.weight: Font.Bold
                     text: qsTr("Плановые операции")
                     onClicked: recurringTransactionsDialog.openManager()
@@ -1343,6 +1344,7 @@ ApplicationWindow {
                           || page === "operations" || page === "analytics"
                     Layout.preferredWidth: root.width < 1360 ? 144 : 218
                     controlHeight: 40
+                    neo: true
                     font.weight: Font.Bold
                     text: root.dateFilterLabel()
                     onClicked: dateFilterDialog.openForCurrent()
@@ -1350,7 +1352,37 @@ ApplicationWindow {
                 AppComboBox {
                     id: currencyBox
                     Layout.preferredWidth: 104
-                    implicitHeight: 40
+                    controlHeight: 40
+                    leftPadding: 16
+                    font.weight: Font.Bold
+                    appAccentColor: root.accent
+                    readonly property int pressShift: pressed || popup.visible ? 2 : 0
+                    contentItem: Text {
+                        text: currencyBox.displayText
+                        color: currencyBox.appTextColor
+                        font: currencyBox.font
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        transform: Translate { y: currencyBox.pressShift }
+                    }
+                    indicator: Text {
+                        x: currencyBox.width - width - 15
+                        y: (currencyBox.height - height) / 2 - 1
+                        text: currencyBox.popup.visible ? "⌃" : "⌄"
+                        color: root.accent
+                        font.pixelSize: 18
+                        font.weight: Font.DemiBold
+                        transform: Translate { y: currencyBox.pressShift }
+                    }
+                    background: Rectangle {
+                        transform: Translate { y: currencyBox.pressShift }
+                        HardShadow { depth: 4 - currencyBox.pressShift; shadowColor: root.accent }
+                        radius: 8
+                        color: currencyBox.hovered || currencyBox.pressed || currencyBox.popup.visible
+                               ? root.controlHovered : root.panel
+                        border.width: currencyBox.visualFocus ? 3 : root.outlineWidth
+                        border.color: root.accent
+                    }
                     model: ["RUB", "USD", "EUR"]
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
                     onActivated: financeController.appCurrency = currentText
