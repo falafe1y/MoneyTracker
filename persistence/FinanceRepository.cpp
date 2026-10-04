@@ -307,6 +307,8 @@ bool FinanceRepository::clearAllUserData()
     const QStringList statements{
         QStringLiteral("DELETE FROM recurring_transaction_occurrences"),
         QStringLiteral("DELETE FROM deposit_interest_occurrences"),
+        QStringLiteral("DELETE FROM crypto_exchanges"),
+        QStringLiteral("DELETE FROM crypto_wallet_names"),
         QStringLiteral("DELETE FROM crypto_transactions"),
         QStringLiteral("DELETE FROM investment_quotes"),
         QStringLiteral("DELETE FROM investment_positions"),
@@ -762,6 +764,85 @@ QVector<Account> FinanceRepository::loadAccounts()
             query.value(6).toLongLong()));
     }
     return result;
+}
+
+QString FinanceRepository::cryptoWalletName(const QString& id) const
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("SELECT name FROM crypto_wallet_names WHERE id = ?"));
+    query.addBindValue(id);
+    return query.exec() && query.next() ? query.value(0).toString() : QString();
+}
+
+bool FinanceRepository::setCryptoWalletName(const QString& id, const QString& name)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("INSERT OR REPLACE INTO crypto_wallet_names(id, name) VALUES (?, ?)"));
+    query.addBindValue(id); query.addBindValue(name);
+    if (!query.exec()) { setLastError(query.lastError().text()); return false; }
+    return true;
+}
+
+QVariantList FinanceRepository::loadCryptoExchanges() const
+{
+    QVariantList result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral("SELECT id, name, holdings_json, history_json, fetched_at FROM crypto_exchanges WHERE is_archived = 0 ORDER BY rowid"))) return result;
+    while (query.next()) {
+        result.append(QVariantMap{{"id", query.value(0)}, {"name", query.value(1)},
+            {"holdings", QJsonDocument::fromJson(query.value(2).toByteArray()).array().toVariantList()},
+            {"history", QJsonDocument::fromJson(query.value(3).toByteArray()).array().toVariantList()},
+            {"fetchedAtMs", query.value(4)}});
+    }
+    return result;
+}
+
+bool FinanceRepository::saveCryptoExchange(const QVariantMap& account)
+{
+    if (account.value("id").toString().isEmpty() || account.value("name").toString().trimmed().isEmpty()) return false;
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("INSERT INTO crypto_exchanges(id, name) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name WHERE is_archived = 0"));
+    query.addBindValue(account.value("id")); query.addBindValue(account.value("name"));
+    if (!query.exec()) { setLastError(query.lastError().text()); return false; }
+    return query.numRowsAffected() == 1;
+}
+
+bool FinanceRepository::saveCryptoExchangeSnapshot(const QString& id, const QVariantList& holdings,
+                                                  const QVariantList& operations, qint64 fetchedAtMs)
+{
+    if (id.isEmpty() || fetchedAtMs <= 0 || !database_.transaction()) return false;
+    QSqlQuery lookup(database_);
+    lookup.prepare(QStringLiteral("SELECT history_json FROM crypto_exchanges WHERE id = ? AND is_archived = 0"));
+    lookup.addBindValue(id);
+    if (!lookup.exec() || !lookup.next()) { database_.rollback(); return false; }
+    // Incremental updates keep earlier history and overwrite overlapping IDs without duplicates.
+    QMap<QString, QVariantMap> merged;
+    const auto old = QJsonDocument::fromJson(lookup.value(0).toByteArray()).array().toVariantList();
+    lookup.finish();
+    for (const auto& value : old) { const auto row = value.toMap(); merged.insert(row.value("transactionId").toString(), row); }
+    for (const auto& value : operations) {
+        const auto row = value.toMap();
+        if (row.value("transactionId").toString().isEmpty() || row.value("occurredAtMs").toLongLong() <= 0) { database_.rollback(); return false; }
+        merged.insert(row.value("transactionId").toString(), row);
+    }
+    QVariantList history;
+    for (const auto& row : merged) history.append(row);
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("UPDATE crypto_exchanges SET holdings_json = ?, history_json = ?, fetched_at = ? WHERE id = ? AND is_archived = 0"));
+    query.addBindValue(QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(holdings)).toJson(QJsonDocument::Compact)));
+    query.addBindValue(QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(history)).toJson(QJsonDocument::Compact)));
+    query.addBindValue(fetchedAtMs); query.addBindValue(id);
+    if (!query.exec() || query.numRowsAffected() != 1 || !database_.commit()) { setLastError(query.lastError().text()); database_.rollback(); return false; }
+    return true;
+}
+
+bool FinanceRepository::deleteCryptoExchange(const QString& id)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral("UPDATE crypto_exchanges SET is_archived = 1 WHERE id = ? AND is_archived = 0"));
+    query.addBindValue(id);
+    if (!query.exec()) { setLastError(query.lastError().text()); return false; }
+    return query.numRowsAffected() == 1;
 }
 
 QVector<CryptoWallet> FinanceRepository::loadCryptoWallets()
@@ -1272,7 +1353,23 @@ bool FinanceRepository::deleteHistoryRows(const QVariantList& rows)
         const QString type = row.value(QStringLiteral("type")).toString();
         const QString cryptoId = row.value(QStringLiteral("transactionId")).toString();
         const QString walletId = row.value(QStringLiteral("walletId")).toString();
-        if (!cryptoId.isEmpty()) {
+        if (row.value("isExchange").toBool()) {
+            const QString accountId = row.value("walletId").toString();
+            const QString transactionId = row.value("transactionId").toString();
+            QSqlQuery lookup(database_);
+            lookup.prepare(QStringLiteral("SELECT history_json FROM crypto_exchanges WHERE id = ? AND is_archived = 0"));
+            lookup.addBindValue(accountId);
+            if (!lookup.exec() || !lookup.next()) return fail(QStringLiteral("Exchange account not found"));
+            QVariantList history;
+            for (const auto& value : QJsonDocument::fromJson(lookup.value(0).toByteArray()).array().toVariantList())
+                if (value.toMap().value("transactionId").toString() != transactionId) history.append(value);
+            lookup.finish();
+            QSqlQuery update(database_);
+            update.prepare(QStringLiteral("UPDATE crypto_exchanges SET history_json = ? WHERE id = ?"));
+            update.addBindValue(QString::fromUtf8(QJsonDocument(QJsonArray::fromVariantList(history)).toJson(QJsonDocument::Compact)));
+            update.addBindValue(accountId);
+            if (!update.exec()) return fail(update.lastError().text());
+        } else if (!cryptoId.isEmpty()) {
             if (walletId.isEmpty()) return fail(QStringLiteral("Missing crypto wallet"));
             const QString key = QStringLiteral("crypto:") + walletId + ':' + cryptoId;
             if (processed.contains(key)) continue;
@@ -2850,6 +2947,10 @@ bool FinanceRepository::initializeSchema()
                        "transaction_id TEXT NOT NULL UNIQUE "
                        "REFERENCES transactions(id) ON DELETE CASCADE, "
                        "PRIMARY KEY(recurring_id, occurrence_date))"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_wallet_names (id TEXT PRIMARY KEY, name TEXT NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_exchanges (id TEXT PRIMARY KEY, name TEXT NOT NULL, "
+                       "holdings_json TEXT NOT NULL DEFAULT '[]', history_json TEXT NOT NULL DEFAULT '[]', "
+                       "fetched_at INTEGER NOT NULL DEFAULT 0, is_archived INTEGER NOT NULL DEFAULT 0)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS crypto_wallets ("
                        "id TEXT PRIMARY KEY, address TEXT NOT NULL, "
                        "network TEXT NOT NULL, symbol TEXT NOT NULL, "

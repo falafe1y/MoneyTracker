@@ -5,7 +5,7 @@ project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network LinguistTools Svg)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network Concurrent LinguistTools Svg)
 find_package(Qt6 QUIET COMPONENTS Pdf)
 find_package(ZLIB REQUIRED)
 
@@ -100,6 +100,10 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CryptoParser.cpp
         SOURCES services/CryptoProvider.h
         SOURCES services/CryptoProvider.cpp
+        SOURCES services/BybitProvider.h
+        SOURCES services/BybitProvider.cpp
+        SOURCES services/ExchangeCredentials.h
+        SOURCES services/ExchangeCredentials.cpp
         SOURCES services/MoexInvestmentParser.h
         SOURCES services/MoexInvestmentParser.cpp
         SOURCES services/MoexInvestmentProvider.h
@@ -134,9 +138,14 @@ target_link_libraries(appMoneyTracker
         Qt6::QuickControls2
         Qt6::Sql
         Qt6::Network
+        Qt6::Concurrent
         Qt6::Svg
         ZLIB::ZLIB
 )
+
+if(WIN32)
+    target_link_libraries(appMoneyTracker PRIVATE crypt32)
+endif()
 
 install(TARGETS appMoneyTracker
     BUNDLE DESTINATION .
@@ -439,3 +448,12 @@ if(TARGET Qt6::Pdf)
         target_link_libraries(${pdf_target} PRIVATE Qt6::Pdf)
     endforeach()
 endif()
+
+add_executable(BybitProviderTest
+    tests/BybitProviderTest.cpp
+    services/BybitProvider.cpp
+    core/Currency.cpp
+    persistence/FinanceRepository.cpp
+)
+target_link_libraries(BybitProviderTest PRIVATE Qt6::Core Qt6::Test Qt6::Network Qt6::Sql)
+add_test(NAME BybitProviderTest COMMAND BybitProviderTest)

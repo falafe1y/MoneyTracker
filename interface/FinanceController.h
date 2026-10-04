@@ -8,6 +8,7 @@
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
 #include "../services/CryptoProvider.h"
+#include "../services/BybitProvider.h"
 #include "../services/MoexInvestmentProvider.h"
 #include "../services/FinancialGoalCalculator.h"
 #include "../core/FinancialTrajectory.h"
@@ -477,6 +478,8 @@ public:
         const QString& symbol,
         const QString& address
         );
+    Q_INVOKABLE QVariantMap saveCryptoConnection(const QVariantMap& values);
+    Q_INVOKABLE QVariantList cryptoExchangeHoldings() const;
     Q_INVOKABLE bool deleteCryptoWallet(const QString& id);
     Q_INVOKABLE void refreshCryptoWallets();
     Q_INVOKABLE void searchInvestmentInstruments(const QString& query);
@@ -715,6 +718,17 @@ private:
     CurrencyConverter currencyConverter_;
     BalanceCalculator balanceCalculator_;
     CryptoProvider cryptoProvider_;
+    BybitProvider bybitProvider_;
+    QVariantList cryptoExchanges_;
+    QHash<QString, QString> cryptoWalletNames_;
+    QHash<QString, QPair<QString, QString>> exchangeCredentials_;
+    QHash<QString, QString> exchangeErrors_;
+    QHash<QString, QString> exchangeCredentialWarnings_;
+    QSet<QString> loadingExchangeCredentials_;
+    QTimer exchangeRefreshTimer_;
+    void refreshCryptoExchanges(bool force = true);
+    void startExchangeRefresh(const QString& id);
+    qint64 exchangeUsdMinor(const QVariantMap& account) const;
     MoexInvestmentProvider investmentProvider_;
 
     QVector<Transaction> transactions_;

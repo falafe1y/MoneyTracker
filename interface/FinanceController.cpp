@@ -1,4 +1,7 @@
 #include "FinanceController.h"
+#include "../services/ExchangeCredentials.h"
+#include <QtConcurrent>
+#include <QFutureWatcher>
 
 #include "../services/BankCsvImporter.h"
 #include "../services/CapitalHistoryCalculator.h"
@@ -492,6 +495,26 @@ FinanceController::FinanceController(QObject* parent)
             emit budgetsChanged();
         });
 
+    connect(&bybitProvider_, &BybitProvider::snapshotReady, this,
+            [this](const QString& id, const QVariantList& holdings, const QVariantList& operations, qint64 fetchedAtMs) {
+        if (!repository_.saveCryptoExchangeSnapshot(id, holdings, operations, fetchedAtMs)) {
+            exchangeErrors_[id] = tr("Не удалось сохранить данные Bybit");
+            setCryptoLastError(exchangeErrors_[id]);
+            return;
+        }
+        cryptoExchanges_ = repository_.loadCryptoExchanges();
+        exchangeErrors_.remove(id);
+        emit cryptoWalletsChanged(); emit cryptoTransactionsChanged(); emit balanceChanged();
+    });
+    connect(&bybitProvider_, &BybitProvider::finished, this, [this](const QString& id, const QString& error) {
+        finishCryptoWalletRequest(id); finishCryptoRequest();
+        if (!error.isEmpty()) { exchangeErrors_[id] = error; setCryptoLastError(error); }
+        emit cryptoWalletsChanged();
+    });
+    exchangeRefreshTimer_.setInterval(60'000);
+    connect(&exchangeRefreshTimer_, &QTimer::timeout, this, [this] { refreshCryptoExchanges(false); });
+    exchangeRefreshTimer_.start();
+
     QObject::connect(
         &cryptoProvider_,
         &CryptoProvider::balanceUpdated,
@@ -735,6 +758,9 @@ FinanceController::FinanceController(QObject* parent)
     financialGoals_ = repository_.loadFinancialGoals();
     trajectorySettings_ = repository_.loadFinancialTrajectorySettings();
     cryptoWallets_ = repository_.loadCryptoWallets();
+    for (const auto& wallet : cryptoWallets_) cryptoWalletNames_[wallet.id()] = repository_.cryptoWalletName(wallet.id());
+    cryptoExchanges_ = repository_.loadCryptoExchanges();
+    QTimer::singleShot(0, this, [this] { refreshCryptoExchanges(false); });
     cryptoTransactions_ = repository_.loadCryptoTransactions();
     investmentInstruments_ = repository_.loadInvestmentInstruments();
     investmentPositions_ = repository_.loadInvestmentPositions();
@@ -750,6 +776,8 @@ FinanceController::FinanceController(QObject* parent)
     refreshBudgetMonthLimits();
     if (!cryptoWallets_.isEmpty()) {
         selectedCryptoWalletId_ = cryptoWallets_.constFirst().id();
+    } else if (!cryptoExchanges_.isEmpty()) {
+        selectedCryptoWalletId_ = cryptoExchanges_.constFirst().toMap().value("id").toString();
     }
     for (const QString& symbol : {QStringLiteral("USDT"),
                                   QStringLiteral("BTC"),
@@ -1210,6 +1238,12 @@ QVariantMap FinanceController::clearAllData()
     budgets_.clear();
     financialGoals_.clear();
     trajectorySettings_ = repository_.loadFinancialTrajectorySettings();
+    for (const auto& value : cryptoExchanges_) {
+        const auto id = value.toMap().value("id").toString();
+        if (refreshingCryptoWalletIds_.contains(id)) { bybitProvider_.cancel(id); finishCryptoWalletRequest(id); finishCryptoRequest(); }
+        (void)QtConcurrent::run([id] { ExchangeCredentials::remove(id); });
+    }
+    cryptoExchanges_.clear(); exchangeCredentials_.clear(); exchangeErrors_.clear(); exchangeCredentialWarnings_.clear(); cryptoWalletNames_.clear();
     cryptoWallets_.clear();
     cryptoTransactions_.clear();
     investmentInstruments_.clear();
@@ -2609,7 +2643,7 @@ QVariantList FinanceController::cryptoWallets() const
     for (const CryptoWallet& wallet : cryptoWallets_) {
         QVariantMap item;
         item[QStringLiteral("id")] = wallet.id();
-        item[QStringLiteral("name")] = wallet.symbol();
+        item[QStringLiteral("name")] = cryptoWalletNames_.value(wallet.id()).isEmpty() ? wallet.symbol() : cryptoWalletNames_.value(wallet.id());
         item[QStringLiteral("type")] = QStringLiteral("crypto_wallet");
         item[QStringLiteral("asset")] = QStringLiteral("crypto");
         item[QStringLiteral("isCrypto")] = true;
@@ -2633,6 +2667,22 @@ QVariantList FinanceController::cryptoWallets() const
             1'000'000.0;
         item[QStringLiteral("priceHasSnapshot")] =
             cryptoPricesFetchedAtUtc_.value(wallet.symbol()).isValid();
+        result.append(item);
+    }
+    for (const auto& value : cryptoExchanges_) {
+        const auto account = value.toMap();
+        const QString id = account.value("id").toString();
+        const qint64 fetched = account.value("fetchedAtMs").toLongLong();
+        const qint64 usd = exchangeUsdMinor(account);
+        const qint64 converted = currencyConverter_.convert(Money(usd, Currency::USD), appCurrency_).minorUnits();
+        QVariantMap item{{"id", id}, {"name", account.value("name")}, {"type", "crypto_exchange"},
+            {"asset", "crypto"}, {"isCrypto", true}, {"isExchange", true}, {"isCreditCard", false},
+            {"symbol", "USD"}, {"network", "Bybit"}, {"address", tr("Биржа")},
+            {"balanceText", QString::number(usd / 100.0, 'f', 2)}, {"balanceMinor", converted},
+            {"valueMinor", converted}, {"currency", currencyCode(appCurrency_)}, {"hasSnapshot", fetched > 0},
+            {"updatedAt", fetched > 0 ? QVariant(QDateTime::fromMSecsSinceEpoch(fetched, QTimeZone::UTC)) : QVariant()},
+            {"refreshing", refreshingCryptoWalletIds_.contains(id)}, {"priceHasSnapshot", false},
+            {"connectionError", exchangeErrors_.value(id).isEmpty() ? exchangeCredentialWarnings_.value(id) : exchangeErrors_.value(id)}};
         result.append(item);
     }
     return result;
@@ -2659,16 +2709,15 @@ void FinanceController::setSelectedCryptoWalletId(const QString& walletId)
         return;
     }
     if (!walletId.isEmpty()) {
-        const bool exists = std::any_of(
+        bool exists = std::any_of(
             cryptoWallets_.cbegin(),
             cryptoWallets_.cend(),
             [&walletId](const CryptoWallet& wallet)
             {
                 return wallet.id() == walletId;
             });
-        if (!exists) {
-            return;
-        }
+        for (const auto& value : cryptoExchanges_) if (value.toMap().value("id").toString() == walletId) exists = true;
+        if (!exists) return;
     }
     selectedCryptoWalletId_ = walletId;
     emit selectedCryptoWalletIdChanged();
@@ -2731,6 +2780,18 @@ QVariantList FinanceController::cryptoTransactions() const
         item[QStringLiteral("occurredAt")] = transaction.occurredAtUtc();
         result.append(item);
     }
+    for (const auto& value : cryptoExchanges_) {
+        const auto account = value.toMap(); const QString id = account.value("id").toString();
+        if (!selectedCryptoWalletId_.isEmpty() && selectedCryptoWalletId_ != id) continue;
+        for (const auto& record : account.value("history").toList()) {
+            auto row = record.toMap(); row["walletId"] = id; row["walletAddress"] = QStringLiteral("Bybit");
+            row["occurredAt"] = QDateTime::fromMSecsSinceEpoch(row.value("occurredAtMs").toLongLong(), QTimeZone::UTC);
+            row["accountName"] = account.value("name"); result.append(row);
+        }
+    }
+    std::sort(result.begin(), result.end(), [](const QVariant& a, const QVariant& b) {
+        return a.toMap().value("occurredAt").toDateTime() > b.toMap().value("occurredAt").toDateTime();
+    });
     return result;
 }
 
@@ -3670,6 +3731,131 @@ bool FinanceController::deleteBudget(const QString& id)
     return true;
 }
 
+qint64 FinanceController::exchangeUsdMinor(const QVariantMap& account) const
+{
+    long double total = 0;
+    for (const auto& value : account.value("holdings").toList()) {
+        const auto row = value.toMap();
+        if (!row.value("summary").toBool()) continue;
+        bool ok = false;
+        const double usd = row.value("usdValue").toString().toDouble(&ok);
+        if (ok && std::isfinite(usd)) total += usd * 100.0L;
+    }
+    if (!std::isfinite(total)) return 0;
+    return static_cast<qint64>(std::round(std::clamp(total,
+        static_cast<long double>(std::numeric_limits<qint64>::min()),
+        static_cast<long double>(std::numeric_limits<qint64>::max()))));
+}
+
+QVariantList FinanceController::cryptoExchangeHoldings() const
+{
+    QVariantList result;
+    for (const auto& value : cryptoExchanges_) {
+        const auto account = value.toMap();
+        if (!selectedCryptoWalletId_.isEmpty() && selectedCryptoWalletId_ != account.value("id").toString()) continue;
+        for (const auto& entry : account.value("holdings").toList()) {
+            auto row = entry.toMap(); row["accountName"] = account.value("name"); result.append(row);
+        }
+    }
+    return result;
+}
+
+QVariantMap FinanceController::saveCryptoConnection(const QVariantMap& values)
+{
+    const QString name = values.value("name").toString().trimmed();
+    const QString kind = values.value("kind").toString();
+    QString id = values.value("id").toString();
+    if (selectedAsset_ != AssetType::Crypto) return {{"ok", false}, {"error", tr("Сначала выберите актив «Крипта»")}};
+    if (name.isEmpty() || name.size() > 80) return {{"ok", false}, {"error", tr("Введите название счёта (до 80 символов)")}};
+    if (kind == "wallet") {
+        if (!id.isEmpty()) {
+            const auto found = std::find_if(cryptoWallets_.cbegin(), cryptoWallets_.cend(), [&id](const CryptoWallet& wallet) { return wallet.id() == id; });
+            if (found == cryptoWallets_.cend() || !repository_.setCryptoWalletName(id, name)) return {{"ok", false}, {"error", tr("Не удалось сохранить название кошелька")}};
+        } else {
+            // Keep the existing public-wallet validation and refresh path.
+            auto result = addCryptoWallet(values.value("symbol").toString(), values.value("address").toString());
+            if (!result.value("ok").toBool()) return result;
+            id = cryptoWallets_.constLast().id();
+            if (!repository_.setCryptoWalletName(id, name)) return {{"ok", false}, {"error", tr("Кошелёк добавлен, но название не сохранилось")}};
+        }
+        cryptoWalletNames_[id] = name; setSelectedCryptoWalletId(id); emit cryptoWalletsChanged(); return {{"ok", true}};
+    }
+    if (kind != "exchange") return {{"ok", false}, {"error", tr("Выберите кошелёк или биржу")}};
+    const QString key = values.value("apiKey").toString().trimmed();
+    const QString secret = values.value("apiSecret").toString().trimmed();
+    if (!id.isEmpty()) {
+        bool exists = false;
+        for (const auto& value : cryptoExchanges_) if (value.toMap().value("id").toString() == id) exists = true;
+        if (!exists) return {{"ok", false}, {"error", tr("Биржевой счёт не найден")}};
+        if (refreshingCryptoWalletIds_.contains(id)) return {{"ok", false}, {"error", tr("Дождитесь окончания обновления Bybit")}};
+    }
+    if (id.isEmpty() || !key.isEmpty() || !secret.isEmpty()) {
+        static const QRegularExpression allowed(QStringLiteral("^[A-Za-z0-9_-]{8,256}$"));
+        if (!allowed.match(key).hasMatch() || !allowed.match(secret).hasMatch()) return {{"ok", false}, {"error", tr("Введите ключ API и секретный ключ, созданные Bybit")}};
+    }
+    if (id.isEmpty()) id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (!repository_.saveCryptoExchange({{"id", id}, {"name", name}})) return {{"ok", false}, {"error", tr("Не удалось сохранить биржевой счёт")}};
+    cryptoExchanges_ = repository_.loadCryptoExchanges();
+    if (!key.isEmpty()) {
+        exchangeCredentials_[id] = {key, secret}; exchangeCredentialWarnings_.remove(id);
+        auto* watcher = new QFutureWatcher<bool>(this);
+        connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, id] {
+            const bool saved = watcher->result(); watcher->deleteLater();
+            bool exists = false;
+            for (const auto& value : cryptoExchanges_) if (value.toMap().value("id").toString() == id) exists = true;
+            if (!exists) { (void)QtConcurrent::run([id] { ExchangeCredentials::remove(id); }); return; }
+            if (!saved) { exchangeCredentialWarnings_[id] = tr("Ключ действует до закрытия приложения: системное хранилище недоступно. Для Linux установите libsecret и службу хранения паролей"); setCryptoLastError(exchangeCredentialWarnings_[id]); emit cryptoWalletsChanged(); }
+        });
+        watcher->setFuture(QtConcurrent::run([id, key, secret] { return ExchangeCredentials::save(id, key, secret); }));
+    }
+    selectedCryptoWalletId_ = id;
+    emit selectedCryptoWalletIdChanged(); emit cryptoWalletsChanged(); emit cryptoTransactionsChanged();
+    exchangeErrors_.remove(id); startExchangeRefresh(id);
+    return {{"ok", true}};
+}
+
+void FinanceController::startExchangeRefresh(const QString& id)
+{
+    if (refreshingCryptoWalletIds_.contains(id) || loadingExchangeCredentials_.contains(id)) return;
+    auto account = std::find_if(cryptoExchanges_.cbegin(), cryptoExchanges_.cend(), [&id](const QVariant& value) { return value.toMap().value("id").toString() == id; });
+    if (account == cryptoExchanges_.cend()) return;
+    if (!exchangeCredentials_.contains(id)) {
+        loadingExchangeCredentials_.insert(id);
+        auto* watcher = new QFutureWatcher<QPair<QString, QString>>(this);
+        connect(watcher, &QFutureWatcher<QPair<QString, QString>>::finished, this, [this, watcher, id] {
+            const auto credentials = watcher->result(); watcher->deleteLater(); loadingExchangeCredentials_.remove(id);
+            bool exists = false;
+            for (const auto& value : cryptoExchanges_) if (value.toMap().value("id").toString() == id) exists = true;
+            if (!exists) return;
+            if (exchangeCredentials_.contains(id)) { startExchangeRefresh(id); return; }
+            if (credentials.first.isEmpty() || credentials.second.isEmpty()) {
+                exchangeErrors_[id] = tr("Введите ключи API через «Редактировать» в меню счёта"); setCryptoLastError(exchangeErrors_[id]); emit cryptoWalletsChanged(); return;
+            }
+            if (!exchangeCredentials_.contains(id)) exchangeCredentials_[id] = credentials;
+            startExchangeRefresh(id);
+        });
+        watcher->setFuture(QtConcurrent::run([id] { return ExchangeCredentials::load(id); }));
+        return;
+    }
+    const qint64 fetched = account->toMap().value("fetchedAtMs").toLongLong();
+    const qint64 from = fetched > 0 ? fetched - 2LL * 86400000 : QDateTime::currentMSecsSinceEpoch() - 30LL * 86400000;
+    const auto credentials = exchangeCredentials_.value(id);
+    if (bybitProvider_.refresh(id, credentials.first, credentials.second, from)) {
+        ++pendingCryptoRequests_; beginCryptoWalletRequest(id);
+        if (!cryptoRefreshing_) { cryptoRefreshing_ = true; emit cryptoRefreshingChanged(); }
+        emit cryptoWalletsChanged();
+    }
+}
+
+void FinanceController::refreshCryptoExchanges(bool force)
+{
+    for (const auto& value : cryptoExchanges_) {
+        const auto account = value.toMap(); const QString id = account.value("id").toString();
+        const qint64 age = QDateTime::currentMSecsSinceEpoch() - account.value("fetchedAtMs").toLongLong();
+        if (force || (age >= 5LL * 60000 && !exchangeErrors_.contains(id))) startExchangeRefresh(id);
+    }
+}
+
 QVariantMap FinanceController::addCryptoWallet(
     const QString& symbol,
     const QString& address
@@ -3753,6 +3939,20 @@ QVariantMap FinanceController::addCryptoWallet(
 
 bool FinanceController::deleteCryptoWallet(const QString& id)
 {
+    for (const auto& value : cryptoExchanges_) {
+        if (value.toMap().value("id").toString() != id) continue;
+        if (!repository_.deleteCryptoExchange(id)) return false;
+        if (refreshingCryptoWalletIds_.contains(id)) { bybitProvider_.cancel(id); finishCryptoWalletRequest(id); finishCryptoRequest(); }
+        exchangeCredentials_.remove(id); exchangeErrors_.remove(id); exchangeCredentialWarnings_.remove(id);
+        (void)QtConcurrent::run([id] { ExchangeCredentials::remove(id); });
+        cryptoExchanges_ = repository_.loadCryptoExchanges();
+        if (selectedCryptoWalletId_ == id) {
+            selectedCryptoWalletId_ = cryptoWallets_.isEmpty() ? (cryptoExchanges_.isEmpty() ? QString() : cryptoExchanges_.constFirst().toMap().value("id").toString()) : cryptoWallets_.constFirst().id();
+            emit selectedCryptoWalletIdChanged();
+        }
+        emit cryptoWalletsChanged(); emit cryptoTransactionsChanged(); emit balanceChanged(); return true;
+    }
+
     int walletIndex = -1;
     for (int index = 0; index < cryptoWallets_.size(); ++index) {
         if (cryptoWallets_[index].id() == id) {
@@ -3780,9 +3980,10 @@ bool FinanceController::deleteCryptoWallet(const QString& id)
             }),
         cryptoTransactions_.end());
     cryptoWallets_.removeAt(walletIndex);
+    cryptoWalletNames_.remove(id);
     if (selectedCryptoWalletId_ == id) {
         selectedCryptoWalletId_ = cryptoWallets_.isEmpty()
-            ? QString()
+            ? (cryptoExchanges_.isEmpty() ? QString() : cryptoExchanges_.constFirst().toMap().value("id").toString())
             : cryptoWallets_.constFirst().id();
         emit selectedCryptoWalletIdChanged();
     }
@@ -3797,7 +3998,9 @@ bool FinanceController::deleteCryptoWallet(const QString& id)
 
 void FinanceController::refreshCryptoWallets()
 {
-    if (cryptoWallets_.isEmpty() || pendingCryptoRequests_ > 0) {
+    setCryptoLastError(QString());
+    refreshCryptoExchanges();
+    if (cryptoWallets_.isEmpty()) {
         return;
     }
 
@@ -4712,6 +4915,7 @@ bool FinanceController::deleteHistoryRows(const QVariantList& rows)
     transactions_ = repository_.loadTransactions();
     investmentPositions_ = repository_.loadInvestmentPositions();
     cryptoTransactions_ = repository_.loadCryptoTransactions();
+    cryptoExchanges_ = repository_.loadCryptoExchanges();
     summary_ = repository_.loadSummary();
     emit transactionsChanged();
     emit investmentPositionsChanged();
@@ -4939,6 +5143,8 @@ qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
             return std::numeric_limits<qint64>::max();
         }
         total += trackedWallets;
+        for (const auto& value : cryptoExchanges_) total = saturatedCapitalAdd(total,
+            currencyConverter_.convert(Money(exchangeUsdMinor(value.toMap()), Currency::USD), appCurrency_).minorUnits());
     }
     return total;
 }
@@ -5842,6 +6048,10 @@ QVariantList FinanceController::goalSources() const
             {QStringLiteral("id"), QStringLiteral("wallet:") + wallet.id()},
             {QStringLiteral("name"), wallet.symbol() + QStringLiteral(" · ") + wallet.address()}});
     }
+    for (const auto& value : cryptoExchanges_) {
+        const auto account = value.toMap();
+        result.append(QVariantMap{{"id", "exchange:" + account.value("id").toString()}, {"name", account.value("name").toString() + " · Bybit"}});
+    }
     return result;
 }
 
@@ -5891,6 +6101,10 @@ QVector<GoalAssetValue> FinanceController::goalAssetValues() const
         }
         values.append({QStringLiteral("wallet:") + wallet.id(),
                        Money(static_cast<qint64>(usdMinor), Currency::USD), available});
+    }
+    for (const auto& value : cryptoExchanges_) {
+        const auto account = value.toMap();
+        values.append({"exchange:" + account.value("id").toString(), Money(exchangeUsdMinor(account), Currency::USD), account.value("fetchedAtMs").toLongLong() > 0});
     }
     return values;
 }
@@ -5983,7 +6197,7 @@ bool FinanceController::deleteFinancialGoal(const QString& id)
 void FinanceController::captureCapitalSnapshot(const bool overwriteToday)
 {
     if (!repository_.isOpen()) return;
-    if (accounts_.isEmpty() && cryptoWallets_.isEmpty()) return;
+    if (accounts_.isEmpty() && cryptoWallets_.isEmpty() && cryptoExchanges_.isEmpty()) return;
     const QDate today = QDate::currentDate();
     if (!overwriteToday && lastCapitalSnapshotDate_ == today) return;
     qint64 total = 0;

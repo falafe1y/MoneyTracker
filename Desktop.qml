@@ -136,8 +136,16 @@ ApplicationWindow {
         const rows = financeController.cryptoWallets;
         for (let i = 0; i < rows.length; ++i)
             if (rows[i].id === financeController.selectedCryptoWalletId)
-                return rows[i].symbol;
+                return rows[i].isExchange ? rows[i].name : rows[i].symbol;
         return "";
+    }
+
+    function exchangeSection(section) {
+        const names = { FundingAccount: qsTr("Финансирование"), UnifiedTradingAccount: qsTr("Торговый счёт"),
+            Earn: qsTr("Накопления"), TradingBot: qsTr("Торговые боты"), CopyTrading: qsTr("Копирование сделок"),
+            CryptoLoans: qsTr("Криптозаймы"), CryptoLoans_legacy: qsTr("Криптозаймы"),
+            Launchpool: qsTr("Пул вознаграждений") };
+        return names[section] || section;
     }
 
     function selectedProject() {
@@ -196,6 +204,7 @@ ApplicationWindow {
     }
 
     function accountPrimaryAmount(row) {
+        if (row && row.isExchange) return row.hasSnapshot ? root.money(row.valueMinor, row.currency, false) : row.refreshing ? qsTr("Загрузка…") : qsTr("Нет данных");
         if (row && row.isCrypto)
             return row.balanceText + " " + row.symbol;
         if (row && row.isCreditCard)
@@ -206,6 +215,7 @@ ApplicationWindow {
     }
 
     function accountCompactAmount(row) {
+        if (row && row.isExchange) return row.hasSnapshot ? root.money(row.valueMinor, row.currency, false) : row.refreshing ? qsTr("Загрузка…") : qsTr("Нет данных");
         if (row && row.isCrypto)
             return row.balanceText + " " + row.symbol;
         if (row && row.isCreditCard)
@@ -236,6 +246,7 @@ ApplicationWindow {
             return "";
         if (row.refreshing)
             return qsTr("Обновление баланса…");
+        if (row.connectionError) return row.connectionError;
         if (!row.hasSnapshot)
             return qsTr("Баланс ещё не обновлён");
         const updated = qsTr("Обновлено: %1").arg(
@@ -1639,7 +1650,7 @@ ApplicationWindow {
                                         {
                                             id: "",
                                             name: financeController.selectedAsset === "crypto"
-                                                  ? qsTr("Все кошельки")
+                                                  ? qsTr("Все счета")
                                                   : qsTr("Все счета"),
                                             balanceMinor: root.assetAmount(financeController.selectedAsset),
                                             currency: financeController.appCurrency
@@ -1885,7 +1896,15 @@ ApplicationWindow {
                     addInvestmentPositionAction:
                         financeController.selectedAsset === "investment"
                 }
+                Text {
+                    Layout.fillWidth: true
+                    visible: financeController.selectedAsset === "crypto" && financeController.cryptoLastError.length > 0
+                    text: financeController.cryptoLastError
+                    color: root.red; font.pixelSize: 14; wrapMode: Text.WordWrap
+                }
+                ExchangeBalancesBlock { Layout.fillWidth: true }
                 DashboardCryptoHistoryBlock {
+                    viewportFlickable: overviewScroll.contentItem
                     visible: financeController.selectedAsset === "crypto"
                     Layout.fillWidth: true
                     expandToContent: true
@@ -2011,11 +2030,70 @@ ApplicationWindow {
         }
     }
 
+    component ExchangeBalancesBlock: HistoryPanel {
+        id: exchangeBalances
+        property var rows: {
+            const accounts = financeController.cryptoWallets;
+            const selected = financeController.selectedCryptoWalletId;
+            return financeController.cryptoExchangeHoldings();
+        }
+        visible: financeController.selectedAsset === "crypto" && rows.length > 0
+        implicitHeight: 64 + Math.min(4, rows.length) * 40
+        ColumnLayout {
+            anchors.fill: parent; anchors.margins: 1; spacing: 0; clip: true
+            RowLayout {
+                Layout.fillWidth: true; Layout.preferredHeight: 64
+                Layout.leftMargin: 24; Layout.rightMargin: 24
+                Text { text: qsTr("Остатки Bybit"); color: root.accent; font.pixelSize: 18; font.weight: Font.Bold }
+                Item { Layout.fillWidth: true }
+                Text { text: qsTr("Стоимость по данным биржи"); color: root.muted; font.pixelSize: 14 }
+            }
+            ListView {
+                id: exchangeBalancesList
+                Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                model: exchangeBalances.rows
+                MiddleScrollArea { scroller: browserScroll; scrollTarget: exchangeBalancesList }
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
+                delegate: Rectangle {
+                    required property var modelData
+                    width: ListView.view.width; height: 40
+                    color: modelData.summary ? root.tableHeader : root.panel
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 24; anchors.rightMargin: 24
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.accountName + " · " + root.exchangeSection(modelData.section)
+                                + (modelData.category ? " · " + modelData.category : "")
+                            color: root.accent; font.pixelSize: 14; elide: Text.ElideRight
+                            font.weight: modelData.summary ? Font.DemiBold : Font.Normal
+                        }
+                        Text {
+                            text: modelData.summary ? Number(modelData.usdValue).toLocaleString(root.uiLocale(), "f", 2) + " $"
+                                : String(modelData.amountText).replace(".", financeController.uiLanguage === "en" ? "." : ",") + " " + modelData.coin
+                            color: root.accent; font.pixelSize: 14; font.weight: Font.DemiBold
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     component DashboardCryptoHistoryBlock: HistoryPanel {
         id: dashboardCryptoHistory
 
         property var rows: financeController.cryptoTransactions
         property bool expandToContent: false
+        property var viewportFlickable: null
+        function bodyOffsetInScrollContent() {
+            let offset = 0; let item = cryptoHistoryBody;
+            const target = viewportFlickable ? viewportFlickable.contentItem : null;
+            while (item && item !== target) { offset += item.y; item = item.parent; }
+            return offset;
+        }
+        readonly property int firstVisibleRow: viewportFlickable
+            ? Math.min(rows.length, Math.max(0, Math.floor((viewportFlickable.contentY - bodyOffsetInScrollContent()) / 48) - 3)) : 0
+        readonly property int lastVisibleRow: viewportFlickable
+            ? Math.max(firstVisibleRow, Math.min(rows.length, Math.ceil((viewportFlickable.contentY + viewportFlickable.height - bodyOffsetInScrollContent()) / 48) + 3)) : rows.length
         HistorySelection { id: cryptoSelection; rows: dashboardCryptoHistory.rows }
         onVisibleChanged: if (!visible) cryptoSelection.clear()
 
@@ -2094,14 +2172,14 @@ ApplicationWindow {
                         Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
                     }
                     Text {
-                        text: qsTr("Адрес")
+                        text: qsTr("Описание / адрес")
                         color: root.muted
                         font.pixelSize: 14
                         font.weight: Font.Bold
                         Layout.fillWidth: true
                     }
                     Text {
-                        text: qsTr("Хеш")
+                        text: qsTr("Счёт / хеш")
                         color: root.muted
                         font.pixelSize: 14
                         font.weight: Font.Bold
@@ -2127,10 +2205,11 @@ ApplicationWindow {
                 )
 
                 Column {
-                    anchors.fill: parent
+                    width: parent.width
+                    y: dashboardCryptoHistory.firstVisibleRow * 48
 
                     Repeater {
-                        model: dashboardCryptoHistory.rows
+                        model: dashboardCryptoHistory.rows.slice(dashboardCryptoHistory.firstVisibleRow, dashboardCryptoHistory.lastVisibleRow)
 
                         delegate: Rectangle {
                             required property int index
@@ -2153,7 +2232,7 @@ ApplicationWindow {
                             HistoryRowSelectionArea {
                                 selection: cryptoSelection
                                 rowData: modelData
-                                rowIndex: index
+                                rowIndex: dashboardCryptoHistory.firstVisibleRow + index
                                 body: cryptoHistoryBody
                                 z: 2
                             }
@@ -2174,10 +2253,10 @@ ApplicationWindow {
                                 Text {
                                     text: modelData.direction === "in"
                                           ? qsTr("Получено")
-                                          : qsTr("Отправлено")
+                                          : modelData.direction === "neutral" ? qsTr("Без изменения") : qsTr("Отправлено")
                                     color: modelData.direction === "in"
                                          ? root.income
-                                         : root.red
+                                         : modelData.direction === "neutral" ? root.muted : root.red
                                     font.pixelSize: 14
                                     font.weight: Font.Normal
                                     Layout.preferredWidth: dashboardCryptoHistory.directionColumnWidth
@@ -2190,7 +2269,7 @@ ApplicationWindow {
                                     elide: Text.ElideMiddle
                                 }
                                 Text {
-                                    text: modelData.transactionId
+                                    text: modelData.isExchange ? root.exchangeSection(modelData.section) : modelData.transactionId
                                     color: root.accent
                                     font.pixelSize: 14
                                     Layout.preferredWidth: dashboardCryptoHistory.hashColumnWidth
@@ -2201,11 +2280,11 @@ ApplicationWindow {
                                         financeController.uiLanguage === "en"
                                         ? modelData.amountText
                                         : modelData.amountText.replace(".", ",")
-                                    text: (modelData.direction === "in" ? "+" : "−")
+                                    text: (modelData.direction === "in" ? "+" : modelData.direction === "out" ? "−" : "")
                                           + localizedAmount + " " + modelData.symbol
                                     color: modelData.direction === "in"
                                          ? root.income
-                                         : root.red
+                                         : modelData.direction === "neutral" ? root.muted : root.red
                                     font.pixelSize: 14
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: dashboardCryptoHistory.amountColumnWidth
@@ -3586,6 +3665,7 @@ ApplicationWindow {
                     );
                 }
             }
+            ExchangeBalancesBlock { Layout.fillWidth: true }
             Panel {
                 id: cryptoHistoryPanel
                 visible: financeController.selectedAsset === "crypto"
@@ -3645,13 +3725,13 @@ ApplicationWindow {
                                 Layout.preferredWidth: 105
                             }
                             Text {
-                                text: qsTr("Адрес")
+                                text: qsTr("Описание / адрес")
                                 color: root.muted
                                 font.pixelSize: 14
                                 Layout.fillWidth: true
                             }
                             Text {
-                                text: qsTr("Хеш")
+                                text: qsTr("Счёт / хеш")
                                 color: root.muted
                                 font.pixelSize: 14
                                 Layout.preferredWidth: 175
@@ -3710,10 +3790,10 @@ ApplicationWindow {
                                     Text {
                                         text: modelData.direction === "in"
                                               ? qsTr("Получено")
-                                              : qsTr("Отправлено")
+                                              : modelData.direction === "neutral" ? qsTr("Без изменения") : qsTr("Отправлено")
                                         color: modelData.direction === "in"
                                              ? root.income
-                                             : root.red
+                                             : modelData.direction === "neutral" ? root.muted : root.red
                                         font.pixelSize: 14
                                         font.weight: Font.Medium
                                         Layout.preferredWidth: 105
@@ -3726,7 +3806,7 @@ ApplicationWindow {
                                         elide: Text.ElideMiddle
                                     }
                                     Text {
-                                        text: modelData.transactionId
+                                        text: modelData.isExchange ? root.exchangeSection(modelData.section) : modelData.transactionId
                                         color: root.muted
                                         font.pixelSize: 14
                                         Layout.preferredWidth: 175
@@ -3737,11 +3817,11 @@ ApplicationWindow {
                                             financeController.uiLanguage === "en"
                                             ? modelData.amountText
                                             : modelData.amountText.replace(".", ",")
-                                        text: (modelData.direction === "in" ? "+" : "−")
+                                        text: (modelData.direction === "in" ? "+" : modelData.direction === "out" ? "−" : "")
                                               + localizedAmount + " " + modelData.symbol
                                         color: modelData.direction === "in"
                                              ? root.income
-                                             : root.red
+                                             : modelData.direction === "neutral" ? root.muted : root.red
                                         font.pixelSize: 14
                                         font.weight: Font.DemiBold
                                         Layout.preferredWidth: 135
@@ -4877,110 +4957,138 @@ ApplicationWindow {
 
     Dialog {
         id: cryptoWalletDialog
-        width: 500
+        objectName: "cryptoConnectionDialog"
+        width: Math.min(520, root.width - 48)
         modal: true
         anchors.centerIn: parent
         padding: 24
+        property string editingId: ""
 
         function openForNewWallet() {
-            cryptoTypeBox.currentIndex = 0;
-            cryptoAddressField.clear();
-            cryptoWalletError.text = "";
-            open();
-            Qt.callLater(function() { cryptoAddressField.forceActiveFocus(); });
+            editingId = "";
+            cryptoNameField.clear(); cryptoSourceBox.currentIndex = 0;
+            cryptoTypeBox.currentIndex = 0; cryptoAddressField.clear();
+            cryptoApiKeyField.clear(); cryptoApiSecretField.clear(); cryptoWalletError.text = "";
+            open(); Qt.callLater(function() { cryptoNameField.forceActiveFocus(); });
         }
-
+        function openForEdit(row) {
+            editingId = row.id; cryptoNameField.text = row.name;
+            cryptoSourceBox.currentIndex = row.isExchange ? 1 : 0;
+            cryptoTypeBox.currentIndex = row.symbol === "BTC" ? 1 : row.symbol === "ETH" ? 2 : 0;
+            cryptoAddressField.text = row.address || "";
+            cryptoApiKeyField.clear(); cryptoApiSecretField.clear(); cryptoWalletError.text = "";
+            open(); Qt.callLater(function() { cryptoNameField.forceActiveFocus(); });
+        }
         function submit() {
-            const result = financeController.addCryptoWallet(
-                cryptoTypeBox.model[cryptoTypeBox.currentIndex].value,
-                cryptoAddressField.text
-            );
-            if (result.ok)
-                close();
-            else
-                cryptoWalletError.text = result.error || qsTr("Не удалось добавить кошелёк");
+            const result = financeController.saveCryptoConnection({
+                id: editingId, name: cryptoNameField.text,
+                kind: cryptoSourceBox.currentIndex === 0 ? "wallet" : "exchange",
+                symbol: cryptoTypeBox.model[cryptoTypeBox.currentIndex].value,
+                address: cryptoAddressField.text,
+                apiKey: cryptoApiKeyField.text, apiSecret: cryptoApiSecretField.text
+            });
+            if (result.ok) close();
+            else cryptoWalletError.text = result.error || qsTr("Не удалось сохранить счёт");
         }
-
+        onClosed: { cryptoApiKeyField.clear(); cryptoApiSecretField.clear(); }
         Shortcut {
             sequences: ["Return", "Enter"]
             context: Qt.ApplicationShortcut
-            enabled: cryptoWalletDialog.visible
-                  && !cryptoTypeBox.activeFocus
-                  && !cryptoTypeBox.popup.visible
-                  && !cryptoCancelButton.activeFocus
+            enabled: cryptoWalletDialog.visible && !cryptoTypeBox.popup.visible
+                  && !cryptoSourceBox.popup.visible && !cryptoCancelButton.activeFocus
                   && !cryptoSubmitButton.activeFocus
             onActivated: cryptoWalletDialog.submit()
         }
-
         background: Rectangle {
             SurfaceShadow { }
-
-            color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            color: root.panel; radius: 16; border.width: 1; border.color: root.line
         }
-
         contentItem: ColumnLayout {
-            spacing: 14
-
+            spacing: 16
             Text {
-                text: qsTr("Добавить криптовалюту")
-                color: root.accent
-                font.pixelSize: 21
-                font.weight: Font.Bold
+                text: cryptoWalletDialog.editingId ? qsTr("Редактировать криптовалюту") : qsTr("Добавить криптовалюту")
+                color: root.accent; font.pixelSize: 21; font.weight: Font.Bold
+            }
+            AppTextField {
+                id: cryptoNameField
+                objectName: "cryptoNameField"
+                Layout.fillWidth: true
+                placeholderText: qsTr("Название счёта")
+                maximumLength: 80
+            }
+            AppComboBox {
+                id: cryptoSourceBox
+                objectName: "cryptoSourceBox"
+                Layout.fillWidth: true
+                model: [qsTr("Кошелёк"), qsTr("Биржа")]
+                enabled: !cryptoWalletDialog.editingId
+                onActivated: cryptoWalletError.text = ""
             }
             AppComboBox {
                 id: cryptoTypeBox
                 Layout.fillWidth: true
-                model: [
-                    { label: "USDT · TRC-20", value: "USDT" },
-                    { label: "BTC · Bitcoin", value: "BTC" },
-                    { label: "ETH · Ethereum", value: "ETH" }
-                ]
+                visible: cryptoSourceBox.currentIndex === 0
+                enabled: !cryptoWalletDialog.editingId
+                model: [{ label: "USDT · TRC-20", value: "USDT" },
+                        { label: "BTC · Bitcoin", value: "BTC" },
+                        { label: "ETH · Ethereum", value: "ETH" }]
                 textRole: "label"
-                onActivated: {
-                    cryptoAddressField.clear();
-                    cryptoWalletError.text = "";
-                    cryptoAddressField.forceActiveFocus();
-                }
+                onActivated: { cryptoAddressField.clear(); cryptoWalletError.text = ""; }
             }
             AppTextField {
                 id: cryptoAddressField
                 Layout.fillWidth: true
-                placeholderText: cryptoTypeBox.currentIndex === 0
-                    ? qsTr("Публичный адрес TRON (T…)")
-                    : cryptoTypeBox.currentIndex === 1
-                        ? qsTr("Публичный адрес Bitcoin (1…, 3… или bc1…)")
-                        : qsTr("Публичный адрес Ethereum (0x…)")
+                visible: cryptoSourceBox.currentIndex === 0
+                enabled: !cryptoWalletDialog.editingId
+                placeholderText: cryptoTypeBox.currentIndex === 0 ? qsTr("Публичный адрес TRON (T…)")
+                    : cryptoTypeBox.currentIndex === 1 ? qsTr("Публичный адрес Bitcoin (1…, 3… или bc1…)")
+                    : qsTr("Публичный адрес Ethereum (0x…)")
                 maximumLength: 90
+            }
+            AppComboBox {
+                Layout.fillWidth: true
+                visible: cryptoSourceBox.currentIndex === 1
+                model: ["Bybit"]
+            }
+            AppTextField {
+                id: cryptoApiKeyField
+                objectName: "cryptoApiKeyField"
+                Layout.fillWidth: true
+                visible: cryptoSourceBox.currentIndex === 1
+                placeholderText: qsTr("Ключ API")
+                maximumLength: 256
+                echoMode: TextInput.Password
+            }
+            AppTextField {
+                id: cryptoApiSecretField
+                objectName: "cryptoApiSecretField"
+                Layout.fillWidth: true
+                visible: cryptoSourceBox.currentIndex === 1
+                placeholderText: qsTr("Секретный ключ API")
+                maximumLength: 256
+                echoMode: TextInput.Password
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Вводите только публичный адрес. Никогда не указывайте seed-фразу или приватный ключ.")
-                color: root.muted
-                font.pixelSize: 14
-                wrapMode: Text.WordWrap
+                text: cryptoSourceBox.currentIndex === 0
+                    ? qsTr("Введите публичный адрес кошелька.")
+                    : (cryptoWalletDialog.editingId ? qsTr("Оставьте оба поля ключей пустыми, чтобы сохранить подключение.\n") : "")
+                      + qsTr("Bybit: основной сайт, ключ с доступом только на чтение. История торгового счёта и финансирования за последние 30 дней. Ключи сохраняются в защищённом хранилище системы; если оно недоступно — до закрытия приложения.")
+                color: root.muted; font.pixelSize: 14; wrapMode: Text.WordWrap
             }
             Text {
                 id: cryptoWalletError
                 Layout.fillWidth: true
-                color: root.red
-                font.pixelSize: 14
-                wrapMode: Text.WordWrap
+                visible: text.length > 0
+                color: root.red; font.pixelSize: 14; wrapMode: Text.WordWrap
             }
             RowLayout {
                 Item { Layout.fillWidth: true }
-                SoftButton {
-                    id: cryptoCancelButton
-                    text: qsTr("Отмена")
-                    onClicked: cryptoWalletDialog.close()
-                }
+                SoftButton { id: cryptoCancelButton; text: qsTr("Отмена"); onClicked: cryptoWalletDialog.close() }
                 SoftButton {
                     id: cryptoSubmitButton
-                    text: qsTr("Добавить")
-                    highlighted: true
-                    onClicked: cryptoWalletDialog.submit()
+                    text: cryptoWalletDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
+                    highlighted: true; onClicked: cryptoWalletDialog.submit()
                 }
             }
         }
@@ -5624,18 +5732,18 @@ ApplicationWindow {
             width: accountContextMenu.availableWidth
             text: qsTr("Редактировать")
             visible: accountContextMenu.accountData !== null
-                  && !accountContextMenu.accountData.isCrypto
             enabled: visible
             onTriggered: {
-                if (accountContextMenu.accountData)
-                    accountDialog.openForEdit(accountContextMenu.accountData);
+                if (accountContextMenu.accountData) {
+                    if (accountContextMenu.accountData.isCrypto) cryptoWalletDialog.openForEdit(accountContextMenu.accountData);
+                    else accountDialog.openForEdit(accountContextMenu.accountData);
+                }
             }
         }
 
         MenuSeparator {
             width: accountContextMenu.availableWidth
             visible: accountContextMenu.accountData !== null
-                  && !accountContextMenu.accountData.isCrypto
             topPadding: 4
             bottomPadding: 4
             contentItem: Rectangle {

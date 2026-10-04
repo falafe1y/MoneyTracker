@@ -102,6 +102,13 @@ public:
     QVector<Category> loadCategories();
     QVector<Account> loadAccounts();
     QVector<CryptoWallet> loadCryptoWallets();
+    QString cryptoWalletName(const QString& id) const;
+    bool setCryptoWalletName(const QString& id, const QString& name);
+    QVariantList loadCryptoExchanges() const;
+    bool saveCryptoExchange(const QVariantMap& account);
+    bool saveCryptoExchangeSnapshot(const QString& id, const QVariantList& holdings,
+                                   const QVariantList& operations, qint64 fetchedAtMs);
+    bool deleteCryptoExchange(const QString& id);
     QVector<CryptoTransaction> loadCryptoTransactions();
     QVector<InvestmentInstrument> loadInvestmentInstruments();
     QVector<InvestmentPosition> loadInvestmentPositions();
