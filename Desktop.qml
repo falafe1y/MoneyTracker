@@ -1733,9 +1733,14 @@ ApplicationWindow {
                                              ? financeController.cryptoWallets
                                              : financeController.accounts)
                                     delegate: Rectangle {
-                                        HardShadow { depth: 4 }
-
+                                        id: overviewAccountCard
                                         required property var modelData
+                                        readonly property bool selected: root.overviewAccountSelected(modelData)
+                                        readonly property int pressShift: selected
+                                            || (overviewAccountMouseArea.pressedButtons & Qt.LeftButton) !== 0 ? 2 : 0
+                                        transform: Translate { y: overviewAccountCard.pressShift }
+                                        HardShadow { depth: 4 - overviewAccountCard.pressShift }
+
                                         width: dashboard.wideOverview
                                                ? Math.min(236, Math.max(192, (ListView.view.width - 2 * root.cardGap) / 3))
                                                : Math.min(252, Math.max(192, (ListView.view.width - 4 * root.cardGap) / 5))
