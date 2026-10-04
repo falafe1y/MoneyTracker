@@ -257,6 +257,9 @@ Dialog {
             Layout.margins: 20
             spacing: 12
             FormButton {
+                Layout.preferredWidth: 40
+                Layout.minimumWidth: 40
+                Layout.maximumWidth: 40
                 visible: dialog.pageIndex === 1
                 text: "‹"
                 onClicked: dialog.pageIndex = 0
@@ -433,7 +436,10 @@ Dialog {
                             Text { text: qsTr("Сумма"); color: dialog.mutedColor }
                             FormField {
                                 id: amountField
+                                implicitWidth: 160
+                                Layout.minimumWidth: 0
                                 Layout.fillWidth: true
+                                autoScroll: true
                                 placeholderText: qsTr("0,00")
                                 inputMethodHints: Qt.ImhFormattedNumbersOnly
                                 validator: DoubleValidator {
