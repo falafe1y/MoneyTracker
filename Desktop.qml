@@ -743,9 +743,10 @@ ApplicationWindow {
     component Panel: Rectangle {
         id: panelRoot
         property bool neo: false
+        property int shadowOffset: root.shadowDepth
 
         SurfaceShadow { visible: !panelRoot.neo }
-        HardShadow { visible: panelRoot.neo; depth: root.shadowDepth }
+        HardShadow { visible: panelRoot.neo; depth: panelRoot.shadowOffset }
 
         color: root.panel
         radius: 16
@@ -1615,8 +1616,12 @@ ApplicationWindow {
                             Repeater {
                                 model: root.assets
                                 delegate: Panel {
+                                    id: assetCard
                                     required property var modelData
                                     readonly property bool selected: financeController.selectedAsset === modelData.code
+                                    readonly property int pressShift: selected || assetCardMouseArea.pressed ? 2 : 0
+                                    transform: Translate { y: assetCard.pressShift }
+                                    shadowOffset: root.shadowDepth - pressShift
                                     Layout.fillWidth: true
                                     Layout.preferredWidth: (overviewLeft.width - 4 * root.cardGap - root.outlineWidth) / 4
                                     Layout.minimumWidth: 160
@@ -1627,18 +1632,18 @@ ApplicationWindow {
                                     Column {
                                         anchors.fill: parent
                                         anchors.margins: root.panelPadding
-                                        spacing: selected ? 12 : 16
+                                        spacing: 16
                                         Text {
                                             text: modelData.title
                                             color: parent.parent.selected ? root.panel : root.muted
-                                            font.pixelSize: parent.parent.selected ? 20 : 16
-                                            font.weight: parent.parent.selected ? Font.ExtraBold : Font.Bold
+                                            font.pixelSize: 16
+                                            font.weight: Font.Bold
                                         }
                                         Text {
                                             width: parent.width
                                             text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
                                             color: parent.parent.selected ? root.panel : root.accent
-                                            font.pixelSize: parent.parent.selected ? 30 : 28
+                                            font.pixelSize: 28
                                             font.weight: Font.Bold
                                             fontSizeMode: Text.Fit
                                             minimumPixelSize: 16
@@ -1646,6 +1651,7 @@ ApplicationWindow {
                                         }
                                     }
                                     MouseArea {
+                                        id: assetCardMouseArea
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: financeController.selectedAsset = modelData.code
