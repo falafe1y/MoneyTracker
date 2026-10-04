@@ -34,6 +34,9 @@ ColumnLayout {
         goalContextMenu.open();
     }
     component Action: StyledButton {
+        neo: true
+        cornerRadius: 8
+        font.weight: Font.DemiBold
         leftPadding: 14; rightPadding: 14
         appTextColor: theme.accent
         appMutedColor: theme.muted
@@ -54,17 +57,17 @@ ColumnLayout {
         rightPadding: 12
         contentItem: Text {
             text: menuItem.text
-            color: menuItem.destructive ? theme.red : theme.accent
+            color: !menuItem.enabled ? theme.muted
+                 : menuItem.highlighted || menuItem.hovered ? theme.white
+                 : menuItem.destructive ? theme.red : theme.accent
             font.pixelSize: 14
-            font.weight: Font.Medium
+            font.weight: Font.DemiBold
             verticalAlignment: Text.AlignVCenter
         }
         background: Rectangle {
-            SurfaceShadow { }
-
             radius: 8
             color: menuItem.highlighted || menuItem.hovered
-                 ? (menuItem.destructive ? theme.expensePanel : theme.controlHovered)
+                 ? (menuItem.destructive ? theme.red : theme.accent)
                  : "transparent"
         }
     }
@@ -81,14 +84,14 @@ ColumnLayout {
         clip: true; spacing: 14
         model: controller.financialGoals
         delegate: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: theme.accent }
 
             id: card
             required property var modelData
             width: ListView.view.width
             height: cardContent.implicitHeight + 36
-            radius: 16; color: theme.panel; border.color: theme.line
-            border.width: activeFocus ? 2 : 1
+            radius: 16; color: theme.panel; border.color: theme.accent
+            border.width: activeFocus ? 3 : 2
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
             Accessible.name: modelData.name
@@ -122,10 +125,11 @@ ColumnLayout {
                         + page.money(card.modelData.currentMinor, card.modelData.currency)
                         + " / " + page.money(card.modelData.targetMinor, card.modelData.currency) }
                 Rectangle {
-                    Layout.fillWidth: true; height: 9; radius: 5; color: theme.line
+                    Layout.fillWidth: true; height: 9; radius: 5; color: theme.soft
+                    border.width: 1; border.color: theme.accent
                     Rectangle { height: parent.height; radius: parent.radius
                         width: parent.width * Math.min(1, Math.max(0, card.modelData.ratio))
-                        color: !card.modelData.complete ? theme.muted : card.modelData.achieved ? theme.income : theme.accentSoft }
+                        color: !card.modelData.complete ? theme.muted : card.modelData.achieved ? theme.income : theme.accent }
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -209,12 +213,12 @@ ColumnLayout {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 4; shadowColor: theme.accent }
 
             color: theme.panel
             radius: 12
-            border.width: 1
-            border.color: theme.line
+            border.width: 2
+            border.color: theme.accent
         }
     }
     FinancialGoalDialog { id: editor; controller: page.controller; theme: page.theme; parent: Overlay.overlay }
@@ -227,8 +231,12 @@ ColumnLayout {
         width: Math.min(470, parent ? parent.width - 40 : 470)
         anchors.centerIn: parent; modal: true; padding: 24
         background: Rectangle {
-            SurfaceShadow { }
- radius: 18; color: theme.panel; border.color: theme.line }
+            HardShadow { depth: 6; shadowColor: theme.accent }
+            radius: 16
+            color: theme.panel
+            border.width: 2
+            border.color: theme.accent
+        }
         contentItem: ColumnLayout {
             spacing: 14
             Text { text: qsTr("Удалить цель?"); color: theme.accent; font.pixelSize: 21; font.bold: true }

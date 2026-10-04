@@ -86,27 +86,34 @@ Dialog {
         else errorText = result.error;
     }
     background: Rectangle {
-        SurfaceShadow { }
- radius: 18; color: theme.panel; border.color: theme.line }
+        HardShadow { depth: 6; shadowColor: theme.accent }
+        radius: 16
+        color: theme.panel
+        border.width: 2
+        border.color: theme.accent
+    }
     component Field: StyledTextField {
+        neo: true
         appTextColor: theme.accent
         appMutedColor: theme.muted
         appPanelColor: theme.panel
         appSoftColor: theme.soft
         appLineColor: theme.line
-        appAccentColor: theme.accentSoft
+        appAccentColor: theme.accent
         appOnAccentColor: theme.white
     }
     component Choice: StyledComboBox {
+        neo: true
         appTextColor: theme.accent
         appMutedColor: theme.muted
         appPanelColor: theme.panel
         appSoftColor: theme.soft
         appLineColor: theme.line
-        appAccentColor: theme.accentSoft
+        appAccentColor: theme.accent
         appHoverColor: theme.controlHovered
     }
     component FormCheckBox: StyledCheckBox {
+        neo: true
         appTextColor: theme.accent
         appMutedColor: theme.muted
         appSoftColor: theme.soft
@@ -116,6 +123,9 @@ Dialog {
         appOnAccentColor: theme.white
     }
     component Action: StyledButton {
+        neo: true
+        cornerRadius: 8
+        font.weight: Font.DemiBold
         appTextColor: theme.accent
         appMutedColor: theme.muted
         appPanelColor: theme.panel
@@ -145,7 +155,7 @@ Dialog {
                 Text { text: qsTr("Сумма и валюта цели"); color: theme.muted }
                 RowLayout {
                     Layout.fillWidth: true
-                    Field { id: amountField; Layout.fillWidth: true; maximumLength: 15
+                    Field { id: amountField; implicitWidth: 160; Layout.minimumWidth: 0; Layout.fillWidth: true; maximumLength: 15
                         placeholderText: "200000,00"; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                     Choice {
                         id: currencyBox; model: ["RUB", "USD", "EUR"]

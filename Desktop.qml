@@ -3987,9 +3987,10 @@ ApplicationWindow {
                 }
 
                 SoftButton {
+                    neo: true
                     text: qsTr("+ Управление категориями")
                     highlighted: true
-                    implicitWidth: 210
+                    implicitWidth: Math.max(210, implicitContentWidth + leftPadding + rightPadding)
                     onClicked: categoryDialog.openForManagement()
                 }
             }
@@ -4003,9 +4004,10 @@ ApplicationWindow {
                 // Доходы
                 // =========================
                 Panel {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: root.incomePanel
+                    color: root.panel
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -4044,16 +4046,16 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
-                                SurfaceShadow { }
+                                HardShadow { depth: 3; shadowColor: root.accent }
 
                                 required property var modelData
 
                                 width: ListView.view.width
                                 height: 52
-                                radius: 10
+                                radius: 12
                                 color: root.panel
-                                border.width: 1
-                                border.color: "#C9D9CE"
+                                border.width: root.outlineWidth
+                                border.color: root.accent
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -4108,9 +4110,10 @@ ApplicationWindow {
                 // Расходы
                 // =========================
                 Panel {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    color: root.expensePanel
+                    color: root.panel
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -4149,16 +4152,16 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
-                                SurfaceShadow { }
+                                HardShadow { depth: 3; shadowColor: root.accent }
 
                                 required property var modelData
 
                                 width: ListView.view.width
                                 height: 52
-                                radius: 10
+                                radius: 12
                                 color: root.panel
-                                border.width: 1
-                                border.color: "#E1C9C2"
+                                border.width: root.outlineWidth
+                                border.color: root.accent
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -5712,12 +5715,12 @@ ApplicationWindow {
         onClosed: categoryData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -5739,6 +5742,7 @@ ApplicationWindow {
             }
 
             Panel {
+                neo: true
                 Layout.fillWidth: true
                 implicitHeight: 54
                 color: root.soft
@@ -5770,11 +5774,13 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     id: deleteCategoryCancelButton
                     text: qsTr("Отмена")
                     onClicked: deleteCategoryDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     id: deleteCategorySubmitButton
                     text: qsTr("Удалить")
                     destructive: true
@@ -7585,12 +7591,12 @@ ApplicationWindow {
         onClosed: editingData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
         contentItem: ColumnLayout {
             spacing: 12
@@ -7605,12 +7611,16 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 AppTextField {
+                    neo: true
+                    appAccentColor: root.accent
                     id: categoryNameField
                     Layout.fillWidth: true
                     placeholderText: qsTr("Название категории")
                     onAccepted: categoryDialog.submit()
                 }
                 AppComboBox {
+                    neo: true
+                    appAccentColor: root.accent
                     id: categoryType
                     model: [qsTr("Доход"), qsTr("Расход")]
                     enabled: categoryDialog.editingId.length === 0
@@ -7626,10 +7636,12 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Закрыть")
                     onClicked: categoryDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Сохранить")
                     highlighted: true
                     onClicked: categoryDialog.submit()
