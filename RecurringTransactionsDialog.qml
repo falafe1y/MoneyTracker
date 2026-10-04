@@ -275,16 +275,6 @@ Dialog {
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
-            FormButton {
-                visible: dialog.pageIndex === 0
-                text: qsTr("+ Добавить")
-                primary: true
-                onClicked: dialog.openForNew()
-            }
-            FormButton {
-                text: qsTr("Закрыть")
-                onClicked: dialog.close()
-            }
         }
 
         Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
@@ -558,24 +548,40 @@ Dialog {
                         color: dialog.errorColor
                         wrapMode: Text.WordWrap
                     }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Item { Layout.fillWidth: true }
-                        FormButton {
-                            id: formCancelButton
-                            text: qsTr("Отмена")
-                            onClicked: dialog.pageIndex = 0
-                        }
-                        FormButton {
-                            id: formSubmitButton
-                            text: dialog.editingId.length > 0
-                                ? qsTr("Сохранить") : qsTr("Добавить")
-                            primary: true
-                            onClicked: dialog.submit()
-                        }
-                    }
                     Item { Layout.preferredHeight: 12 }
                 }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.margins: 20
+            spacing: 12
+            Item { Layout.fillWidth: true }
+            FormButton {
+                visible: dialog.pageIndex === 0
+                text: qsTr("Закрыть")
+                onClicked: dialog.close()
+            }
+            FormButton {
+                visible: dialog.pageIndex === 0
+                text: qsTr("+ Добавить")
+                primary: true
+                onClicked: dialog.openForNew()
+            }
+            FormButton {
+                id: formCancelButton
+                visible: dialog.pageIndex === 1
+                text: qsTr("Отмена")
+                onClicked: dialog.pageIndex = 0
+            }
+            FormButton {
+                id: formSubmitButton
+                visible: dialog.pageIndex === 1
+                text: dialog.editingId.length > 0
+                    ? qsTr("Сохранить") : qsTr("Добавить")
+                primary: true
+                onClicked: dialog.submit()
             }
         }
     }
@@ -692,7 +698,13 @@ Dialog {
             }
             RowLayout {
                 Layout.fillWidth: true
-                FormButton { text: "‹"; onClicked: dateDialog.shiftMonth(-1) }
+                FormButton {
+                    Layout.preferredWidth: 40
+                    Layout.minimumWidth: 40
+                    Layout.maximumWidth: 40
+                    text: "‹"
+                    onClicked: dateDialog.shiftMonth(-1)
+                }
                 Text {
                     Layout.fillWidth: true
                     text: startCalendar.title
@@ -700,7 +712,13 @@ Dialog {
                     horizontalAlignment: Text.AlignHCenter
                     font.weight: Font.DemiBold
                 }
-                FormButton { text: "›"; onClicked: dateDialog.shiftMonth(1) }
+                FormButton {
+                    Layout.preferredWidth: 40
+                    Layout.minimumWidth: 40
+                    Layout.maximumWidth: 40
+                    text: "›"
+                    onClicked: dateDialog.shiftMonth(1)
+                }
             }
             DayOfWeekRow {
                 Layout.fillWidth: true

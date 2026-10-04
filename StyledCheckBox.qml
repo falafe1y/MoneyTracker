@@ -5,6 +5,7 @@ CheckBox {
     id: control
 
     property bool neo: false
+    readonly property int pressShift: neo && down && enabled ? 1 : 0
     property color appTextColor: "#031528"
     property color appMutedColor: "#687483"
     property color appSoftColor: "#FFFFF0"
@@ -18,7 +19,8 @@ CheckBox {
     implicitHeight: 32
 
     indicator: Rectangle {
-        HardShadow { visible: control.neo; depth: 2; shadowColor: control.appAccentColor }
+        transform: Translate { y: control.pressShift }
+        HardShadow { visible: control.neo; depth: 3 - control.pressShift; shadowColor: control.appAccentColor }
         implicitWidth: 22
         implicitHeight: 22
         x: control.leftPadding
@@ -30,7 +32,9 @@ CheckBox {
                : (control.hovered ? control.appHoverColor : control.appSoftColor)
         opacity: control.enabled ? 1 : 0.55
         border.width: control.neo ? 2 : control.visualFocus ? 2 : control.checked ? 0 : 1
-        border.color: control.neo ? control.appAccentColor : control.visualFocus
+        border.color: control.neo
+                      ? (control.checked ? control.appOnAccentColor : control.appAccentColor)
+                      : control.visualFocus
                       ? (control.checked ? control.appOnAccentColor
                                          : control.appAccentColor)
                       : control.appLineColor
