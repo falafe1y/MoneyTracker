@@ -40,6 +40,7 @@ qt_add_qml_module(appMoneyTracker
         AutoScrollController.qml
         MiddleScrollArea.qml
         SurfaceShadow.qml
+        HardShadow.qml
         StyledButton.qml
         StyledScrollBar.qml
         # BankComboBox.qml

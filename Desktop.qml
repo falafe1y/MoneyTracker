@@ -20,6 +20,11 @@ ApplicationWindow {
     readonly property int panelPadding: 24
     readonly property int cardRadius: 12
 
+    // Outlined card style: solid dark outline + hard offset shadow (no blur).
+    // Panels / buttons / fields opt in with `neo: true`.
+    readonly property int outlineWidth: 2
+    readonly property int shadowDepth: 6
+
     // Color palette
     // Ivory + indigo foundation. Indigo is the only primary accent;
     // Income and terracotta colors below are reserved for financial semantics.
@@ -735,12 +740,16 @@ ApplicationWindow {
     }
 
     component Panel: Rectangle {
-        SurfaceShadow { }
+        id: panelRoot
+        property bool neo: false
+
+        SurfaceShadow { visible: !panelRoot.neo }
+        HardShadow { visible: panelRoot.neo; depth: root.shadowDepth }
 
         color: root.panel
         radius: 16
-        border.width: 1
-        border.color: root.line
+        border.width: neo ? root.outlineWidth : 1
+        border.color: neo ? root.accent : root.line
     }
 
     component AnalyticsLineChart: Item {
@@ -982,7 +991,11 @@ ApplicationWindow {
     component BottomCornerMask: Canvas {
         id: cornerMask
         property bool mirrored: false
+        // With the hard shadow the area outside the arc is partly shadow, not canvas.
+        property bool neo: false
+        property int depth: 0
 
+        onNeoChanged: requestPaint()
         onWidthChanged: requestPaint()
         onHeightChanged: requestPaint()
         onMirroredChanged: requestPaint()
@@ -1008,6 +1021,27 @@ ApplicationWindow {
 
             ctx.closePath();
             ctx.fill();
+
+            if (neo) {
+                ctx.save();
+                ctx.clip();
+                ctx.fillStyle = root.accent;
+                ctx.beginPath();
+                if (mirrored) {
+                    ctx.moveTo(width, 0);
+                    ctx.lineTo(width, depth);
+                    ctx.arc(0, depth, radius, 0, Math.PI / 2, false);
+                    ctx.lineTo(0, 0);
+                } else {
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(0, depth);
+                    ctx.arc(width, depth, radius, Math.PI, Math.PI / 2, true);
+                    ctx.lineTo(width, 0);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
         }
     }
     component SoftButton: StyledButton {
@@ -1341,6 +1375,7 @@ ApplicationWindow {
                 }
                 SoftButton {
                     flat: true
+                    neo: schedulePanel.neo
                     text: qsTr("Все")
                     implicitWidth: 72
                     Layout.preferredWidth: 72
@@ -1401,12 +1436,14 @@ ApplicationWindow {
                     anchors.fill: parent
                     clip: true
                     spacing: 8
+                    bottomMargin: schedulePanel.neo ? 4 : 0
                     model: schedulePanel.visible ? schedulePanel.scheduledRows : []
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
                     ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
 
                     delegate: Rectangle {
-                        SurfaceShadow { }
+                        SurfaceShadow { visible: !schedulePanel.neo }
+                        HardShadow { visible: schedulePanel.neo; depth: 3 }
 
                         required property var modelData
                         readonly property bool isIncome: modelData.type === "income"
@@ -1414,8 +1451,9 @@ ApplicationWindow {
                         height: 56
                         radius: 8
                         color: isIncome ? root.incomePanel : root.expensePanel
-                        border.width: 1
-                        border.color: isIncome ? "#C9D9CE" : "#E1C9C2"
+                        border.width: schedulePanel.neo ? root.outlineWidth : 1
+                        border.color: schedulePanel.neo ? root.accent
+                                      : isIncome ? "#C9D9CE" : "#E1C9C2"
 
                         RowLayout {
                             anchors.fill: parent
@@ -1524,6 +1562,9 @@ ApplicationWindow {
                                 Layout.minimumWidth: 160
                                 Layout.preferredHeight: 120
                                 color: root.accent
+                                neo: true
+                                // light ring keeps the dark shadow readable under a dark card
+                                border.color: root.canvas
                                 Column {
                                     anchors.fill: parent
                                     anchors.margins: root.panelPadding
@@ -1556,9 +1597,8 @@ ApplicationWindow {
                                     Layout.preferredWidth: (overviewLeft.width - 3 * root.cardGap) / 4
                                     Layout.minimumWidth: 160
                                     Layout.preferredHeight: 120
-                                    color: root.panel
-                                    border.width: selected ? 3 : 1
-                                    border.color: selected ? root.accent : root.line
+                                    neo: true
+                                    color: selected ? root.pale : root.panel
                                     Column {
                                         anchors.fill: parent
                                         anchors.margins: root.panelPadding
@@ -1591,6 +1631,7 @@ ApplicationWindow {
                         Panel {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 249
+                            neo: true
                             ColumnLayout {
                                 anchors.fill: parent
                                 anchors.margins: root.panelPadding
@@ -1613,6 +1654,7 @@ ApplicationWindow {
                                     SoftButton {
                                         id: addAccountButton
                                         flat: true
+                                        neo: true
                                         text: financeController.selectedAsset === "crypto"
                                               ? qsTr("+  Добавить криптовалюту")
                                               : qsTr("+  Добавить счёт")
@@ -1659,7 +1701,7 @@ ApplicationWindow {
                                              ? financeController.cryptoWallets
                                              : financeController.accounts)
                                     delegate: Rectangle {
-                                        SurfaceShadow { }
+                                        HardShadow { depth: 4 }
 
                                         required property var modelData
                                         width: dashboard.wideOverview
@@ -1667,11 +1709,9 @@ ApplicationWindow {
                                                : Math.min(252, Math.max(192, (ListView.view.width - 4 * root.cardGap) / 5))
                                         height: 115
                                         radius: root.cardRadius
-                                        color: root.soft
-                                        border.width: root.overviewAccountSelected(modelData) ? 2 : 1
-                                        border.color: root.overviewAccountSelected(modelData)
-                                                    ? root.accent
-                                                    : root.line
+                                        color: root.overviewAccountSelected(modelData) ? root.pale : root.soft
+                                        border.width: root.outlineWidth
+                                        border.color: root.accent
                                         MouseArea {
                                             id: overviewAccountMouseArea
                                             anchors.fill: parent
@@ -1742,6 +1782,7 @@ ApplicationWindow {
 
                     PlannedOperationsPanel {
                         objectName: "dashboardSchedule"
+                        neo: true
                         visible: dashboard.wideOverview
                         Layout.preferredWidth: Math.min(568, overviewTop.width * 0.355)
                         Layout.fillHeight: true
@@ -1753,6 +1794,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     spacing: root.pageGap
                     Panel {
+                        neo: true
                         Layout.preferredWidth: (dashboard.width - root.pageGap) / 2
                         Layout.minimumWidth: 360
                         Layout.preferredHeight: 232
@@ -1793,6 +1835,7 @@ ApplicationWindow {
                         }
                     }
                     Panel {
+                        neo: true
                         Layout.preferredWidth: (dashboard.width - root.pageGap) / 2
                         Layout.minimumWidth: 360
                         Layout.preferredHeight: 232
@@ -1886,6 +1929,7 @@ ApplicationWindow {
                     }
                 }
                 TransactionBlock {
+                    neo: true
                     visible: financeController.selectedAsset !== "crypto"
                     Layout.fillWidth: true
                     expandToContent: true
@@ -1902,8 +1946,9 @@ ApplicationWindow {
                     text: financeController.cryptoLastError
                     color: root.red; font.pixelSize: 14; wrapMode: Text.WordWrap
                 }
-                ExchangeBalancesBlock { Layout.fillWidth: true }
+                ExchangeBalancesBlock { neo: true; Layout.fillWidth: true }
                 DashboardCryptoHistoryBlock {
+                    neo: true
                     viewportFlickable: overviewScroll.contentItem
                     visible: financeController.selectedAsset === "crypto"
                     Layout.fillWidth: true
@@ -2008,6 +2053,8 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.bottom: parent.bottom
             z: 999
+            neo: historyPanel.neo
+            depth: root.shadowDepth
         }
 
         BottomCornerMask {
@@ -2017,6 +2064,8 @@ ApplicationWindow {
             anchors.bottom: parent.bottom
             mirrored: true
             z: 999
+            neo: historyPanel.neo
+            depth: root.shadowDepth
         }
 
         // IMPORTANT: frame is deliberately rendered ABOVE all table content.
@@ -2024,8 +2073,8 @@ ApplicationWindow {
             anchors.fill: parent
             color: root.transparentColor
             radius: historyPanel.radius
-            border.width: 1
-            border.color: root.line
+            border.width: historyPanel.border.width
+            border.color: historyPanel.border.color
             z: 1000
         }
     }
@@ -2325,12 +2374,13 @@ ApplicationWindow {
 
         // 72 px block header + 40 px table header + 48 px per transaction + 2 px frame inset.
         // Keep these values in sync with TransactionTable row/header heights below.
-        implicitHeight: expandToContent ? 114 + rows.length * 48 : 245
+        implicitHeight: expandToContent ? 112 + border.width * 2 + rows.length * 48
+                                        : 243 + border.width * 2
 
         ColumnLayout {
             clip: true
             anchors.fill: parent
-            anchors.margins: 1
+            anchors.margins: transactionBlock.border.width
             spacing: 0
 
             RowLayout {
@@ -2356,6 +2406,7 @@ ApplicationWindow {
 
                 AppTextField {
                     visible: transactionBlock.showSearch
+                    neo: transactionBlock.neo
                     Layout.preferredWidth: 265
                     implicitHeight: 40
                     placeholderText: qsTr("Поиск по операциям...")
@@ -2366,6 +2417,7 @@ ApplicationWindow {
                 SoftButton {
                     text: qsTr("+ Добавить операцию")
                     flat: true
+                    neo: transactionBlock.neo
                     controlHeight: 40
                     font.pixelSize: 14
                     font.weight: Font.Bold
@@ -2393,7 +2445,8 @@ ApplicationWindow {
                 rows: transactionBlock.rows
                 expandToContent: transactionBlock.expandToContent
                 viewportFlickable: transactionBlock.viewportFlickable
-                bottomCornerRadius: transactionBlock.radius - 1
+                bottomCornerRadius: transactionBlock.radius - transactionBlock.border.width
+                neo: transactionBlock.neo
             }
         }
 
@@ -2406,6 +2459,7 @@ ApplicationWindow {
         HistorySelection { id: tableSelection; rows: transactionTable.rows }
         onVisibleChanged: if (!visible) tableSelection.clear()
         property real bottomCornerRadius: 0
+        property bool neo: false
         property bool expandToContent: false
         property var viewportFlickable: null
 
@@ -2452,8 +2506,8 @@ ApplicationWindow {
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    height: 1
-                    color: root.line
+                    height: transactionTable.neo ? root.outlineWidth : 1
+                    color: transactionTable.neo ? root.accent : root.line
                 }
 
                 RowLayout {
