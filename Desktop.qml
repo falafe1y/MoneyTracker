@@ -4289,10 +4289,11 @@ ApplicationWindow {
                             SoftButton {
                                 neo: true
                                 text: "‹"
-                                controlHeight: 30
-                                Layout.preferredWidth: 30
-                                Layout.minimumWidth: 30
-                                Layout.maximumWidth: 30
+                                controlHeight: 40
+                                dimWhenDisabled: false
+                                Layout.preferredWidth: 40
+                                Layout.minimumWidth: 40
+                                Layout.maximumWidth: 40
                                 enabled: analyticsScroll.expenseYear
                                     > root.expenseHistoryFirstYear()
                                 onClicked: analyticsScroll.expenseYear -= 1
@@ -4308,15 +4309,15 @@ ApplicationWindow {
                             SoftButton {
                                 neo: true
                                 text: "›"
-                                controlHeight: 30
-                                Layout.preferredWidth: 30
-                                Layout.minimumWidth: 30
-                                Layout.maximumWidth: 30
+                                controlHeight: 40
+                                dimWhenDisabled: false
+                                Layout.preferredWidth: 40
+                                Layout.minimumWidth: 40
+                                Layout.maximumWidth: 40
                                 enabled: analyticsScroll.expenseYear
                                     < root.expenseHistoryLastYear()
                                 onClicked: analyticsScroll.expenseYear += 1
                             }
-                            Text { text: "RUB"; color: root.muted; font.pixelSize: 14 }
                         }
                         Text {
                             Layout.fillWidth: true

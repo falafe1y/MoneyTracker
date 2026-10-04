@@ -8,6 +8,7 @@ Button {
     property bool destructive: false
     // Outlined style: solid dark outline + hard offset shadow (no blur).
     property bool neo: false
+    property bool dimWhenDisabled: true
     property int shadowDepth: 4
     property color appTextColor: "#031528"
     property color appMutedColor: "#687483"
@@ -34,11 +35,11 @@ Button {
 
     contentItem: Text {
         text: control.text
-        color: !control.enabled ? control.appMutedColor
+        color: !control.enabled && control.dimWhenDisabled ? control.appMutedColor
              : control.flat && control.destructive && !control.neo ? control.appErrorColor
              : control.primary || control.destructive ? control.appOnAccentColor
              : control.appTextColor
-        opacity: control.enabled ? 1 : 0.62
+        opacity: control.enabled || !control.dimWhenDisabled ? 1 : 0.62
         font: control.font
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
@@ -57,7 +58,7 @@ Button {
         }
 
         radius: control.cornerRadius
-        opacity: control.enabled ? 1 : 0.55
+        opacity: control.enabled || !control.dimWhenDisabled ? 1 : 0.55
         color: control.neo
                ? (control.destructive
                   ? (control.down || control.hovered
