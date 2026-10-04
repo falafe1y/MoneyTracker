@@ -156,15 +156,18 @@ Dialog {
     onClosed: editingId = ""
 
     background: Rectangle {
-        SurfaceShadow { }
+        HardShadow { depth: 6; shadowColor: dialog.accentColor }
 
         color: dialog.panelColor
-        radius: 18
-        border.width: 1
-        border.color: dialog.lineColor
+        radius: 16
+        border.width: 2
+        border.color: dialog.accentColor
     }
 
     component Field: StyledTextField {
+        neo: true
+        implicitWidth: 160
+        Layout.minimumWidth: 0
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor
@@ -175,6 +178,7 @@ Dialog {
     }
 
     component FormCombo: StyledComboBox {
+        neo: true
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor
@@ -185,6 +189,7 @@ Dialog {
     }
 
     component FormCheckBox: StyledCheckBox {
+        neo: true
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appSoftColor: dialog.softColor
@@ -195,6 +200,9 @@ Dialog {
     }
 
     component ActionButton: StyledButton {
+        neo: true
+        cornerRadius: 8
+        font.weight: Font.DemiBold
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor

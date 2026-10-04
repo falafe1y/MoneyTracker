@@ -2877,6 +2877,7 @@ ApplicationWindow {
             spacing: 14
 
             Panel {
+                neo: true
                 Layout.preferredWidth: 320
                 Layout.minimumWidth: 280
                 Layout.fillHeight: true
@@ -2896,6 +2897,7 @@ ApplicationWindow {
                             font.weight: Font.Bold
                         }
                         SoftButton {
+                            neo: true
                             text: qsTr("+ Бюджет")
                             highlighted: true
                             onClicked: budgetDialog.openForNew()
@@ -2917,11 +2919,15 @@ ApplicationWindow {
                         }
 
                         delegate: Rectangle {
-                            SurfaceShadow { }
+                            HardShadow { depth: 4 - budgetCard.pressShift; shadowColor: root.accent }
 
                             id: budgetCard
+                            readonly property int pressShift:
+                                financeController.selectedBudgetId === modelData.id
+                                || (budgetRowMenuArea.pressed && budgetRowMenuArea.pressedButtons === Qt.LeftButton) ? 2 : 0
+                            transform: Translate { y: budgetCard.pressShift }
                             required property var modelData
-                            width: ListView.view.width
+                            width: Math.max(0, ListView.view.width - 4)
                             height: 108
                             activeFocusOnTab: true
                             Accessible.role: Accessible.Button
@@ -2943,12 +2949,8 @@ ApplicationWindow {
                             radius: 12
                             color: financeController.selectedBudgetId === modelData.id
                                  ? root.pale : root.soft
-                            border.width: budgetCard.activeFocus
-                                        || financeController.selectedBudgetId === modelData.id
-                                        ? 2 : 1
-                            border.color: budgetCard.activeFocus
-                                        || financeController.selectedBudgetId === modelData.id
-                                        ? root.accentSoft : root.line
+                            border.width: budgetCard.activeFocus ? 3 : root.outlineWidth
+                            border.color: root.accent
 
                             ColumnLayout {
                                 anchors.fill: parent
@@ -2990,7 +2992,7 @@ ApplicationWindow {
                                         width: parent.width * Math.min(1, modelData.progress)
                                         height: parent.height
                                         radius: parent.radius
-                                        color: modelData.progress > 1 ? root.red : root.accentSoft
+                                        color: modelData.progress > 1 ? root.red : root.accent
                                     }
                                 }
                             }
@@ -3027,8 +3029,11 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     SoftButton {
+                        neo: true
                         text: "‹"
-                        Layout.preferredWidth: 58
+                        Layout.preferredWidth: 42
+                        Layout.minimumWidth: 42
+                        Layout.maximumWidth: 42
                         onClicked: root.shiftBudgetMonth(-1)
                     }
                     Text {
@@ -3040,8 +3045,11 @@ ApplicationWindow {
                         horizontalAlignment: Text.AlignHCenter
                     }
                     SoftButton {
+                        neo: true
                         text: "›"
-                        Layout.preferredWidth: 58
+                        Layout.preferredWidth: 42
+                        Layout.minimumWidth: 42
+                        Layout.maximumWidth: 42
                         onClicked: root.shiftBudgetMonth(1)
                     }
                     Item { Layout.fillWidth: true }
@@ -3075,6 +3083,7 @@ ApplicationWindow {
                             }
                         ]
                         delegate: Panel {
+                            neo: true
                             required property var modelData
                             Layout.fillWidth: true
                             Layout.preferredHeight: 106
@@ -3112,6 +3121,7 @@ ApplicationWindow {
                     spacing: 14
 
                     Panel {
+                        neo: true
                         Layout.preferredWidth: 370
                         Layout.fillHeight: true
                         ColumnLayout {
@@ -3145,15 +3155,15 @@ ApplicationWindow {
                                 model: root.selectedBudget()
                                      ? root.selectedBudget().categoryLimits : []
                                 delegate: Rectangle {
-                                    SurfaceShadow { }
+                                    HardShadow { depth: 3; shadowColor: root.accent }
 
                                     required property var modelData
-                                    width: ListView.view.width
+                                    width: Math.max(0, ListView.view.width - 4)
                                     height: modelData.limitMinor > 0 ? 74 : 50
                                     radius: 10
                                     color: root.soft
-                                    border.width: 1
-                                    border.color: root.line
+                                    border.width: root.outlineWidth
+                                    border.color: root.accent
                                     ColumnLayout {
                                         anchors.fill: parent
                                         anchors.margins: 10
@@ -3190,7 +3200,7 @@ ApplicationWindow {
                                                 height: parent.height
                                                 radius: parent.radius
                                                 color: modelData.progress > 1
-                                                     ? root.red : root.accentSoft
+                                                     ? root.red : root.accent
                                             }
                                         }
                                     }
@@ -3206,6 +3216,7 @@ ApplicationWindow {
                     }
 
                     Panel {
+                        neo: true
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         ColumnLayout {
@@ -3227,15 +3238,15 @@ ApplicationWindow {
                                 clip: true
                                 model: financeController.budgetTransactions
                                 delegate: Rectangle {
-                                    SurfaceShadow { }
+                                    HardShadow { depth: 3; shadowColor: root.accent }
 
                                     required property var modelData
-                                    width: ListView.view.width
+                                    width: Math.max(0, ListView.view.width - 4)
                                     height: 64
                                     radius: 10
                                     color: root.soft
-                                    border.width: 1
-                                    border.color: root.line
+                                    border.width: root.outlineWidth
+                                    border.color: root.accent
                                     RowLayout {
                                         anchors.fill: parent
                                         anchors.margins: 10
@@ -3279,6 +3290,7 @@ ApplicationWindow {
             }
 
             Panel {
+                neo: true
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: root.selectedBudget() === null
@@ -3323,6 +3335,7 @@ ApplicationWindow {
             spacing: 14
 
             Panel {
+                neo: true
                 Layout.preferredWidth: 320
                 Layout.minimumWidth: 280
                 Layout.fillHeight: true
@@ -3342,6 +3355,7 @@ ApplicationWindow {
                         }
                         Item { Layout.fillWidth: true }
                         SoftButton {
+                            neo: true
                             text: qsTr("+ Проект")
                             highlighted: true
                             onClicked: projectDialog.openForNew()
@@ -3363,11 +3377,15 @@ ApplicationWindow {
                         }
 
                         delegate: Rectangle {
-                            SurfaceShadow { }
+                            HardShadow { depth: 4 - projectCard.pressShift; shadowColor: root.accent }
 
                             id: projectCard
+                            readonly property int pressShift:
+                                financeController.selectedProjectId === modelData.id
+                                || (projectRowMenuArea.pressed && projectRowMenuArea.pressedButtons === Qt.LeftButton) ? 2 : 0
+                            transform: Translate { y: projectCard.pressShift }
                             required property var modelData
-                            width: ListView.view.width
+                            width: Math.max(0, ListView.view.width - 4)
                             height: 108
                             activeFocusOnTab: true
                             Accessible.role: Accessible.Button
@@ -3391,12 +3409,8 @@ ApplicationWindow {
                                    === modelData.id
                                    ? root.pale
                                    : root.soft
-                            border.width: projectCard.activeFocus ? 2 : 1
-                            border.color: projectCard.activeFocus
-                                          || financeController.selectedProjectId
-                                          === modelData.id
-                                          ? root.accentSoft
-                                          : root.line
+                            border.width: projectCard.activeFocus ? 3 : root.outlineWidth
+                            border.color: root.accent
 
                             ColumnLayout {
                                 anchors.fill: parent
@@ -3498,6 +3512,7 @@ ApplicationWindow {
                         ]
 
                         delegate: Panel {
+                            neo: true
                             required property var modelData
                             Layout.fillWidth: true
                             Layout.preferredHeight: 106
@@ -3528,6 +3543,7 @@ ApplicationWindow {
                 }
 
                 TransactionBlock {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: qsTr("Операции проекта")
@@ -3537,6 +3553,7 @@ ApplicationWindow {
             }
 
             Panel {
+                neo: true
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 visible: root.selectedProject() === null
@@ -3576,6 +3593,7 @@ ApplicationWindow {
                 Repeater {
                     model: root.assets
                     delegate: SoftButton {
+                        neo: true
                         required property var modelData
                         text: modelData.title
                         highlighted: financeController.selectedAsset === modelData.code
@@ -3587,6 +3605,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     visible: financeController.selectedAsset !== "investment"
                           || financeController.investmentAccounts.length > 0
                     text: financeController.selectedAsset === "crypto"
@@ -3606,6 +3625,7 @@ ApplicationWindow {
                     }
                 }
                 SoftButton {
+                    neo: true
                     visible: financeController.selectedAsset === "investment"
                     text: qsTr("+ Добавить счёт")
                     onClicked: accountDialog.openForSelectedAsset()
@@ -3628,6 +3648,7 @@ ApplicationWindow {
                     elide: Text.ElideRight
                 }
                 SoftButton {
+                    neo: true
                     visible: !financeController.cryptoRefreshing
                     text: qsTr("Повторить")
                     onClicked: financeController.refreshCryptoWallets()
@@ -3655,6 +3676,7 @@ ApplicationWindow {
                        ? financeController.cryptoWallets
                        : financeController.accounts
                 delegate: Panel {
+                    neo: true
                     id: accountCard
                     required property var modelData
                     readonly property bool selected:
@@ -3790,8 +3812,10 @@ ApplicationWindow {
                     );
                 }
             }
-            ExchangeBalancesBlock { Layout.fillWidth: true }
+            ExchangeBalancesBlock {
+                neo: true; Layout.fillWidth: true }
             Panel {
+                neo: true
                 id: cryptoHistoryPanel
                 visible: financeController.selectedAsset === "crypto"
                 Layout.fillWidth: true
@@ -4218,6 +4242,7 @@ ApplicationWindow {
     Component {
         id: operationsPage
         TransactionBlock {
+            neo: true
             anchors.fill: parent
             title: qsTr("История операций")
             rows: root.visibleTransactions()
@@ -4232,6 +4257,7 @@ ApplicationWindow {
             property int expenseYear: new Date().getFullYear()
             clip: true
             contentWidth: availableWidth
+            contentHeight: analyticsContent.implicitHeight + root.shadowDepth
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ScrollBar.vertical: StyledScrollBar {
                 policy: ScrollBar.AlwaysOff
@@ -4240,10 +4266,12 @@ ApplicationWindow {
             }
 
             ColumnLayout {
-                width: analyticsScroll.availableWidth
+                id: analyticsContent
+                width: Math.max(0, analyticsScroll.availableWidth - root.shadowDepth)
                 spacing: 14
 
                 Panel {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.preferredHeight: 275
                     ColumnLayout {
@@ -4259,9 +4287,12 @@ ApplicationWindow {
                             }
                             Item { Layout.fillWidth: true }
                             SoftButton {
+                                neo: true
                                 text: "‹"
                                 controlHeight: 30
-                                Layout.preferredWidth: 34
+                                Layout.preferredWidth: 30
+                                Layout.minimumWidth: 30
+                                Layout.maximumWidth: 30
                                 enabled: analyticsScroll.expenseYear
                                     > root.expenseHistoryFirstYear()
                                 onClicked: analyticsScroll.expenseYear -= 1
@@ -4275,9 +4306,12 @@ ApplicationWindow {
                                 horizontalAlignment: Text.AlignHCenter
                             }
                             SoftButton {
+                                neo: true
                                 text: "›"
                                 controlHeight: 30
-                                Layout.preferredWidth: 34
+                                Layout.preferredWidth: 30
+                                Layout.minimumWidth: 30
+                                Layout.maximumWidth: 30
                                 enabled: analyticsScroll.expenseYear
                                     < root.expenseHistoryLastYear()
                                 onClicked: analyticsScroll.expenseYear += 1
@@ -4318,6 +4352,7 @@ ApplicationWindow {
                     spacing: 14
 
                 Panel {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.preferredWidth: 0
                     Layout.minimumWidth: 360
@@ -4353,6 +4388,7 @@ ApplicationWindow {
                 }
 
                 Panel {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.preferredWidth: 0
                     Layout.minimumWidth: 360
@@ -4373,6 +4409,8 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                             }
                             AppComboBox {
+                                neo: true
+                                appAccentColor: root.accent
                                 model: ["USD", "EUR"]
                                 currentIndex: Math.max(0, model.indexOf(financeController.analyticsCurrency))
                                 onActivated: financeController.analyticsCurrency = currentText
@@ -4524,6 +4562,7 @@ ApplicationWindow {
     Component {
         id: settingsPage
         Panel {
+            neo: true
             ScrollView {
                 MiddleScrollArea { parent: settingsScroll; scroller: browserScroll; scrollTarget: settingsScroll.contentItem }
                 id: settingsScroll
@@ -4547,29 +4586,6 @@ ApplicationWindow {
                     y: 28
                     width: Math.max(0, settingsScroll.availableWidth - 56)
                 Text {
-                    text: qsTr("Основная валюта")
-                    color: root.accent
-                    font.pixelSize: 17
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    text: qsTr("Все итоговые суммы пересчитываются в эту валюту.")
-                    color: root.muted
-                }
-                AppComboBox {
-                    model: ["RUB", "USD", "EUR"]
-                    currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
-                    onActivated: financeController.appCurrency = currentText
-                    implicitWidth: 180
-                }
-                Rectangle {
-                    Layout.topMargin: 12
-                    Layout.preferredWidth: 360
-                    height: 1
-                    color: root.line
-                }
-                Text {
-                    Layout.topMargin: 8
                     text: qsTr("Курсы валют")
                     color: root.accent
                     font.pixelSize: 17
@@ -4584,17 +4600,18 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
                 Rectangle {
-                    SurfaceShadow { }
+                    HardShadow { depth: 3; shadowColor: root.accent }
 
                     id: currentRatesBlock
 
+                    border.width: root.outlineWidth
                     Layout.topMargin: 4
                     Layout.preferredWidth: 460
                     implicitHeight: ratesHeader.height + ratesList.implicitHeight
                     radius: 10
                     color: root.soft
-                    border.color: root.line
-                    clip: true
+                    border.color: root.accent
+                    clip: false
 
                     Rectangle {
                         id: ratesHeader
@@ -4668,6 +4685,7 @@ ApplicationWindow {
                     }
                 }
                 AppCheckBox {
+                    neo: true
                     id: automaticRatesCheck
                     text: qsTr("Обновлять курсы автоматически")
                     checked: financeController.automaticCurrencyRates
@@ -4688,6 +4706,8 @@ ApplicationWindow {
                         color: root.accent
                     }
                     AppTextField {
+                        neo: true
+                        appAccentColor: root.accent
                         id: manualRubRateField
                         implicitWidth: 180
                         text: financeController.manualRubToRubRate.toLocaleString(
@@ -4707,6 +4727,8 @@ ApplicationWindow {
                         color: root.accent
                     }
                     AppTextField {
+                        neo: true
+                        appAccentColor: root.accent
                         id: manualUsdRateField
                         implicitWidth: 180
                         text: financeController.manualUsdToRubRate.toLocaleString(
@@ -4726,6 +4748,8 @@ ApplicationWindow {
                         color: root.accent
                     }
                     AppTextField {
+                        neo: true
+                        appAccentColor: root.accent
                         id: manualEurRateField
                         implicitWidth: 180
                         text: financeController.manualEurToRubRate.toLocaleString(
@@ -4745,6 +4769,7 @@ ApplicationWindow {
                     opacity: enabled ? 1.0 : 0.55
 
                     SoftButton {
+                        neo: true
                         text: qsTr("Сохранить курсы")
                         highlighted: true
                         enabled: manualRubRateField.acceptableInput
@@ -4790,17 +4815,20 @@ ApplicationWindow {
                 RowLayout {
                     spacing: 10
                     SoftButton {
+                        neo: true
                         text: qsTr("Экспортировать CSV")
                         highlighted: true
-                        implicitWidth: 160
+                        implicitWidth: Math.max(160, implicitContentWidth + leftPadding + rightPadding)
                         onClicked: exportCsvDialog.open()
                     }
                     SoftButton {
+                        neo: true
                         text: qsTr("Выписка банка")
                         implicitWidth: 160
                         onClicked: bankCsvFileDialog.open()
                     }
                     SoftButton {
+                        neo: true
                         text: qsTr("Импорт Ledgera")
                         implicitWidth: 160
                         onClicked: importCsvDialog.open()
@@ -4834,6 +4862,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Создать резервную копию")
                     highlighted: true
                     implicitWidth: 230
@@ -4859,6 +4888,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Очистить все данные")
                     implicitWidth: 210
                     onClicked: clearDataDialog.open()
@@ -4916,12 +4946,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: root.shadowDepth; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -4945,12 +4975,14 @@ ApplicationWindow {
             }
 
             Rectangle {
-                SurfaceShadow { }
+                HardShadow { depth: 3; shadowColor: root.accent }
 
                 Layout.fillWidth: true
                 implicitHeight: 52
                 radius: 10
-                color: root.expensePanel
+                color: root.soft
+                border.width: root.outlineWidth
+                border.color: root.accent
 
                 Text {
                     anchors.fill: parent
@@ -4977,11 +5009,13 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     id: clearDataCancelButton
                     text: qsTr("Отмена")
                     onClicked: clearDataDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     id: clearDataSubmitButton
                     text: qsTr("Удалить всё")
                     destructive: true
@@ -6435,12 +6469,12 @@ ApplicationWindow {
         onClosed: editingId = ""
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: root.shadowDepth; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -6454,6 +6488,8 @@ ApplicationWindow {
                 font.weight: Font.Bold
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: projectNameField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Название проекта")
@@ -6470,10 +6506,12 @@ ApplicationWindow {
             RowLayout {
                 Item { Layout.fillWidth: true }
                 SoftButton {
+                    neo: true
                     text: qsTr("Отмена")
                     onClicked: projectDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Сохранить")
                     highlighted: true
                     onClicked: projectDialog.submit()
@@ -6509,12 +6547,12 @@ ApplicationWindow {
         onClosed: projectData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: root.shadowDepth; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -6551,10 +6589,12 @@ ApplicationWindow {
             RowLayout {
                 Item { Layout.fillWidth: true }
                 SoftButton {
+                    neo: true
                     text: qsTr("Отмена")
                     onClicked: deleteProjectDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Удалить")
                     destructive: true
                     onClicked: deleteProjectDialog.confirmDelete()
@@ -6590,12 +6630,12 @@ ApplicationWindow {
         onClosed: budgetData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: root.shadowDepth; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -6631,10 +6671,12 @@ ApplicationWindow {
             RowLayout {
                 Item { Layout.fillWidth: true }
                 SoftButton {
+                    neo: true
                     text: qsTr("Отмена")
                     onClicked: deleteBudgetDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Удалить")
                     destructive: true
                     onClicked: deleteBudgetDialog.confirmDelete()
