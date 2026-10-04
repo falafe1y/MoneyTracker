@@ -1114,6 +1114,9 @@ ApplicationWindow {
         property string glyph: ""
         property string iconSource: ""
         property string target: ""
+        readonly property bool selectedNav: root.page === nav.target
+        // The pressed button sinks into its shadow, content moves with it.
+        readonly property int pressShift: down ? 2 : 0
         flat: true
         hoverEnabled: true
         implicitHeight: 48
@@ -1121,6 +1124,7 @@ ApplicationWindow {
         rightPadding: 16
         contentItem: RowLayout {
             spacing: 16
+            transform: Translate { y: nav.pressShift }
             Item {
                 Layout.preferredWidth: 20
                 Layout.preferredHeight: 20
@@ -1154,10 +1158,19 @@ ApplicationWindow {
             }
         }
         background: Rectangle {
-            SurfaceShadow { }
+            transform: Translate { y: nav.pressShift }
+
+            // Light hard shadow: the sidebar itself is dark.
+            HardShadow {
+                visible: nav.selectedNav
+                depth: 4 - nav.pressShift
+                shadowColor: root.canvas
+            }
 
             radius: 12
-            color: root.page === nav.target ? root.navSelected : (nav.hovered ? root.navHovered : root.transparentColor)
+            color: nav.selectedNav ? root.navSelected : (nav.hovered ? root.navHovered : root.transparentColor)
+            border.width: nav.selectedNav || nav.hovered ? root.outlineWidth : 0
+            border.color: nav.selectedNav ? root.paleText : root.navSelected
         }
         onClicked: root.page = target
     }
@@ -1169,8 +1182,10 @@ ApplicationWindow {
         Panel {
             Layout.preferredWidth: 248
             Layout.fillHeight: true
+            neo: true
             color: root.accent
-            border.color: root.accent
+            // light ring keeps the dark shadow readable under a dark panel
+            border.color: root.canvas
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 16
@@ -1181,12 +1196,14 @@ ApplicationWindow {
                     Layout.bottomMargin: 8
                     spacing: 16
                     Rectangle {
-                        SurfaceShadow { }
+                        HardShadow { depth: 3; shadowColor: root.navSelected }
 
                         Layout.preferredWidth: 40
                         Layout.preferredHeight: 40
                         radius: 12
                         color: root.soft
+                        border.width: root.outlineWidth
+                        border.color: root.accent
                         Text {
                             anchors.centerIn: parent
                             text: "L"
@@ -1207,7 +1224,7 @@ ApplicationWindow {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     Layout.bottomMargin: 16
-                    Layout.preferredHeight: 1
+                    Layout.preferredHeight: root.outlineWidth
                     color: root.navSelected
                 }
                 NavButton {
@@ -1263,7 +1280,7 @@ ApplicationWindow {
                 }
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 1
+                    Layout.preferredHeight: root.outlineWidth
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     Layout.bottomMargin: 8
@@ -1666,6 +1683,7 @@ ApplicationWindow {
                                             font.pixelSize: 14
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
+                                            transform: Translate { y: addAccountButton.pressShift }
                                         }
 
                                         onClicked: {
