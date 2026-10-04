@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
+import QtQuick.Effects
 import QtQuick.Layouts
 
 ApplicationWindow {
@@ -1133,7 +1134,7 @@ ApplicationWindow {
                     anchors.fill: parent
                     visible: nav.iconSource.length === 0
                     text: nav.glyph
-                    color: root.page === nav.target ? root.white : root.paleText
+                    color: nav.selectedNav ? root.white : root.accent
                     font.pixelSize: 20
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -1147,12 +1148,17 @@ ApplicationWindow {
                     source: nav.iconSource
                     sourceSize: Qt.size(20, 20)
                     fillMode: Image.PreserveAspectFit
+                    layer.enabled: true
+                    layer.effect: MultiEffect {
+                        colorization: 1.0
+                        colorizationColor: nav.selectedNav ? root.white : root.accent
+                    }
                 }
             }
             Text {
                 text: nav.text
                 font.weight: root.page === nav.target ? Font.Bold : Font.Normal
-                color: root.page === nav.target ? root.white : root.paleText
+                color: nav.selectedNav ? root.white : root.accent
                 font.pixelSize: 16
                 Layout.fillWidth: true
             }
@@ -1160,17 +1166,16 @@ ApplicationWindow {
         background: Rectangle {
             transform: Translate { y: nav.pressShift }
 
-            // Light hard shadow: the sidebar itself is dark.
             HardShadow {
                 visible: nav.selectedNav
                 depth: 4 - nav.pressShift
-                shadowColor: root.canvas
+                shadowColor: root.accent
             }
 
             radius: 12
-            color: nav.selectedNav ? root.navSelected : (nav.hovered ? root.navHovered : root.transparentColor)
+            color: nav.selectedNav ? root.accent : (nav.hovered ? root.controlHovered : root.transparentColor)
             border.width: nav.selectedNav || nav.hovered ? root.outlineWidth : 0
-            border.color: nav.selectedNav ? root.paleText : root.navSelected
+            border.color: nav.selectedNav ? root.panel : root.accent
         }
         onClicked: root.page = target
     }
@@ -1183,9 +1188,8 @@ ApplicationWindow {
             Layout.preferredWidth: 248
             Layout.fillHeight: true
             neo: true
-            color: root.accent
-            // light ring keeps the dark shadow readable under a dark panel
-            border.color: root.canvas
+            color: root.panel
+            border.color: root.accent
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 16
@@ -1214,7 +1218,7 @@ ApplicationWindow {
                     }
                     Text {
                         text: "Ledgera"
-                        color: root.soft
+                        color: root.accent
                         font.pixelSize: 26
                         font.weight: Font.Bold
                     }
@@ -1225,7 +1229,7 @@ ApplicationWindow {
                     Layout.rightMargin: 8
                     Layout.bottomMargin: 16
                     Layout.preferredHeight: root.outlineWidth
-                    color: root.navSelected
+                    color: root.accent
                 }
                 NavButton {
                     Layout.fillWidth: true
@@ -1284,7 +1288,7 @@ ApplicationWindow {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     Layout.bottomMargin: 8
-                    color: root.navSelected
+                    color: root.accent
                 }
                 NavButton {
                     Layout.fillWidth: true
@@ -1567,7 +1571,7 @@ ApplicationWindow {
                         id: overviewLeft
                         objectName: "overviewLeft"
                         Layout.fillWidth: true
-                        Layout.minimumWidth: 688
+                        Layout.minimumWidth: 4 * 160 + 4 * root.cardGap + root.outlineWidth
                         spacing: root.pageGap
 
                         RowLayout {
@@ -1575,20 +1579,18 @@ ApplicationWindow {
                             spacing: root.cardGap
                             Panel {
                                 Layout.fillWidth: true
-                                Layout.preferredWidth: (overviewLeft.width - 3 * root.cardGap) / 4
+                                Layout.preferredWidth: (overviewLeft.width - 4 * root.cardGap - root.outlineWidth) / 4
                                 Layout.minimumWidth: 160
                                 Layout.preferredHeight: 120
-                                color: root.accent
+                                color: root.panel
                                 neo: true
-                                // light ring keeps the dark shadow readable under a dark card
-                                border.color: root.canvas
                                 Column {
                                     anchors.fill: parent
                                     anchors.margins: root.panelPadding
                                     spacing: 16
                                     Text {
                                         text: qsTr("Все активы")
-                                        color: root.panel
+                                        color: root.muted
                                         font.pixelSize: 16
                                         font.weight: Font.Bold
                                     }
@@ -1596,7 +1598,7 @@ ApplicationWindow {
                                         width: parent.width
                                         text: root.money(financeController.balanceMinorUnits,
                                                          financeController.appCurrency, false)
-                                        color: root.panel
+                                        color: root.accent
                                         font.pixelSize: 28
                                         font.weight: Font.Bold
                                         fontSizeMode: Text.Fit
@@ -1605,31 +1607,37 @@ ApplicationWindow {
                                     }
                                 }
                             }
+                            Rectangle {
+                                Layout.preferredWidth: root.outlineWidth
+                                Layout.fillHeight: true
+                                color: root.accent
+                            }
                             Repeater {
                                 model: root.assets
                                 delegate: Panel {
                                     required property var modelData
                                     readonly property bool selected: financeController.selectedAsset === modelData.code
                                     Layout.fillWidth: true
-                                    Layout.preferredWidth: (overviewLeft.width - 3 * root.cardGap) / 4
+                                    Layout.preferredWidth: (overviewLeft.width - 4 * root.cardGap - root.outlineWidth) / 4
                                     Layout.minimumWidth: 160
                                     Layout.preferredHeight: 120
                                     neo: true
-                                    color: selected ? root.pale : root.panel
+                                    color: selected ? root.accent : root.panel
+                                    border.color: selected ? root.canvas : root.accent
                                     Column {
                                         anchors.fill: parent
                                         anchors.margins: root.panelPadding
                                         spacing: selected ? 12 : 16
                                         Text {
                                             text: modelData.title
-                                            color: parent.parent.selected ? root.accent : root.muted
+                                            color: parent.parent.selected ? root.panel : root.muted
                                             font.pixelSize: parent.parent.selected ? 20 : 16
                                             font.weight: parent.parent.selected ? Font.ExtraBold : Font.Bold
                                         }
                                         Text {
                                             width: parent.width
                                             text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
-                                            color: root.accent
+                                            color: parent.parent.selected ? root.panel : root.accent
                                             font.pixelSize: parent.parent.selected ? 30 : 28
                                             font.weight: Font.Bold
                                             fontSizeMode: Text.Fit
@@ -1802,7 +1810,7 @@ ApplicationWindow {
                         objectName: "dashboardSchedule"
                         neo: true
                         visible: dashboard.wideOverview
-                        Layout.preferredWidth: Math.min(568, overviewTop.width * 0.355)
+                        Layout.preferredWidth: Math.min(568, overviewTop.width * 0.355) - root.cardGap
                         Layout.fillHeight: true
                         Layout.preferredHeight: 392
                     }
