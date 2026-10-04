@@ -11,6 +11,8 @@ ComboBox {
     property color appLineColor: "#D8D7C7"
     property color appAccentColor: "#315C9B"
     property color appHoverColor: "#E4E8F1"
+    property bool neo: false
+    readonly property int neoPressShift: neo && (pressed || popup.visible) ? 2 : 0
     property int controlHeight: 44
     property string emptyText: ""
 
@@ -23,6 +25,7 @@ ComboBox {
     contentItem: Text {
         text: control.count > 0 ? control.displayText : control.emptyText
         color: control.enabled ? control.appTextColor : control.appMutedColor
+        transform: Translate { y: control.neoPressShift }
         font: control.font
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
@@ -31,6 +34,7 @@ ComboBox {
     indicator: Text {
         x: control.width - width - 15
         y: (control.height - height) / 2 - 1
+        transform: Translate { y: control.neoPressShift }
         text: control.popup.visible ? "⌃" : "⌄"
         color: control.enabled ? control.appAccentColor : control.appMutedColor
         font.pixelSize: 18
@@ -38,13 +42,23 @@ ComboBox {
     }
 
     background: Rectangle {
-        radius: 11
+        transform: Translate { y: control.neoPressShift }
+        HardShadow {
+            visible: control.neo
+            depth: 4 - control.neoPressShift
+            shadowColor: control.appAccentColor
+        }
+        radius: control.neo ? 8 : 11
         opacity: control.enabled ? 1 : 0.62
-        color: control.pressed || control.popup.visible
-               ? control.appPanelColor
-               : control.hovered ? control.appHoverColor : control.appSoftColor
-        border.width: control.visualFocus || control.popup.visible ? 2 : 1
-        border.color: control.visualFocus || control.popup.visible
+        color: control.neo
+               ? (control.hovered || control.pressed || control.popup.visible
+                  ? control.appHoverColor : control.appPanelColor)
+               : control.pressed || control.popup.visible
+                 ? control.appPanelColor
+                 : control.hovered ? control.appHoverColor : control.appSoftColor
+        border.width: control.neo ? (control.visualFocus ? 3 : 2)
+                    : control.visualFocus || control.popup.visible ? 2 : 1
+        border.color: control.neo || control.visualFocus || control.popup.visible
                       ? control.appAccentColor : control.appLineColor
     }
 
@@ -60,7 +74,8 @@ ComboBox {
 
         contentItem: Text {
             text: control.textAt(optionDelegate.index)
-            color: control.appTextColor
+            color: control.neo && (optionDelegate.highlighted || optionDelegate.hovered)
+                   ? control.appPanelColor : control.appTextColor
             font.pixelSize: 14
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
@@ -69,7 +84,7 @@ ComboBox {
         background: Rectangle {
             radius: 8
             color: optionDelegate.highlighted || optionDelegate.hovered
-                   ? control.appHoverColor : "transparent"
+                   ? (control.neo ? control.appAccentColor : control.appHoverColor) : "transparent"
         }
     }
 
@@ -93,10 +108,11 @@ ComboBox {
         }
 
         background: Rectangle {
+            HardShadow { visible: control.neo; depth: 4; shadowColor: control.appAccentColor }
             radius: 12
             color: control.appPanelColor
-            border.width: 1
-            border.color: control.appLineColor
+            border.width: control.neo ? 2 : 1
+            border.color: control.neo ? control.appAccentColor : control.appLineColor
         }
     }
 }

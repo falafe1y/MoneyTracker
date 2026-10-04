@@ -1071,16 +1071,18 @@ ApplicationWindow {
 
         contentItem: Text {
             text: menuItem.text
-            color: menuItem.destructive ? root.red : root.accent
+            color: !menuItem.enabled ? root.muted
+                 : menuItem.highlighted || menuItem.hovered ? root.white
+                 : menuItem.destructive ? root.red : root.accent
             font.pixelSize: 14
-            font.weight: Font.Medium
+            font.weight: Font.DemiBold
             verticalAlignment: Text.AlignVCenter
         }
 
         background: Rectangle {
             radius: 8
             color: menuItem.highlighted || menuItem.hovered
-                   ? (menuItem.destructive ? root.expensePanel : root.controlHovered)
+                   ? (menuItem.destructive ? root.red : root.accent)
                    : root.transparentColor
         }
     }
@@ -5123,8 +5125,8 @@ ApplicationWindow {
             onActivated: cryptoWalletDialog.submit()
         }
         background: Rectangle {
-            SurfaceShadow { }
-            color: root.panel; radius: 16; border.width: 1; border.color: root.line
+            HardShadow { depth: 6; shadowColor: root.accent }
+            color: root.panel; radius: 16; border.width: root.outlineWidth; border.color: root.accent
         }
         contentItem: ColumnLayout {
             spacing: 16
@@ -5133,6 +5135,8 @@ ApplicationWindow {
                 color: root.accent; font.pixelSize: 21; font.weight: Font.Bold
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: cryptoNameField
                 objectName: "cryptoNameField"
                 Layout.fillWidth: true
@@ -5140,6 +5144,8 @@ ApplicationWindow {
                 maximumLength: 80
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: cryptoSourceBox
                 objectName: "cryptoSourceBox"
                 Layout.fillWidth: true
@@ -5148,6 +5154,8 @@ ApplicationWindow {
                 onActivated: cryptoWalletError.text = ""
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: cryptoTypeBox
                 Layout.fillWidth: true
                 visible: cryptoSourceBox.currentIndex === 0
@@ -5159,6 +5167,8 @@ ApplicationWindow {
                 onActivated: { cryptoAddressField.clear(); cryptoWalletError.text = ""; }
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: cryptoAddressField
                 Layout.fillWidth: true
                 visible: cryptoSourceBox.currentIndex === 0
@@ -5169,11 +5179,15 @@ ApplicationWindow {
                 maximumLength: 90
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 Layout.fillWidth: true
                 visible: cryptoSourceBox.currentIndex === 1
                 model: ["Bybit"]
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: cryptoApiKeyField
                 objectName: "cryptoApiKeyField"
                 Layout.fillWidth: true
@@ -5183,6 +5197,8 @@ ApplicationWindow {
                 echoMode: TextInput.Password
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: cryptoApiSecretField
                 objectName: "cryptoApiSecretField"
                 Layout.fillWidth: true
@@ -5207,8 +5223,10 @@ ApplicationWindow {
             }
             RowLayout {
                 Item { Layout.fillWidth: true }
-                SoftButton { id: cryptoCancelButton; text: qsTr("Отмена"); onClicked: cryptoWalletDialog.close() }
                 SoftButton {
+                    neo: true; id: cryptoCancelButton; text: qsTr("Отмена"); onClicked: cryptoWalletDialog.close() }
+                SoftButton {
+                    neo: true
                     id: cryptoSubmitButton
                     text: cryptoWalletDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
                     highlighted: true; onClicked: cryptoWalletDialog.submit()
@@ -5423,12 +5441,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
         contentItem: ColumnLayout {
             spacing: 14
@@ -5442,17 +5460,23 @@ ApplicationWindow {
                 font.weight: Font.Bold
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: accountNameField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Название счёта")
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: accountTypeBox
                 Layout.fillWidth: true
                 model: accountDialog.accountTypes
                 textRole: "label"
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: accountCurrencyBox
                 Layout.fillWidth: true
                 model: ["RUB", "USD", "EUR"]
@@ -5477,6 +5501,8 @@ ApplicationWindow {
                 font.pixelSize: 14
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: accountCreditLimitField
                 Layout.fillWidth: true
                 visible: accountDialog.creditCardSelected
@@ -5498,6 +5524,8 @@ ApplicationWindow {
                 font.pixelSize: 14
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: accountBalanceField
                 Layout.fillWidth: true
                 placeholderText: accountDialog.creditCardSelected
@@ -5520,6 +5548,8 @@ ApplicationWindow {
                 font.pixelSize: 14
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: depositRateField
                 Layout.fillWidth: true
                 visible: accountDialog.depositSelected
@@ -5538,6 +5568,8 @@ ApplicationWindow {
                 font.pixelSize: 14
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: depositPayoutBox
                 Layout.fillWidth: true
                 visible: accountDialog.depositSelected
@@ -5552,6 +5584,8 @@ ApplicationWindow {
                 font.pixelSize: 14
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: depositPayoutDayField
                 Layout.fillWidth: true
                 visible: accountDialog.monthlyDepositSelected
@@ -5576,11 +5610,13 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     id: accountCancelButton
                     text: qsTr("Отмена")
                     onClicked: accountDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     id: accountSubmitButton
                     text: accountDialog.editingId ? qsTr("Сохранить") : qsTr("Добавить")
                     highlighted: true
@@ -5631,12 +5667,12 @@ ApplicationWindow {
         onClosed: categoryData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 4; shadowColor: root.accent }
 
             color: root.panel
             radius: 12
-            border.width: 1
-            border.color: root.line
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
     }
 
@@ -5787,12 +5823,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 4; shadowColor: root.accent }
 
             color: root.panel
             radius: 12
-            border.width: 1
-            border.color: root.line
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
     }
 
@@ -5835,12 +5871,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 4; shadowColor: root.accent }
 
             color: root.panel
             radius: 12
-            border.width: 1
-            border.color: root.line
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
     }
 
@@ -5887,12 +5923,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 4; shadowColor: root.accent }
 
             color: root.panel
             radius: 12
-            border.width: 1
-            border.color: root.line
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
     }
 
@@ -5936,12 +5972,12 @@ ApplicationWindow {
         onClosed: accountData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -5972,6 +6008,7 @@ ApplicationWindow {
             }
 
             Panel {
+                neo: true
                 Layout.fillWidth: true
                 implicitHeight: 78
                 color: root.soft
@@ -6023,11 +6060,13 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     id: deleteAccountCancelButton
                     text: qsTr("Отмена")
                     onClicked: deleteAccountDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     id: deleteAccountSubmitButton
                     text: qsTr("Удалить")
                     destructive: true
@@ -6073,8 +6112,8 @@ ApplicationWindow {
             }
         }
         background: Rectangle {
-            color: root.panel; radius: 12; border.color: root.line
-            SurfaceShadow { }
+            color: root.panel; radius: 12; border.width: root.outlineWidth; border.color: root.accent
+            HardShadow { depth: 4; shadowColor: root.accent }
         }
     }
 
@@ -6088,9 +6127,19 @@ ApplicationWindow {
         width: 440
         padding: 24
         title: qsTr("Удалить выделенные операции?")
+        header: Label {
+            text: deleteSelectedHistoryDialog.title
+            color: root.accent
+            font.pixelSize: 21
+            font.weight: Font.Bold
+            leftPadding: deleteSelectedHistoryDialog.leftPadding
+            rightPadding: deleteSelectedHistoryDialog.rightPadding
+            topPadding: deleteSelectedHistoryDialog.topPadding
+            wrapMode: Text.WordWrap
+        }
         background: Rectangle {
-            color: root.panel; radius: 16; border.color: root.line
-            SurfaceShadow { }
+            color: root.panel; radius: 16; border.width: root.outlineWidth; border.color: root.accent
+            HardShadow { depth: 6; shadowColor: root.accent }
         }
         contentItem: ColumnLayout {
             spacing: 16
@@ -6100,8 +6149,10 @@ ApplicationWindow {
             RowLayout {
                 Layout.alignment: Qt.AlignRight
                 spacing: 16
-                SoftButton { text: qsTr("Отмена"); onClicked: deleteSelectedHistoryDialog.close() }
                 SoftButton {
+                    neo: true; text: qsTr("Отмена"); onClicked: deleteSelectedHistoryDialog.close() }
+                SoftButton {
+                    neo: true
                     text: qsTr("Удалить")
                     destructive: true
                     onClicked: {
@@ -6165,12 +6216,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 4; shadowColor: root.accent }
 
             color: root.panel
             radius: 12
-            border.width: 1
-            border.color: root.line
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
     }
 
@@ -6215,12 +6266,12 @@ ApplicationWindow {
         onClosed: transactionData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -6253,6 +6304,7 @@ ApplicationWindow {
             }
 
             Panel {
+                neo: true
                 Layout.fillWidth: true
                 implicitHeight: 78
                 color: root.soft
@@ -6310,11 +6362,13 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     id: deleteTransactionCancelButton
                     text: qsTr("Отмена")
                     onClicked: deleteTransactionDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     id: deleteTransactionSubmitButton
                     text: qsTr("Удалить")
                     destructive: true
@@ -6831,12 +6885,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
         contentItem: ColumnLayout {
             spacing: 14
@@ -6853,6 +6907,8 @@ ApplicationWindow {
                 font.weight: Font.Bold
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: operationType
                 Layout.fillWidth: true
                 model: operationDialog.editingProjectId.length > 0
@@ -6886,6 +6942,8 @@ ApplicationWindow {
                 font.pixelSize: 14
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: operationAccount
                 Layout.fillWidth: true
                 model: operationDialog.editingProjectId.length > 0
@@ -6906,6 +6964,8 @@ ApplicationWindow {
                 font.pixelSize: 14
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: transferTargetAccount
                 Layout.fillWidth: true
                 visible: operationType.currentIndex === 2
@@ -6915,6 +6975,8 @@ ApplicationWindow {
                 emptyText: qsTr("Добавьте счёт")
             }
             AppComboBox {
+                neo: true
+                appAccentColor: root.accent
                 id: operationCategory
                 Layout.fillWidth: true
                 visible: operationType.currentIndex !== 2
@@ -6944,6 +7006,8 @@ ApplicationWindow {
                 emptyText: qsTr("Добавьте категорию")
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: operationAmount
                 Layout.fillWidth: true
                 placeholderText: qsTr("Сумма")
@@ -6954,6 +7018,8 @@ ApplicationWindow {
                 }
             }
             AppTextField {
+                neo: true
+                appAccentColor: root.accent
                 id: operationDescription
                 Layout.fillWidth: true
                 placeholderText: qsTr("Описание")
@@ -6970,6 +7036,7 @@ ApplicationWindow {
 
                 Button {
                     id: operationDateButton
+                    readonly property int pressShift: down ? 2 : 0
                     Layout.fillWidth: true
                     implicitHeight: 44
                     hoverEnabled: true
@@ -6980,6 +7047,7 @@ ApplicationWindow {
                     onClicked: operationDateDialog.openFor(operationDialog.selectedDate)
 
                     contentItem: RowLayout {
+                        transform: Translate { y: operationDateButton.pressShift }
                         spacing: 10
                         Text {
                             Layout.fillWidth: true
@@ -6990,24 +7058,23 @@ ApplicationWindow {
                         }
                         Text {
                             text: "▦"
-                            color: root.navSelected
+                            color: root.accent
                             font.pixelSize: 18
                         }
                     }
 
                     background: Rectangle {
-                        SurfaceShadow { }
+                        transform: Translate { y: operationDateButton.pressShift }
+                        HardShadow { depth: 4 - operationDateButton.pressShift; shadowColor: root.accent }
 
-                        radius: 11
+                        radius: 8
                         color: operationDateButton.down
                                ? root.panel
                                : operationDateButton.hovered
                                  ? root.controlHovered
                                  : root.soft
-                        border.width: operationDateButton.activeFocus ? 2 : 1
-                        border.color: operationDateButton.activeFocus
-                                      ? root.navSelected
-                                      : root.line
+                        border.width: operationDateButton.activeFocus ? 3 : root.outlineWidth
+                        border.color: root.accent
                     }
                 }
             }
@@ -7021,11 +7088,13 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     id: operationCancelButton
                     text: qsTr("Отмена")
                     onClicked: operationDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     id: operationSubmitButton
                     text: qsTr("Сохранить")
                     highlighted: true
@@ -7119,12 +7188,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -7142,6 +7211,7 @@ ApplicationWindow {
                 spacing: 6
 
                 SoftButton {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Этот месяц")
@@ -7154,6 +7224,7 @@ ApplicationWindow {
                     }
                 }
                 SoftButton {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Этот год")
@@ -7166,6 +7237,7 @@ ApplicationWindow {
                     }
                 }
                 SoftButton {
+                    neo: true
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     text: qsTr("Все время")
@@ -7181,6 +7253,7 @@ ApplicationWindow {
                 spacing: 10
 
                 SoftButton {
+                    neo: true
                     Layout.preferredWidth: 44
                     text: "‹"
                     onClicked: dateFilterDialog.shiftMonth(-1)
@@ -7196,6 +7269,7 @@ ApplicationWindow {
                 }
 
                 SoftButton {
+                    neo: true
                     Layout.preferredWidth: 44
                     text: "›"
                     onClicked: dateFilterDialog.shiftMonth(1)
@@ -7249,9 +7323,7 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
-                        SurfaceShadow { }
-
-                        radius: 9
+                        radius: 8
                         color: filterDayButton.rangeEdge
                                ? root.accent
                                : dateFilterDialog.isInsideRange(filterDayButton.model.date)
@@ -7280,10 +7352,12 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Отмена")
                     onClicked: dateFilterDialog.close()
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Применить")
                     highlighted: true
                     enabled: dateFilterDialog.pendingFrom !== null
@@ -7327,12 +7401,12 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: root.accent }
 
             color: root.panel
-            radius: 18
-            border.width: 1
-            border.color: root.line
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
         }
 
         contentItem: ColumnLayout {
@@ -7350,6 +7424,7 @@ ApplicationWindow {
                 spacing: 10
 
                 SoftButton {
+                    neo: true
                     Layout.preferredWidth: 44
                     text: "‹"
                     onClicked: operationDateDialog.shiftMonth(-1)
@@ -7365,6 +7440,7 @@ ApplicationWindow {
                 }
 
                 SoftButton {
+                    neo: true
                     Layout.preferredWidth: 44
                     text: "›"
                     onClicked: operationDateDialog.shiftMonth(1)
@@ -7417,9 +7493,7 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
-                        SurfaceShadow { }
-
-                        radius: 9
+                        radius: 8
                         color: operationDateDialog.isSameDay(
                                    dayButton.model.date,
                                    operationDialog.selectedDate
@@ -7446,10 +7520,12 @@ ApplicationWindow {
                     Layout.fillWidth: true
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Сегодня")
                     onClicked: operationDateDialog.chooseDate(new Date())
                 }
                 SoftButton {
+                    neo: true
                     text: qsTr("Отмена")
                     onClicked: operationDateDialog.close()
                 }

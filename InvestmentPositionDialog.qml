@@ -29,6 +29,16 @@ Dialog {
          ? qsTr("Редактирование инвестиционной позиции")
          : qsTr("Добавить инвестиционную позицию")
     standardButtons: Dialog.NoButton
+    header: Label {
+        text: dialog.title
+        color: dialog.textColor
+        font.pixelSize: 21
+        font.weight: Font.Bold
+        leftPadding: dialog.leftPadding
+        rightPadding: dialog.rightPadding
+        topPadding: dialog.topPadding
+        wrapMode: Text.WordWrap
+    }
 
     function openForNewPosition(accountId) {
         editingPositionId = "";
@@ -126,14 +136,16 @@ Dialog {
     }
 
     background: Rectangle {
-        SurfaceShadow { }
+        HardShadow { depth: 6; shadowColor: dialog.accentColor }
 
         color: dialog.panelColor
-        radius: 18
-        border.color: dialog.lineColor
+        radius: 16
+        border.width: 2
+        border.color: dialog.accentColor
     }
 
     component FormField: StyledTextField {
+        neo: true
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor
@@ -144,6 +156,7 @@ Dialog {
     }
 
     component FormCombo: StyledComboBox {
+        neo: true
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor
@@ -154,6 +167,9 @@ Dialog {
     }
 
     component FormButton: StyledButton {
+        neo: true
+        cornerRadius: 8
+        font.weight: Font.DemiBold
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor
@@ -214,14 +230,15 @@ Dialog {
         }
 
         Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 3; shadowColor: dialog.accentColor }
 
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 180
-            color: "transparent"
-            border.color: dialog.lineColor
-            radius: 10
+            color: dialog.softColor
+            border.width: 2
+            border.color: dialog.accentColor
+            radius: 12
 
             ListView {
                 anchors.fill: parent
@@ -232,7 +249,7 @@ Dialog {
                      ? [dialog.editingInstrument]
                      : dialog.controller ? dialog.controller.investmentSearchResults : []
                 delegate: Rectangle {
-                    SurfaceShadow { }
+
 
                     required property var modelData
                     required property int index

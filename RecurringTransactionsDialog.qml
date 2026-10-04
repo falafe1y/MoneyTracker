@@ -200,6 +200,7 @@ Dialog {
     }
 
     component FormField: StyledTextField {
+        neo: true
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor
@@ -210,6 +211,7 @@ Dialog {
     }
 
     component FormCombo: StyledComboBox {
+        neo: true
         textRole: "label"
         valueRole: "value"
         appTextColor: dialog.textColor
@@ -222,6 +224,9 @@ Dialog {
     }
 
     component FormButton: StyledButton {
+        neo: true
+        cornerRadius: 8
+        font.weight: Font.DemiBold
         leftPadding: 14
         rightPadding: 14
         appTextColor: dialog.textColor
@@ -236,12 +241,12 @@ Dialog {
     }
 
     background: Rectangle {
-        SurfaceShadow { }
+        HardShadow { depth: 6; shadowColor: dialog.accentColor }
 
         color: dialog.panelColor
-        radius: 18
-        border.width: 1
-        border.color: dialog.lineColor
+        radius: 16
+        border.width: 2
+        border.color: dialog.accentColor
     }
 
     contentItem: ColumnLayout {
@@ -308,15 +313,15 @@ Dialog {
                         model: dialog.controller.scheduledTransactions
 
                         delegate: Rectangle {
-                            SurfaceShadow { }
+                            HardShadow { depth: 4; shadowColor: dialog.accentColor }
 
                             required property var modelData
                             width: ListView.view.width
                             height: 98
                             radius: 12
                             color: dialog.softColor
-                            border.width: 1
-                            border.color: dialog.lineColor
+                            border.width: 2
+                            border.color: dialog.accentColor
 
                             RowLayout {
                                 anchors.fill: parent
@@ -599,12 +604,12 @@ Dialog {
             onActivated: deleteDialog.confirmDelete()
         }
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: dialog.accentColor }
 
             color: dialog.panelColor
             radius: 16
-            border.width: 1
-            border.color: dialog.lineColor
+            border.width: 2
+            border.color: dialog.accentColor
         }
         contentItem: ColumnLayout {
             spacing: 13
@@ -664,12 +669,12 @@ Dialog {
             displayedYear = shifted.getFullYear();
         }
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { depth: 6; shadowColor: dialog.accentColor }
 
             color: dialog.panelColor
             radius: 16
-            border.width: 1
-            border.color: dialog.lineColor
+            border.width: 2
+            border.color: dialog.accentColor
         }
         contentItem: ColumnLayout {
             spacing: 12
@@ -728,7 +733,7 @@ Dialog {
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
-                        SurfaceShadow { }
+
 
                         radius: 8
                         color: calendarDay.hovered

@@ -297,6 +297,7 @@ Dialog {
     }
 
     component FormField: StyledTextField {
+        neo: true
         Layout.minimumWidth: 0
         Layout.preferredWidth: Math.max(0, (importScroll.width - 390) / 2)
         Layout.maximumWidth: Layout.preferredWidth
@@ -311,6 +312,7 @@ Dialog {
     }
 
     component FormCombo: StyledComboBox {
+        neo: true
         Layout.minimumWidth: 0
         Layout.preferredWidth: Math.max(0, (importScroll.width - 390) / 2)
         Layout.maximumWidth: Layout.preferredWidth
@@ -327,6 +329,7 @@ Dialog {
     }
 
     component FormCheckBox: StyledCheckBox {
+        neo: true
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appSoftColor: dialog.softColor
@@ -337,6 +340,9 @@ Dialog {
     }
 
     component FormButton: StyledButton {
+        neo: true
+        cornerRadius: 8
+        font.weight: Font.DemiBold
         appTextColor: dialog.textColor
         appMutedColor: dialog.mutedColor
         appPanelColor: dialog.panelColor
@@ -348,12 +354,12 @@ Dialog {
     }
 
     background: Rectangle {
-        SurfaceShadow { }
+        HardShadow { depth: 6; shadowColor: dialog.accentColor }
 
         color: panelColor
-        radius: 18
-        border.width: 1
-        border.color: lineColor
+        radius: 16
+        border.width: 2
+        border.color: dialog.accentColor
     }
 
     contentItem: ColumnLayout {
