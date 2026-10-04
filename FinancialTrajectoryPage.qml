@@ -38,12 +38,15 @@ ScrollView {
         applySettings();
     }
     component Card: Rectangle {
-        SurfaceShadow { }
+        HardShadow { depth: 6; shadowColor: theme.accent }
 
-        radius: 16; color: theme.panel; border.color: theme.line
+        radius: 16; color: theme.panel; border.width: 2; border.color: theme.accent
     }
     component Caption: Text { color: theme.muted; font.pixelSize: 14 }
     component Field: StyledTextField {
+        neo: true
+        implicitWidth: 160
+        Layout.minimumWidth: 0
         horizontalAlignment: Text.AlignRight
         validator: DoubleValidator { bottom: -99; top: 1000; decimals: 2 }
         appTextColor: theme.accent
@@ -51,20 +54,22 @@ ScrollView {
         appPanelColor: theme.panel
         appSoftColor: theme.soft
         appLineColor: theme.line
-        appAccentColor: theme.accentSoft
+        appAccentColor: theme.accent
         appOnAccentColor: theme.white
     }
     component Choice: StyledComboBox {
+        neo: true
         textRole: "text"; valueRole: "value"
         appTextColor: theme.accent
         appMutedColor: theme.muted
         appPanelColor: theme.panel
         appSoftColor: theme.soft
         appLineColor: theme.line
-        appAccentColor: theme.accentSoft
+        appAccentColor: theme.accent
         appHoverColor: theme.controlHovered
     }
     component FormCheckBox: StyledCheckBox {
+        neo: true
         appTextColor: theme.accent
         appMutedColor: theme.muted
         appSoftColor: theme.soft
@@ -74,6 +79,9 @@ ScrollView {
         appOnAccentColor: theme.white
     }
     component ScenarioButton: StyledButton {
+        neo: true
+        cornerRadius: 8
+        font.weight: Font.DemiBold
         appTextColor: theme.accent
         appMutedColor: theme.muted
         appPanelColor: theme.panel
@@ -109,8 +117,9 @@ ScrollView {
                     required property var modelData
                     Layout.fillWidth: true; Layout.preferredHeight: 92
                     Column { anchors.fill: parent; anchors.margins: 16; spacing: 9
-                        Caption { text: parent.parent.modelData.label }
-                        Text { text: parent.parent.modelData.value; color: theme.accent; font.pixelSize: 19; font.bold: true }
+                        Caption { width: parent.width; text: parent.parent.modelData.label; elide: Text.ElideRight }
+                        Text { width: parent.width; text: parent.parent.modelData.value; color: theme.accent; font.pixelSize: 19; font.bold: true
+                            fontSizeMode: Text.Fit; minimumPixelSize: 14; elide: Text.ElideRight }
                     }
                 }
             }

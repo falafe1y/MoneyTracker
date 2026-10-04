@@ -4397,6 +4397,7 @@ ApplicationWindow {
         id: notesPage
 
         Panel {
+            neo: true
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 22
@@ -4428,6 +4429,8 @@ ApplicationWindow {
                     }
 
                     SoftButton {
+                        neo: true
+                        font.weight: Font.DemiBold
                         text: qsTr("Сохранить")
                         highlighted: true
                         enabled: financeController.notesAvailable
@@ -4450,14 +4453,15 @@ ApplicationWindow {
                     id: notesScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
+                    clip: false
+                    contentItem.clip: true
                     background: Rectangle {
-                        SurfaceShadow { }
+                        HardShadow { depth: 3; shadowColor: root.accent }
 
                         color: root.soft
                         radius: 12
-                        border.width: 1
-                        border.color: root.line
+                        border.width: root.outlineWidth
+                        border.color: root.accent
                     }
                     ScrollBar.horizontal: ScrollBar {
                         policy: ScrollBar.AlwaysOff
@@ -4481,7 +4485,7 @@ ApplicationWindow {
                         placeholderText: qsTr("Запишите мысли, планы или важные детали…")
                         color: root.accent
                         placeholderTextColor: root.muted
-                        selectionColor: root.navSelected
+                        selectionColor: root.accent
                         selectedTextColor: root.white
                         font.pixelSize: 15
                         leftPadding: 18
