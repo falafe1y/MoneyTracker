@@ -1358,7 +1358,7 @@ ApplicationWindow {
                     leftPadding: 16
                     font.weight: Font.Bold
                     appAccentColor: root.accent
-                    readonly property int pressShift: pressed || popup.visible ? 2 : 0
+                    readonly property int pressShift: 0
                     contentItem: Text {
                         text: currencyBox.displayText
                         color: currencyBox.appTextColor
@@ -1378,12 +1378,11 @@ ApplicationWindow {
                     }
                     background: Rectangle {
                         transform: Translate { y: currencyBox.pressShift }
-                        HardShadow { depth: 4 - currencyBox.pressShift; shadowColor: root.accent }
                         radius: 8
                         color: currencyBox.hovered || currencyBox.pressed || currencyBox.popup.visible
                                ? root.controlHovered : root.panel
-                        border.width: currencyBox.visualFocus ? 3 : root.outlineWidth
-                        border.color: root.accent
+                        border.width: currencyBox.visualFocus ? 2 : 1
+                        border.color: root.line
                     }
                     model: ["RUB", "USD", "EUR"]
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
@@ -7089,7 +7088,7 @@ ApplicationWindow {
 
                 Button {
                     id: operationDateButton
-                    readonly property int pressShift: down ? 2 : 0
+                    readonly property int pressShift: 0
                     Layout.fillWidth: true
                     implicitHeight: 44
                     hoverEnabled: true
@@ -7118,7 +7117,6 @@ ApplicationWindow {
 
                     background: Rectangle {
                         transform: Translate { y: operationDateButton.pressShift }
-                        HardShadow { depth: 4 - operationDateButton.pressShift; shadowColor: root.accent }
 
                         radius: 8
                         color: operationDateButton.down
@@ -7126,8 +7124,8 @@ ApplicationWindow {
                                : operationDateButton.hovered
                                  ? root.controlHovered
                                  : root.soft
-                        border.width: operationDateButton.activeFocus ? 3 : root.outlineWidth
-                        border.color: root.accent
+                        border.width: operationDateButton.visualFocus ? 2 : 1
+                        border.color: root.line
                     }
                 }
             }

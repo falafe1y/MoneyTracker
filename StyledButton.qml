@@ -6,7 +6,7 @@ Button {
 
     property bool primary: false
     property bool destructive: false
-    // Outlined style: solid dark outline + hard offset shadow (no blur).
+    // Kept for compatibility with existing button instances; outlines stay soft.
     property bool neo: false
     property bool dimWhenDisabled: true
     property int shadowDepth: 4
@@ -22,8 +22,8 @@ Button {
     property int cornerRadius: 9
     property int controlHeight: 40
 
-    // Neo buttons sink into their shadow while pressed.
-    readonly property int pressShift: neo && down && enabled ? 2 : 0
+    // Ordinary buttons have no offset shadow or pressed translation.
+    readonly property int pressShift: 0
 
     activeFocusOnTab: true
     hoverEnabled: true
@@ -50,13 +50,6 @@ Button {
     background: Rectangle {
         transform: Translate { y: control.pressShift }
 
-        SurfaceShadow { visible: !control.flat && !control.neo; blur: 6; spread: -1; offset: Qt.vector2d(0, 4); color: control.enabled ? "#14031528" : "#09031528" }
-        HardShadow {
-            visible: control.neo
-            depth: control.shadowDepth - control.pressShift
-            shadowColor: control.appAccentColor
-        }
-
         radius: control.cornerRadius
         opacity: control.enabled || !control.dimWhenDisabled ? 1 : 0.55
         color: control.neo
@@ -76,16 +69,7 @@ Button {
                    ? (control.down || control.hovered
                       ? Qt.lighter(control.appAccentColor, 1.2) : control.appAccentColor)
                    : control.hovered ? control.appHoverColor : control.appSoftColor
-        border.width: control.neo ? (control.visualFocus ? 3 : 2)
-                    : control.visualFocus ? 2
-                    : control.flat ? 0
-                    : control.primary || control.destructive ? 0 : 1
-        border.color: control.neo
-                    // A filled button gets a light ring so its dark shadow stays readable.
-                    ? (control.primary ? control.appPanelColor : control.appAccentColor)
-                    : control.visualFocus
-                      ? (control.primary || control.destructive
-                         ? control.appOnAccentColor : control.appAccentColor)
-                      : control.appLineColor
+        border.width: control.visualFocus ? 2 : 1
+        border.color: control.appLineColor
     }
 }

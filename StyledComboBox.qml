@@ -12,7 +12,7 @@ ComboBox {
     property color appAccentColor: "#315C9B"
     property color appHoverColor: "#E4E8F1"
     property bool neo: false
-    readonly property int neoPressShift: neo && (pressed || popup.visible) ? 2 : 0
+    readonly property int neoPressShift: 0
     property int controlHeight: 44
     property string emptyText: ""
 
@@ -43,11 +43,6 @@ ComboBox {
 
     background: Rectangle {
         transform: Translate { y: control.neoPressShift }
-        HardShadow {
-            visible: control.neo
-            depth: 4 - control.neoPressShift
-            shadowColor: control.appAccentColor
-        }
         radius: control.neo ? 8 : 11
         opacity: control.enabled ? 1 : 0.62
         color: control.neo
@@ -56,10 +51,8 @@ ComboBox {
                : control.pressed || control.popup.visible
                  ? control.appPanelColor
                  : control.hovered ? control.appHoverColor : control.appSoftColor
-        border.width: control.neo ? (control.visualFocus ? 3 : 2)
-                    : control.visualFocus || control.popup.visible ? 2 : 1
-        border.color: control.neo || control.visualFocus || control.popup.visible
-                      ? control.appAccentColor : control.appLineColor
+        border.width: control.visualFocus ? 2 : 1
+        border.color: control.appLineColor
     }
 
     delegate: ItemDelegate {
@@ -108,11 +101,10 @@ ComboBox {
         }
 
         background: Rectangle {
-            HardShadow { visible: control.neo; depth: 4; shadowColor: control.appAccentColor }
             radius: 12
             color: control.appPanelColor
-            border.width: control.neo ? 2 : 1
-            border.color: control.neo ? control.appAccentColor : control.appLineColor
+            border.width: 1
+            border.color: control.appLineColor
         }
     }
 }
