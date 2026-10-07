@@ -2,16 +2,11 @@
 
 #include <QFileInfo>
 #include <QElapsedTimer>
-#ifdef MONEYTRACKER_HAS_QTPDF
-#include <QPdfDocument>
-#include <QPdfSelection>
-#else
 #include <QCoreApplication>
 #include <QDir>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QXmlStreamReader>
-#endif
 #include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
@@ -69,55 +64,6 @@ CsvCodec::ReadResult PdfStatementReader::read(const QString& path)
         failure.error = QStringLiteral("PDF больше 32 МБ. Сформируйте выписку за меньший период.");
         return failure;
     }
-#ifdef MONEYTRACKER_HAS_QTPDF
-    QPdfDocument document(nullptr);
-    const auto error = document.load(path);
-    if (error != QPdfDocument::Error::None) {
-        failure.error = error == QPdfDocument::Error::IncorrectPassword
-            ? QStringLiteral("PDF защищён паролем. Сохраните выписку без защиты и повторите импорт.")
-            : QStringLiteral("Не удалось открыть PDF. Проверьте, что файл является банковской выпиской.");
-        return failure;
-    }
-    if (document.pageCount() > 200) {
-        failure.error = QStringLiteral("В PDF больше 200 страниц. Разделите выписку на несколько периодов.");
-        return failure;
-    }
-    QVector<Page> pages;
-    qsizetype totalCharacters = 0;
-    for (int p = 0; p < document.pageCount(); ++p) {
-        const auto all = document.getAllText(p);
-        const QString raw = all.text();
-        if (raw.trimmed().isEmpty()) {
-            failure.error = QStringLiteral("На странице %1 нет текстового слоя. Сканы и фотографии выписок не поддерживаются.").arg(p + 1);
-            return failure;
-        }
-        totalCharacters += raw.size();
-        if (raw.size() > 100000 || totalCharacters > 1000000) {
-            failure.error = QStringLiteral("Слишком большой текстовый слой PDF.");
-            return failure;
-        }
-        Page words;
-        Word current;
-        const auto flush = [&] {
-            if (!current.text.isEmpty()) words.append(current);
-            current = {};
-        };
-        for (int i = 0; i < raw.size(); ++i) {
-            const auto selection = document.getSelectionAtIndex(p, i, 1);
-            const QString ch = selection.text();
-            const QRectF bounds = selection.boundingRectangle();
-            if (ch.trimmed().isEmpty() || bounds.isEmpty()) { flush(); continue; }
-            if (!current.text.isEmpty() &&
-                ((bounds.top() > current.bounds.bottom() + 2 || bounds.bottom() < current.bounds.top() - 2) ||
-                 bounds.left() - current.bounds.right() > 3)) flush();
-            current.text += ch;
-            current.bounds = current.bounds.isEmpty() ? bounds : current.bounds.united(bounds);
-        }
-        flush();
-        pages.append(words);
-    }
-    return parsePages(pages);
-#else
     QString executable = QDir(QCoreApplication::applicationDirPath()).filePath(
 #ifdef Q_OS_WIN
         QStringLiteral("pdftotext.exe")
@@ -200,7 +146,6 @@ CsvCodec::ReadResult PdfStatementReader::read(const QString& path)
         }
     }
     return parsePages(pages);
-#endif
 }
 
 CsvCodec::ReadResult PdfStatementReader::parsePages(const QVector<Page>& pages)

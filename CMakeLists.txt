@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network Concurrent LinguistTools Svg)
-find_package(Qt6 QUIET COMPONENTS Pdf)
 find_package(ZLIB REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.10)
@@ -444,13 +443,7 @@ add_executable(PdfStatementReaderTest
 target_link_libraries(PdfStatementReaderTest PRIVATE Qt6::Core Qt6::Gui Qt6::Test ZLIB::ZLIB)
 add_test(NAME PdfStatementReaderTest COMMAND PdfStatementReaderTest)
 
-# Qt PDF is unavailable for MinGW; those builds use Poppler's pdftotext.
-if(TARGET Qt6::Pdf)
-    foreach(pdf_target appMoneyTracker BankCsvImporterTest PdfStatementReaderTest)
-        target_compile_definitions(${pdf_target} PRIVATE MONEYTRACKER_HAS_QTPDF)
-        target_link_libraries(${pdf_target} PRIVATE Qt6::Pdf)
-    endforeach()
-endif()
+# Bank PDF statements are always read with Poppler's pdftotext.
 
 add_executable(BybitProviderTest
     tests/BybitProviderTest.cpp

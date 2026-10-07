@@ -36,6 +36,23 @@ Dialog {
     property bool showReviewOnly: false
     property bool showSavedRules: false
     property string previewConfiguration: ""
+    property bool inspecting: false
+    property int inspectionRequestId: 0
+    property var inspectionProfile: null
+
+    Connections {
+        target: dialog.controller
+        function onBankCsvInspectionFinished(requestId, result) {
+            if (requestId !== dialog.inspectionRequestId) return;
+            dialog.inspectionRequestId = 0;
+            dialog.inspecting = false;
+            dialog.applyInspection(result, dialog.inspectionProfile);
+        }
+    }
+    onClosed: {
+        inspectionRequestId = 0;
+        inspecting = false;
+    }
 
     function choiceFor(row) {
         return categoryChoices[row.rowKey] || {
@@ -52,7 +69,7 @@ Dialog {
 
     function categoryIndex(items, id) {
         for (let i = 0; i < items.length; ++i)
-            if (items[i].id === id) return i;
+            if (items[i].value === id) return i;
         return -1;
     }
 
@@ -200,12 +217,21 @@ Dialog {
 
     function inspectFile(profile) {
         previewSummary = "";
-        const result = controller.inspectBankCsv(
+        operationRows = []; categoryChoices = ({});
+        headers = []; previewRows = [];
+        inspecting = true;
+        statusOk = true;
+        statusText = qsTr("Читаем выписку…");
+        inspectionProfile = profile;
+        inspectionRequestId = controller.inspectBankCsvAsync(
             csvFile,
             Math.max(0, Number(headerRowField.text || "1") - 1),
             delimiterBox.currentValue,
             encodingBox.currentValue
         );
+    }
+
+    function applyInspection(result, profile) {
         statusOk = result.ok;
         statusText = result.ok ? "" : result.error;
         if (!result.ok)
@@ -315,6 +341,7 @@ Dialog {
     }
 
     function previewImport() {
+        if (inspecting) return false;
         const configuration = JSON.stringify(currentProfileValues());
         if (configuration !== previewConfiguration) categoryChoices = ({});
         previewConfiguration = configuration;
@@ -352,6 +379,7 @@ Dialog {
     }
 
     function saveProfile() {
+        if (inspecting) return { ok: false };
         const result = controller.saveBankCsvProfile(currentProfileValues());
         statusOk = result.ok;
         statusText = result.ok ? qsTr("Профиль сохранён") : result.error;
@@ -472,6 +500,25 @@ Dialog {
 
         Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
 
+        RowLayout {
+            visible: dialog.inspecting
+            Layout.fillWidth: true
+            Layout.leftMargin: 24
+            Layout.rightMargin: 24
+            spacing: 16
+            BusyIndicator {
+                running: dialog.inspecting
+                implicitWidth: 40
+                implicitHeight: 40
+            }
+            Text {
+                text: qsTr("Читаем выписку…")
+                color: dialog.mutedColor
+                font.pixelSize: 14
+            }
+            Item { Layout.fillWidth: true }
+        }
+
         Flickable {
             id: importScroll
             Layout.fillWidth: true
@@ -492,6 +539,7 @@ Dialog {
                 spacing: 12
 
                 GridLayout {
+                    enabled: !dialog.inspecting
                     Layout.fillWidth: true
                     columns: 4
                     columnSpacing: 10
@@ -815,8 +863,8 @@ Dialog {
                                     Layout.preferredWidth: 240
                                     Layout.maximumWidth: 240
                                     model: reviewRow.items
-                                    textRole: "name"
-                                    valueRole: "id"
+                                    textRole: "label"
+                                    valueRole: "value"
                                     emptyText: qsTr("Добавьте категорию")
                                     currentIndex: dialog.categoryIndex(reviewRow.items, reviewRow.choice.categoryId)
                                     onActivated: dialog.setChoice(reviewRow.modelData, {
@@ -965,7 +1013,7 @@ Dialog {
             spacing: 10
             FormButton {
                 text: qsTr("Удалить профиль")
-                enabled: dialog.editingProfileId.length > 0
+                enabled: !dialog.inspecting && dialog.editingProfileId.length > 0
                 onClicked: {
                     if (controller.deleteBankCsvProfile(dialog.editingProfileId)) {
                         dialog.statusOk = true;
@@ -977,14 +1025,17 @@ Dialog {
             }
             Item { Layout.fillWidth: true }
             FormButton {
+                enabled: !dialog.inspecting
                 text: qsTr("Проверить")
                 onClicked: dialog.previewImport()
             }
             FormButton {
+                enabled: !dialog.inspecting
                 text: qsTr("Сохранить профиль")
                 onClicked: dialog.saveProfile()
             }
             FormButton {
+                enabled: !dialog.inspecting
                 text: qsTr("Импортировать")
                 primary: true
                 onClicked: {

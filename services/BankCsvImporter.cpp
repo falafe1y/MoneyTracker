@@ -4,6 +4,8 @@
 
 #include <QCryptographicHash>
 #include <QLocale>
+#include <QFileInfo>
+#include <QMutex>
 #include <QTime>
 
 #include <cmath>
@@ -158,8 +160,31 @@ CsvCodec::ReadResult BankCsvImporter::readTable(
     const QString& filePath,
     const BankCsvProfile& profile)
 {
-    if (filePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
-        return PdfStatementReader::read(filePath);
+    if (filePath.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive)) {
+        // Keep one successfully decoded statement. Preview and import reuse it.
+        // The cache is shared with background inspection and bounded to one file.
+        static QMutex mutex;
+        static QString cachedPath;
+        static qint64 cachedSize = -1;
+        static QDateTime cachedModified;
+        static CsvCodec::ReadResult cachedTable;
+        const QFileInfo before(filePath);
+        const QString path = before.canonicalFilePath();
+        {
+            QMutexLocker lock(&mutex);
+            if (!path.isEmpty() && path == cachedPath && before.size() == cachedSize &&
+                before.lastModified() == cachedModified) return cachedTable;
+        }
+        const auto table = PdfStatementReader::read(filePath);
+        const QFileInfo after(filePath);
+        if (table.error.isEmpty() && !path.isEmpty() && before.size() == after.size() &&
+            before.lastModified() == after.lastModified()) {
+            QMutexLocker lock(&mutex);
+            cachedPath = path; cachedSize = after.size(); cachedModified = after.lastModified();
+            cachedTable = table;
+        }
+        return table;
+    }
     if (filePath.endsWith(QStringLiteral(".xlsx"), Qt::CaseInsensitive)) {
         const auto xlsx = XlsxReader::readFirstSheet(filePath);
         return {xlsx.rows, xlsx.error, {}, QStringLiteral("XLSX")};

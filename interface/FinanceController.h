@@ -575,6 +575,9 @@ public:
         const QString& delimiter = QStringLiteral("auto"),
         const QString& encoding = QStringLiteral("auto")
         ) const;
+    Q_INVOKABLE int inspectBankCsvAsync(const QUrl& fileUrl, int headerRow,
+        const QString& delimiter = QStringLiteral("auto"),
+        const QString& encoding = QStringLiteral("auto"));
     Q_INVOKABLE QVariantMap saveBankCsvProfile(const QVariantMap& values);
     Q_INVOKABLE QVariantMap previewBankImport(
         const QUrl& fileUrl,
@@ -624,6 +627,7 @@ signals:
     void capitalHistoryChanged();
     void analyticsChanged();
     void bankCsvProfilesChanged();
+    void bankCsvInspectionFinished(int requestId, const QVariantMap& result);
     void scheduledTransactionsChanged();
     void projectsChanged();
     void selectedProjectIdChanged();
@@ -717,6 +721,9 @@ private:
         const QString& currency
         );
 
+    QVariantMap buildBankCsvInspection(const CsvCodec::ReadResult& csv,
+        const QString& filePath, int headerRow) const;
+    int bankCsvInspectionRequestId_ = 0;
     FinanceRepository repository_;
     CbrCurrencyRateProvider rateProvider_;
     CurrencyConverter currencyConverter_;

@@ -1639,6 +1639,34 @@ QVariantMap FinanceController::inspectBankCsv(
     optionsProfile.encoding = encoding;
     const CsvCodec::ReadResult csv = BankCsvImporter::readTable(
         filePath, optionsProfile);
+    return buildBankCsvInspection(csv, filePath, headerRow);
+}
+
+int FinanceController::inspectBankCsvAsync(const QUrl& fileUrl, const int headerRow,
+    const QString& delimiter, const QString& encoding)
+{
+    const int requestId = ++bankCsvInspectionRequestId_;
+    const QString filePath = fileUrl.toLocalFile();
+    BankCsvProfile profile;
+    profile.delimiter = delimiter; profile.encoding = encoding;
+    auto* watcher = new QFutureWatcher<CsvCodec::ReadResult>(this);
+    connect(watcher, &QFutureWatcher<CsvCodec::ReadResult>::finished, this,
+        [this, watcher, requestId, filePath, headerRow] {
+            const auto table = watcher->result();
+            watcher->deleteLater();
+            emit bankCsvInspectionFinished(requestId,
+                buildBankCsvInspection(table, filePath, headerRow));
+        });
+    watcher->setFuture(QtConcurrent::run([filePath, profile] {
+        return BankCsvImporter::readTable(filePath, profile);
+    }));
+    return requestId;
+}
+
+QVariantMap FinanceController::buildBankCsvInspection(const CsvCodec::ReadResult& csv,
+    const QString& filePath, const int headerRow) const
+{
+    QVariantMap result{{QStringLiteral("ok"), false}};
     if (!csv.error.isEmpty()) {
         result[QStringLiteral("error")] = csv.error;
         return result;

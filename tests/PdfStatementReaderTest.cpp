@@ -1,6 +1,9 @@
 #include "../services/PdfStatementReader.h"
 #include "../services/BankCsvImporter.h"
 #include <QFile>
+#include <QDir>
+#include <QFileInfo>
+#include <QScopeGuard>
 #include <QGuiApplication>
 #include <QPainter>
 #include <QPdfWriter>
@@ -135,6 +138,26 @@ private slots:
         QCOMPARE(result.operations[0].currencyCode, QStringLiteral("RUB"));
         QCOMPARE(result.operations[0].externalId, QStringLiteral("CRD_123"));
         QCOMPARE(result.operations[0].fingerprint, BankCsvImporter::parse(path, profile).operations[0].fingerprint);
+#ifndef Q_OS_WIN
+        // Once decoded, the statement can be previewed/imported without launching Poppler again.
+        if (!QFileInfo(QDir(QCoreApplication::applicationDirPath()).filePath("pdftotext")).isExecutable()) {
+            const bool hadPath = qEnvironmentVariableIsSet("PATH");
+            const QByteArray previousPath = qgetenv("PATH");
+            const auto restorePath = qScopeGuard([hadPath, previousPath] {
+                if (hadPath) qputenv("PATH", previousPath); else qunsetenv("PATH");
+            });
+            qputenv("PATH", QByteArray());
+            const auto cached = BankCsvImporter::readTable(path, profile);
+            QVERIFY2(cached.error.isEmpty(), qPrintable(cached.error));
+            QCOMPARE(cached.rows.size(), 2);
+            // A changed file must never return the previously decoded operations.
+            QFile replacement(path);
+            QVERIFY(replacement.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            replacement.write("changed PDF"); replacement.close();
+            QVERIFY(!BankCsvImporter::readTable(path, profile).error.isEmpty());
+        }
+#endif
+
     }
     void scannedPdfAndInvalidFileFail() {
         QTemporaryDir dir;
