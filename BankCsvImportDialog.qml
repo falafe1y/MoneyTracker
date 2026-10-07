@@ -63,8 +63,68 @@ Dialog {
 
     function setChoice(row, changes) {
         const next = Object.assign({}, categoryChoices);
-        next[row.rowKey] = Object.assign({}, choiceFor(row), changes);
-        categoryChoices = next;
+        // Restore the choices underneath previous automatic assignments.
+        for (const key in next)
+            if (next[key].ruleBaseChoice)
+                next[key] = next[key].ruleBaseChoice;
+        const edited = Object.assign({}, choiceFor(row), changes);
+        delete edited.ruleBaseChoice;
+        next[row.rowKey] = edited;
+        categoryChoices = applyPendingRules(next);
+    }
+
+    function ruleMatches(row, rule, pattern) {
+        if (row.type !== rule.type || !pattern) return false;
+        const description = controller.normalizeBankCategoryText(row.description || "");
+        const merchant = controller.normalizeBankCategoryText(row.merchant || "");
+        if (rule.matchMode === "exact")
+            return pattern === merchant || pattern === description;
+        // Normalized descriptions contain only words separated by single spaces.
+        return rule.matchMode === "contains"
+            && (" " + description + " ").indexOf(" " + pattern + " ") >= 0;
+    }
+
+    function applyPendingRules(base) {
+        const rules = [];
+        for (let i = 0; i < operationRows.length; ++i) {
+            const row = operationRows[i];
+            const choice = base[row.rowKey];
+            if (!choice || !choice.remember || !choice.confirmed
+                    || categoryIndex(categoryItems(row.type), choice.categoryId) < 0)
+                continue;
+            const pattern = controller.normalizeBankCategoryText(choice.pattern || "");
+            const rule = Object.assign({}, choice, { type: row.type });
+            if (pattern.length <= 240 && ruleMatches(row, rule, pattern))
+                rules.push({ rule: rule, pattern: pattern });
+        }
+        const next = Object.assign({}, base);
+        for (let i = 0; i < operationRows.length; ++i) {
+            const row = operationRows[i];
+            const original = base[row.rowKey] || choiceFor(row);
+            // Explicit confirmations remain available as one-off exceptions.
+            if (original.confirmed || original.remember) continue;
+            let selected = "";
+            let best = -1;
+            let conflict = false;
+            for (let j = 0; j < rules.length; ++j) {
+                const entry = rules[j];
+                if (!ruleMatches(row, entry.rule, entry.pattern)) continue;
+                const score = entry.rule.matchMode === "exact" ? 241 : entry.pattern.length;
+                if (score > best) {
+                    best = score;
+                    selected = entry.rule.categoryId;
+                    conflict = false;
+                } else if (score === best && selected !== entry.rule.categoryId) {
+                    conflict = true;
+                }
+            }
+            if (selected && !conflict)
+                next[row.rowKey] = Object.assign({}, original, {
+                    categoryId: selected, confirmed: !row.special,
+                    ruleBaseChoice: original
+                });
+        }
+        return next;
     }
 
     function categoryIndex(items, id) {
@@ -95,10 +155,12 @@ Dialog {
         const next = Object.assign({}, categoryChoices);
         for (let i = 0; i < operationRows.length; ++i) {
             const other = operationRows[i];
-            if (other.merchant === row.merchant && other.type === row.type && !other.special)
+            if (other.merchant === row.merchant && other.type === row.type && !other.special) {
                 next[other.rowKey] = Object.assign({}, choiceFor(other), {
                     categoryId: choice.categoryId, confirmed: true
                 });
+                delete next[other.rowKey].ruleBaseChoice;
+            }
         }
         categoryChoices = next;
     }
@@ -108,8 +170,10 @@ Dialog {
         for (let i = 0; i < operationRows.length; ++i) {
             const row = operationRows[i];
             const choice = choiceFor(row);
-            if (!row.special && categoryIndex(categoryItems(row.type), choice.categoryId) >= 0)
+            if (!row.special && categoryIndex(categoryItems(row.type), choice.categoryId) >= 0) {
                 next[row.rowKey] = Object.assign({}, choice, { confirmed: true });
+                delete next[row.rowKey].ruleBaseChoice;
+            }
         }
         categoryChoices = next;
     }
@@ -359,9 +423,10 @@ Dialog {
         for (let i = 0; i < operationRows.length; ++i) {
             const row = operationRows[i];
             const choice = categoryChoices[row.rowKey];
-            if (choice && choice.fingerprint === row.fingerprint) keptChoices[row.rowKey] = choice;
+            if (choice && choice.fingerprint === row.fingerprint)
+                keptChoices[row.rowKey] = choice.ruleBaseChoice || choice;
         }
-        categoryChoices = keptChoices;
+        categoryChoices = applyPendingRules(keptChoices);
         previewSummary = qsTr("Найдено: %1 · Новых: %2 · Дубликатов: %3 · Возможных переводов: %4 · %5 — %6 · Доходы: %7 · Расходы: %8 · Ошибок: %9 · Другая валюта: %10")
             .arg(result.operationCount)
             .arg(result.newCount)

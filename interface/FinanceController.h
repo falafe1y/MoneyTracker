@@ -589,6 +589,7 @@ public:
         const QString& profileId,
         const QVariantMap& options = QVariantMap()
         );
+    Q_INVOKABLE QString normalizeBankCategoryText(const QString& text) const;
     Q_INVOKABLE QVariantMap bankCategoryRules() const;
     Q_INVOKABLE QVariantMap deleteBankCategoryRule(const QString& pattern,
         const QString& matchMode, const QString& type);

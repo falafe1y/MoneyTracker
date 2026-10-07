@@ -2164,6 +2164,11 @@ bool FinanceController::deleteScheduledTransaction(const QString& id)
     return true;
 }
 
+QString FinanceController::normalizeBankCategoryText(const QString& text) const
+{
+    return BankCategoryMatcher::normalize(text);
+}
+
 QVariantMap FinanceController::bankCategoryRules() const
 {
     QString error;
