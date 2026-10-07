@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/Transaction.h"
+#include "../services/BankCategoryMatcher.h"
 #include "../core/RecurringTransaction.h"
 #include "../core/DepositSettings.h"
 #include "../core/Category.h"
@@ -125,7 +126,11 @@ public:
         const Transaction& outgoing,
         const Transaction& incoming
         );
-    bool insertTransactions(const QVector<Transaction>& transactions);
+    bool insertTransactions(const QVector<Transaction>& transactions,
+                            const QVector<BankCategoryRule>& rules = {});
+    QVector<BankCategoryRule> loadBankCategoryRules(QString* error = nullptr) const;
+    bool deleteBankCategoryRule(const QString& pattern, const QString& matchMode,
+                                CategoryType type);
     bool updateTransaction(const Transaction& transaction);
     bool replaceTransaction(
         const QString& currentId,

@@ -583,8 +583,12 @@ public:
     Q_INVOKABLE bool deleteBankCsvProfile(const QString& id);
     Q_INVOKABLE QVariantMap importBankCsv(
         const QUrl& fileUrl,
-        const QString& profileId
+        const QString& profileId,
+        const QVariantMap& options = QVariantMap()
         );
+    Q_INVOKABLE QVariantMap bankCategoryRules() const;
+    Q_INVOKABLE QVariantMap deleteBankCategoryRule(const QString& pattern,
+        const QString& matchMode, const QString& type);
     Q_INVOKABLE QVariantMap saveScheduledTransaction(
         const QVariantMap& values
         );

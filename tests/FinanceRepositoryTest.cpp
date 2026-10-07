@@ -22,6 +22,7 @@ private slots:
     void storesUiLanguage();
     void storesCurrencyRateSettings();
     void storesBankCsvProfiles();
+    void bankCategoryRulesPersistAndRollbackWithImport();
     void storesProjectsAndTransactionAssignments();
     void migratesProjectAssignmentForExistingDatabase();
     void migratesLegacyProjectTable();
@@ -1625,6 +1626,50 @@ void FinanceRepositoryTest::deletesSelectedHistoryAtomically()
     QVERIFY2(repository.deleteHistoryRows(selected), qPrintable(repository.lastError()));
     QCOMPARE(repository.loadTransactions().size(), 2);
     QVERIFY(!repository.deleteHistoryRows({}));
+}
+
+void FinanceRepositoryTest::bankCategoryRulesPersistAndRollbackWithImport()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("rules.sqlite3"));
+    {
+        FinanceRepository repository(path);
+        QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
+        const auto accounts = repository.loadAccounts();
+        QVERIFY(!accounts.isEmpty());
+        const auto account = accounts.front();
+        const BankCategoryRule rule{QStringLiteral("пятерочка"), QStringLiteral("exact"),
+                                    QStringLiteral("groceries"), CategoryType::Expense};
+        const Transaction transaction(QStringLiteral("category-import"), account.id(), rule.categoryId,
+            Money(100, account.currency()), TransactionType::Expense,
+            QDateTime::currentDateTimeUtc(), QStringLiteral("PYATEROCHKA 123"));
+        QVERIFY2(repository.insertTransactions({transaction}, {rule}), qPrintable(repository.lastError()));
+        QCOMPARE(repository.loadBankCategoryRules().size(), 1);
+        const Transaction failed(QStringLiteral("category-failed"), account.id(), rule.categoryId,
+            Money(100, account.currency()), TransactionType::Expense,
+            QDateTime::currentDateTimeUtc(), QStringLiteral("PYATEROCHKA 999"));
+        BankCategoryRule invalid = rule; invalid.pattern = QStringLiteral("несуществующее");
+        invalid.categoryId = QStringLiteral("missing-category");
+        QVERIFY(!repository.insertTransactions({failed}, {invalid}));
+        for (const auto& item : repository.loadTransactions())
+            QVERIFY(item.id() != QStringLiteral("category-failed"));
+        QCOMPARE(repository.loadBankCategoryRules().size(), 1);
+    }
+    {
+        FinanceRepository reopened(path);
+        const auto rules = reopened.loadBankCategoryRules();
+        QCOMPARE(rules.size(), 1);
+        QCOMPARE(rules.front().pattern, QStringLiteral("пятерочка"));
+        QCOMPARE(rules.front().categoryId, QStringLiteral("groceries"));
+        const QString backupPath = directory.filePath(QStringLiteral("backup.sqlite3"));
+        QVERIFY(reopened.backupDatabase(backupPath));
+        FinanceRepository backup(backupPath);
+        QCOMPARE(backup.loadBankCategoryRules().size(), 1);
+        QVERIFY(reopened.archiveCategory(QStringLiteral("groceries")));
+        QVERIFY(reopened.loadBankCategoryRules().isEmpty());
+        QVERIFY(reopened.clearAllUserData());
+        QVERIFY(reopened.loadBankCategoryRules().isEmpty());
+    }
 }
 
 QTEST_GUILESS_MAIN(FinanceRepositoryTest)

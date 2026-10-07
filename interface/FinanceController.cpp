@@ -4,6 +4,7 @@
 #include <QFutureWatcher>
 
 #include "../services/BankCsvImporter.h"
+#include "../services/BankCategoryMatcher.h"
 #include "../services/CapitalHistoryCalculator.h"
 #include "../services/DateSliceCalculator.h"
 #include "../services/DepositInterestCalculator.h"
@@ -1742,6 +1743,12 @@ QVariantMap FinanceController::previewBankImport(
             : parsed.errors.join(QStringLiteral("; "));
         return result;
     }
+    QString ruleError;
+    const auto rules = repository_.loadBankCategoryRules(&ruleError);
+    if (!ruleError.isEmpty()) { result[QStringLiteral("error")] = ruleError; return result; }
+    QVariantList operationRows;
+    QSet<QString> previewIds;
+    int reviewCount = 0;
     qint64 incomeMinor = 0;
     qint64 expenseMinor = 0;
     int currencyMismatches = 0;
@@ -1764,10 +1771,32 @@ QVariantMap FinanceController::previewBankImport(
             ? fingerprintOccurrences[operation.fingerprint]++ : 0;
         const int legacyOccurrence = operation.externalId.isEmpty()
             ? legacyFingerprintOccurrences[operation.legacyFingerprint]++ : 0;
-        if (existingIds.contains(bankCsvTransactionId(
-                account->id(), operation, occurrence)) ||
-            existingIds.contains(legacyBankCsvTransactionId(
-                account->id(), operation, legacyOccurrence))) ++duplicates;
+        const QString rowKey = bankCsvTransactionId(account->id(), operation, occurrence);
+        const bool duplicate = existingIds.contains(rowKey) || previewIds.contains(rowKey) ||
+            existingIds.contains(legacyBankCsvTransactionId(account->id(), operation, legacyOccurrence));
+        previewIds.insert(rowKey);
+        if (duplicate) ++duplicates;
+        if (!duplicate) {
+            const bool income = operation.signedMinor > 0;
+            const auto suggestion = BankCategoryMatcher::suggest(operation, categories_,
+                archivedCategoryIds_, rules, income ? profile.incomeCategoryId : profile.expenseCategoryId);
+            if (suggestion.needsReview) ++reviewCount;
+            operationRows.append(QVariantMap{
+                {QStringLiteral("rowKey"), rowKey},
+                {QStringLiteral("sourceRow"), operation.sourceRow},
+                {QStringLiteral("fingerprint"), operation.fingerprint},
+                {QStringLiteral("date"), operation.occurredAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))},
+                {QStringLiteral("signedMinor"), operation.signedMinor},
+                {QStringLiteral("currency"), accountCurrency},
+                {QStringLiteral("type"), income ? QStringLiteral("income") : QStringLiteral("expense")},
+                {QStringLiteral("description"), operation.description},
+                {QStringLiteral("merchant"), suggestion.merchant},
+                {QStringLiteral("categoryId"), suggestion.categoryId},
+                {QStringLiteral("reason"), suggestion.reason},
+                {QStringLiteral("needsReview"), suggestion.needsReview},
+                {QStringLiteral("special"), BankCategoryMatcher::isSpecialOperation(operation.description)}
+            });
+        }
         if (looksLikeTransfer(operation.description)) {
             const auto match = std::find_if(
                 transactions_.cbegin(), transactions_.cend(),
@@ -1794,6 +1823,8 @@ QVariantMap FinanceController::previewBankImport(
         if (!firstDate.isValid() || date < firstDate) firstDate = date;
         if (!lastDate.isValid() || date > lastDate) lastDate = date;
     }
+    result[QStringLiteral("operationRows")] = operationRows;
+    result[QStringLiteral("reviewCount")] = reviewCount;
     result[QStringLiteral("ok")] = true;
     result[QStringLiteral("operationCount")] = parsed.operations.size() - currencyMismatches;
     result[QStringLiteral("newCount")] = parsed.operations.size() -
@@ -2105,9 +2136,39 @@ bool FinanceController::deleteScheduledTransaction(const QString& id)
     return true;
 }
 
+QVariantMap FinanceController::bankCategoryRules() const
+{
+    QString error;
+    const auto rules = repository_.loadBankCategoryRules(&error);
+    QVariantList items;
+    for (const auto& rule : rules) {
+        QString name;
+        for (const auto& category : categories_)
+            if (category.id() == rule.categoryId) { name = categoryDisplayName(category); break; }
+        items.append(QVariantMap{{QStringLiteral("pattern"), rule.pattern},
+            {QStringLiteral("matchMode"), rule.matchMode}, {QStringLiteral("categoryId"), rule.categoryId},
+            {QStringLiteral("categoryName"), name},
+            {QStringLiteral("type"), rule.type == CategoryType::Income ? QStringLiteral("income") : QStringLiteral("expense")}});
+    }
+    return {{QStringLiteral("ok"), error.isEmpty()}, {QStringLiteral("error"), error},
+            {QStringLiteral("items"), items}};
+}
+
+QVariantMap FinanceController::deleteBankCategoryRule(const QString& pattern,
+    const QString& matchMode, const QString& type)
+{
+    if ((type != QStringLiteral("income") && type != QStringLiteral("expense")) ||
+        (matchMode != QStringLiteral("exact") && matchMode != QStringLiteral("contains")))
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), tr("Некорректное правило")}};
+    const bool ok = repository_.deleteBankCategoryRule(BankCategoryMatcher::normalize(pattern), matchMode,
+        type == QStringLiteral("income") ? CategoryType::Income : CategoryType::Expense);
+    return {{QStringLiteral("ok"), ok}, {QStringLiteral("error"), ok ? QString() : repository_.lastError()}};
+}
+
 QVariantMap FinanceController::importBankCsv(
     const QUrl& fileUrl,
-    const QString& profileId
+    const QString& profileId,
+    const QVariantMap& options
     )
 {
     QVariantMap result{
@@ -2159,47 +2220,20 @@ QVariantMap FinanceController::importBankCsv(
         ) -> const Category*
     {
         for (const Category& category : categories_) {
-            if (category.id() == id && category.type() == type &&
-                !archivedCategoryIds_.contains(id)) {
+            if (id != QStringLiteral("transfer-in") && id != QStringLiteral("transfer-out") &&
+                category.id() == id && category.type() == type && !archivedCategoryIds_.contains(id)) {
                 return &category;
             }
         }
         return nullptr;
     };
-    const auto categoryForOperation = [this, &categoryById, &profile](
-        const BankCsvOperation& operation,
-        const CategoryType type
-        ) -> const Category*
-    {
-        if (!operation.categoryName.isEmpty()) {
-            const Category* match = nullptr;
-            for (const Category& category : categories_) {
-                if (category.type() != type ||
-                    archivedCategoryIds_.contains(category.id())) {
-                    continue;
-                }
-                if (category.name().compare(
-                        operation.categoryName, Qt::CaseInsensitive) == 0 ||
-                    categoryDisplayName(category).compare(
-                        operation.categoryName, Qt::CaseInsensitive) == 0) {
-                    if (match) {
-                        match = nullptr;
-                        break;
-                    }
-                    match = &category;
-                }
-            }
-            if (match) {
-                return match;
-            }
-        }
-        return categoryById(
-            type == CategoryType::Income
-                ? profile->incomeCategoryId
-                : profile->expenseCategoryId,
-            type);
-    };
-
+    QString ruleError;
+    const auto rules = repository_.loadBankCategoryRules(&ruleError);
+    if (!ruleError.isEmpty()) { result[QStringLiteral("error")] = ruleError; return result; }
+    const QVariantMap choices = options.value(QStringLiteral("choices")).toMap();
+    const bool requireReview = options.value(QStringLiteral("requireReview"), true).toBool();
+    QVector<BankCategoryRule> remembered;
+    QSet<QString> usedChoices;
     QSet<QString> existingIds;
     for (const Transaction& transaction : std::as_const(transactions_)) {
         existingIds.insert(transaction.id());
@@ -2221,14 +2255,6 @@ QVariantMap FinanceController::importBankCsv(
         const CategoryType categoryType = income
             ? CategoryType::Income
             : CategoryType::Expense;
-        const Category* category = categoryForOperation(
-            operation, categoryType);
-        if (!category) {
-            result[QStringLiteral("error")] = tr(
-                "Не найдена категория для строки %1").arg(operation.sourceRow);
-            return result;
-        }
-
         const int occurrence = operation.externalId.isEmpty()
             ? fingerprintOccurrences[operation.fingerprint]++ : 0;
         const int legacyOccurrence = operation.externalId.isEmpty()
@@ -2241,6 +2267,55 @@ QVariantMap FinanceController::importBankCsv(
             pendingIds.contains(transactionId)) {
             ++skipped;
             continue;
+        }
+
+        const auto suggestion = BankCategoryMatcher::suggest(operation, categories_, archivedCategoryIds_,
+            rules, income ? profile->incomeCategoryId : profile->expenseCategoryId);
+        const QVariantMap choice = choices.value(transactionId).toMap();
+        QString categoryId = suggestion.categoryId;
+        if (!choice.isEmpty()) {
+            if (choice.value(QStringLiteral("fingerprint")).toString() != operation.fingerprint) {
+                result[QStringLiteral("error")] = tr("Выписка изменилась. Обновите предварительный просмотр.");
+                return result;
+            }
+            usedChoices.insert(transactionId);
+            categoryId = choice.value(QStringLiteral("categoryId")).toString();
+        }
+        const Category* category = categoryById(categoryId, categoryType);
+        if (!category || (requireReview && suggestion.needsReview &&
+            !choice.value(QStringLiteral("confirmed")).toBool())) {
+            result[QStringLiteral("error")] = tr("Проверьте категорию в строке %1").arg(operation.sourceRow);
+            return result;
+        }
+        if (choice.value(QStringLiteral("remember")).toBool()) {
+            const QString pattern = BankCategoryMatcher::normalize(
+                choice.value(QStringLiteral("pattern"), suggestion.merchant).toString());
+            const QString mode = choice.value(QStringLiteral("matchMode"), QStringLiteral("exact")).toString();
+            if (pattern.isEmpty() || pattern.size() > 240 ||
+                (mode != QStringLiteral("exact") && mode != QStringLiteral("contains")) ||
+                !choice.value(QStringLiteral("confirmed")).toBool()) {
+                result[QStringLiteral("error")] = tr("Проверьте правило для строки %1").arg(operation.sourceRow);
+                return result;
+            }
+            // Only save a rule which actually matches the reviewed operation.
+            const QVector<BankCategoryRule> candidate{{pattern, mode, categoryId, categoryType}};
+            const auto check = BankCategoryMatcher::suggest(operation, categories_, archivedCategoryIds_, candidate, {});
+            if (!check.reason.startsWith(QStringLiteral("Ваше правило")) || check.categoryId != categoryId) {
+                result[QStringLiteral("error")] = tr("Правило не соответствует операции в строке %1").arg(operation.sourceRow);
+                return result;
+            }
+            for (const auto& previous : remembered) {
+                if (previous.pattern == pattern && previous.matchMode == mode && previous.type == categoryType &&
+                    previous.categoryId != categoryId) {
+                    result[QStringLiteral("error")] = tr("Для одного получателя выбраны разные категории. Снимите «Запомнить» у разовых исключений.");
+                    return result;
+                }
+            }
+            const bool alreadyRemembered = std::any_of(remembered.cbegin(), remembered.cend(),
+                [&pattern, &mode, categoryType](const BankCategoryRule& rule) {
+                    return rule.pattern == pattern && rule.matchMode == mode && rule.type == categoryType;
+                });
+            if (!alreadyRemembered) remembered.append(candidate.front());
         }
 
         imported.append(Transaction(
@@ -2265,7 +2340,14 @@ QVariantMap FinanceController::importBankCsv(
         return result;
     }
 
-    if (!repository_.insertTransactions(imported)) {
+    // Reject stale choices for removed/changed rows; duplicates from a previous successful import are harmless.
+    for (auto it = choices.cbegin(); it != choices.cend(); ++it) {
+        if (!usedChoices.contains(it.key()) && !existingIds.contains(it.key())) {
+            result[QStringLiteral("error")] = tr("Выписка изменилась. Обновите предварительный просмотр.");
+            return result;
+        }
+    }
+    if (!repository_.insertTransactions(imported, remembered)) {
         result[QStringLiteral("error")] = repository_.lastError();
         return result;
     }
@@ -2277,6 +2359,7 @@ QVariantMap FinanceController::importBankCsv(
 
     result[QStringLiteral("ok")] = true;
     result[QStringLiteral("imported")] = imported.size();
+    result[QStringLiteral("rememberedRules")] = remembered.size();
     result[QStringLiteral("skipped")] = skipped;
     result[QStringLiteral("rejected")] = parsed.rejected + currencyRejected;
     QStringList warnings = parsed.errors;

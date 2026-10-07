@@ -30,6 +30,78 @@ Dialog {
     property string statusText: ""
     property bool statusOk: true
     property string previewSummary: ""
+    property var operationRows: []
+    property var categoryChoices: ({})
+    property var savedCategoryRules: []
+    property bool showReviewOnly: false
+    property bool showSavedRules: false
+    property string previewConfiguration: ""
+
+    function choiceFor(row) {
+        return categoryChoices[row.rowKey] || {
+            categoryId: row.categoryId, confirmed: false, remember: false, fingerprint: row.fingerprint,
+            pattern: row.merchant, matchMode: "exact"
+        };
+    }
+
+    function setChoice(row, changes) {
+        const next = Object.assign({}, categoryChoices);
+        next[row.rowKey] = Object.assign({}, choiceFor(row), changes);
+        categoryChoices = next;
+    }
+
+    function categoryIndex(items, id) {
+        for (let i = 0; i < items.length; ++i)
+            if (items[i].id === id) return i;
+        return -1;
+    }
+
+    function unresolved(row) {
+        const choice = choiceFor(row);
+        return categoryIndex(categoryItems(row.type), choice.categoryId) < 0
+            || (row.needsReview && !choice.confirmed);
+    }
+
+    function reviewRows() {
+        return operationRows.filter(function(row) {
+            return !showReviewOnly || unresolved(row);
+        });
+    }
+
+    function remainingReviews() {
+        return operationRows.filter(function(row) { return unresolved(row); }).length;
+    }
+
+    function applyToMerchant(row) {
+        const choice = choiceFor(row);
+        if (!choice.categoryId) return;
+        const next = Object.assign({}, categoryChoices);
+        for (let i = 0; i < operationRows.length; ++i) {
+            const other = operationRows[i];
+            if (other.merchant === row.merchant && other.type === row.type && !other.special)
+                next[other.rowKey] = Object.assign({}, choiceFor(other), {
+                    categoryId: choice.categoryId, confirmed: true
+                });
+        }
+        categoryChoices = next;
+    }
+
+    function acceptSuggestions() {
+        const next = Object.assign({}, categoryChoices);
+        for (let i = 0; i < operationRows.length; ++i) {
+            const row = operationRows[i];
+            const choice = choiceFor(row);
+            if (!row.special && categoryIndex(categoryItems(row.type), choice.categoryId) >= 0)
+                next[row.rowKey] = Object.assign({}, choice, { confirmed: true });
+        }
+        categoryChoices = next;
+    }
+
+    function reloadRules() {
+        const result = controller.bankCategoryRules();
+        if (result.ok) savedCategoryRules = result.items;
+        else { statusOk = false; statusText = result.error; }
+    }
 
     signal importFinished(var result)
 
@@ -243,14 +315,26 @@ Dialog {
     }
 
     function previewImport() {
+        const configuration = JSON.stringify(currentProfileValues());
+        if (configuration !== previewConfiguration) categoryChoices = ({});
+        previewConfiguration = configuration;
         const result = controller.previewBankImport(csvFile, currentProfileValues());
         statusOk = result.ok;
         if (!result.ok) {
             previewSummary = "";
+            operationRows = [];
             statusText = result.error;
             return false;
         }
         statusText = "";
+        operationRows = result.operationRows || [];
+        const keptChoices = ({});
+        for (let i = 0; i < operationRows.length; ++i) {
+            const row = operationRows[i];
+            const choice = categoryChoices[row.rowKey];
+            if (choice && choice.fingerprint === row.fingerprint) keptChoices[row.rowKey] = choice;
+        }
+        categoryChoices = keptChoices;
         previewSummary = qsTr("Найдено: %1 · Новых: %2 · Дубликатов: %3 · Возможных переводов: %4 · %5 — %6 · Доходы: %7 · Расходы: %8 · Ошибок: %9 · Другая валюта: %10")
             .arg(result.operationCount)
             .arg(result.newCount)
@@ -274,12 +358,16 @@ Dialog {
         if (result.ok) {
             editingProfileId = result.id;
             setValue(profileBox, result.id);
+            previewConfiguration = JSON.stringify(currentProfileValues());
         }
         return result;
     }
 
     function openForFile(fileUrl) {
         csvFile = fileUrl;
+        operationRows = []; categoryChoices = ({}); previewConfiguration = "";
+        showReviewOnly = false; showSavedRules = false;
+        reloadRules();
         statusText = "";
         detectedInfo = "";
         previewSummary = "";
@@ -625,6 +713,206 @@ Dialog {
                 Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
 
                 Text {
+                    Layout.fillWidth: true
+                    visible: dialog.operationRows.length > 0
+                    text: qsTr("Категории новых операций · Требуют проверки: %1")
+                        .arg(dialog.remainingReviews())
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                    color: dialog.textColor
+                }
+                RowLayout {
+                    visible: dialog.operationRows.length > 0
+                    Layout.fillWidth: true
+                    spacing: 16
+                    StyledCheckBox {
+                        text: qsTr("Только требующие проверки")
+                        checked: dialog.showReviewOnly
+                        onClicked: dialog.showReviewOnly = checked
+                        appTextColor: dialog.textColor
+                        appAccentColor: dialog.accentColor
+                    }
+                    Item { Layout.fillWidth: true }
+                    FormButton {
+                        text: qsTr("Принять предложения")
+                        onClicked: dialog.acceptSuggestions()
+                    }
+                }
+                Text {
+                    visible: dialog.operationRows.length > 0
+                    Layout.fillWidth: true
+                    text: qsTr("«Принять предложения» подтверждает категории обычных операций. Переводы, возвраты и снятия проверьте отдельно: импорт сохраняет их как доходы или расходы и не связывает счета автоматически.")
+                    color: dialog.mutedColor
+                    font.pixelSize: 14
+                    wrapMode: Text.WordWrap
+                }
+                ListView {
+                    id: categoryReviewList
+                    visible: dialog.operationRows.length > 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(420, contentHeight)
+                    clip: true
+                    spacing: 8
+                    model: dialog.reviewRows()
+                    ScrollBar.vertical: StyledScrollBar { policy: ScrollBar.AlwaysOff }
+                    delegate: Rectangle {
+                        id: reviewRow
+                        required property var modelData
+                        readonly property var choice: dialog.choiceFor(modelData)
+                        readonly property var items: dialog.categoryItems(modelData.type)
+                        width: categoryReviewList.width
+                        height: reviewContent.implicitHeight + 32
+                        radius: 8
+                        color: dialog.panelColor
+                        border.width: 1
+                        border.color: dialog.lineColor
+                        ColumnLayout {
+                            id: reviewContent
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 16
+                            spacing: 8
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: reviewRow.modelData.merchant || qsTr("Неизвестный получатель")
+                                    font.pixelSize: 14
+                                    font.weight: Font.DemiBold
+                                    color: dialog.textColor
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: reviewRow.modelData.date + " · " + dialog.formatMinor(
+                                        reviewRow.modelData.signedMinor, reviewRow.modelData.currency)
+                                    color: dialog.textColor
+                                    font.pixelSize: 14
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: reviewRow.modelData.description
+                                color: dialog.mutedColor
+                                font.pixelSize: 14
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: dialog.unresolved(reviewRow.modelData)
+                                    ? qsTr("Требует проверки · %1").arg(reviewRow.modelData.reason)
+                                    : reviewRow.choice.confirmed ? qsTr("Выбор подтверждён") : reviewRow.modelData.reason
+                                color: dialog.mutedColor
+                                font.pixelSize: 14
+                                wrapMode: Text.WordWrap
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 16
+                                FormCombo {
+                                    Layout.preferredWidth: 240
+                                    Layout.maximumWidth: 240
+                                    model: reviewRow.items
+                                    textRole: "name"
+                                    valueRole: "id"
+                                    emptyText: qsTr("Добавьте категорию")
+                                    currentIndex: dialog.categoryIndex(reviewRow.items, reviewRow.choice.categoryId)
+                                    onActivated: dialog.setChoice(reviewRow.modelData, {
+                                        categoryId: currentValue, confirmed: true
+                                    })
+                                }
+                                StyledCheckBox {
+                                    text: qsTr("Подтверждено")
+                                    checked: reviewRow.choice.confirmed
+                                    enabled: dialog.categoryIndex(reviewRow.items, reviewRow.choice.categoryId) >= 0
+                                    onClicked: dialog.setChoice(reviewRow.modelData, { confirmed: checked })
+                                    appTextColor: dialog.textColor
+                                    appAccentColor: dialog.accentColor
+                                }
+                                StyledCheckBox {
+                                    text: qsTr("Запомнить")
+                                    checked: reviewRow.choice.remember
+                                    enabled: reviewRow.choice.confirmed && reviewRow.modelData.merchant.length > 0
+                                    onClicked: dialog.setChoice(reviewRow.modelData, { remember: checked })
+                                    appTextColor: dialog.textColor
+                                    appAccentColor: dialog.accentColor
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+                            FormButton {
+                                text: qsTr("Применить к этому магазину в выписке")
+                                enabled: !!reviewRow.choice.categoryId && !reviewRow.modelData.special
+                                onClicked: dialog.applyToMerchant(reviewRow.modelData)
+                            }
+                            RowLayout {
+                                visible: reviewRow.choice.remember
+                                Layout.fillWidth: true
+                                spacing: 16
+                                FormCombo {
+                                    Layout.preferredWidth: 240
+                                    Layout.maximumWidth: 240
+                                    model: [ { label: qsTr("Получатель совпадает"), value: "exact" },
+                                             { label: qsTr("Описание содержит"), value: "contains" } ]
+                                    textRole: "label"
+                                    valueRole: "value"
+                                    currentIndex: reviewRow.choice.matchMode === "contains" ? 1 : 0
+                                    onActivated: dialog.setChoice(reviewRow.modelData, { matchMode: currentValue })
+                                }
+                                FormField {
+                                    Layout.fillWidth: true
+                                    Layout.maximumWidth: 10000
+                                    text: reviewRow.choice.pattern
+                                    maximumLength: 240
+                                    placeholderText: qsTr("Название или слова из описания")
+                                    onTextEdited: dialog.setChoice(reviewRow.modelData, { pattern: text })
+                                }
+                            }
+                        }
+                    }
+                }
+                FormButton {
+                    text: dialog.showSavedRules ? qsTr("Скрыть сохранённые правила")
+                                                : qsTr("Сохранённые правила (%1)").arg(dialog.savedCategoryRules.length)
+                    onClicked: { dialog.reloadRules(); dialog.showSavedRules = !dialog.showSavedRules; }
+                }
+                ListView {
+                    id: savedRulesList
+                    visible: dialog.showSavedRules
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(180, contentHeight)
+                    model: dialog.savedCategoryRules
+                    clip: true
+                    spacing: 8
+                    ScrollBar.vertical: StyledScrollBar { policy: ScrollBar.AlwaysOff }
+                    delegate: RowLayout {
+                        required property var modelData
+                        width: savedRulesList.width
+                        spacing: 16
+                        Text {
+                            Layout.fillWidth: true
+                            text: (modelData.type === "income" ? qsTr("Доход: ") : qsTr("Расход: "))
+                                + (modelData.matchMode === "contains" ? qsTr("Содержит «") : qsTr("Получатель «"))
+                                + modelData.pattern + "» → " + modelData.categoryName
+                            color: dialog.textColor
+                            font.pixelSize: 14
+                            wrapMode: Text.WordWrap
+                        }
+                        FormButton {
+                            text: qsTr("Удалить")
+                            onClicked: {
+                                const result = controller.deleteBankCategoryRule(
+                                    modelData.pattern, modelData.matchMode, modelData.type);
+                                if (result.ok) {
+                                    dialog.reloadRules(); dialog.previewImport();
+                                } else { dialog.statusOk = false; dialog.statusText = result.error; }
+                            }
+                        }
+                    }
+                }
+
+                Text {
                     text: qsTr("Предварительный просмотр")
                     font.pixelSize: 14
                     color: dialog.textColor
@@ -702,17 +990,28 @@ Dialog {
                 onClicked: {
                     if (!dialog.previewImport())
                         return;
+                    if (dialog.remainingReviews() > 0) {
+                        dialog.statusOk = false;
+                        dialog.statusText = qsTr("Проверьте категории новых операций выше: осталось %1")
+                            .arg(dialog.remainingReviews());
+                        return;
+                    }
                     const saved = dialog.saveProfile();
                     if (!saved.ok)
                         return;
-                    const result = controller.importBankCsv(dialog.csvFile, saved.id);
+                    const result = controller.importBankCsv(dialog.csvFile, saved.id, {
+                        choices: dialog.categoryChoices, requireReview: true
+                    });
                     dialog.statusOk = result.ok;
                     dialog.statusText = result.ok
                         ? qsTr("Импортировано: %1, дубликатов: %2, отклонено строк: %3")
                             .arg(result.imported).arg(result.skipped).arg(result.rejected)
                         : result.error;
-                    if (result.ok)
+                    if (result.ok) {
+                        dialog.operationRows = []; dialog.categoryChoices = ({});
+                        dialog.reloadRules();
                         dialog.importFinished(result);
+                    }
                 }
             }
         }

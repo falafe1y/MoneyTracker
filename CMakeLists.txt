@@ -80,6 +80,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CsvCodec.cpp
         SOURCES services/BankCsvImporter.h
         SOURCES services/BankCsvImporter.cpp
+        SOURCES services/BankCategoryMatcher.h
+        SOURCES services/BankCategoryMatcher.cpp
         SOURCES services/PdfStatementReader.h
         SOURCES services/PdfStatementReader.cpp
         SOURCES services/XlsxReader.h
@@ -458,3 +460,10 @@ add_executable(BybitProviderTest
 )
 target_link_libraries(BybitProviderTest PRIVATE Qt6::Core Qt6::Test Qt6::Network Qt6::Sql)
 add_test(NAME BybitProviderTest COMMAND BybitProviderTest)
+
+add_executable(BankCategoryMatcherTest
+    tests/BankCategoryMatcherTest.cpp
+    services/BankCategoryMatcher.cpp
+)
+target_link_libraries(BankCategoryMatcherTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME BankCategoryMatcherTest COMMAND BankCategoryMatcherTest)
