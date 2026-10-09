@@ -131,7 +131,10 @@ public:
         const Transaction& incoming
         );
     bool insertTransactions(const QVector<Transaction>& transactions,
-                            const QVector<BankCategoryRule>& rules = {});
+                            const QVector<BankCategoryRule>& rules = {},
+                            const QVector<BankRecipientRule>& recipientRules = {});
+    QVector<BankRecipientRule> loadBankRecipientRules(QString* error = nullptr) const;
+    bool deleteBankRecipientRule(const QString& pattern, const QString& field, const QString& mode, CategoryType type);
     QVector<BankCategoryRule> loadBankCategoryRules(QString* error = nullptr) const;
     bool deleteBankCategoryRule(const QString& pattern, const QString& matchMode,
                                 CategoryType type);
@@ -244,6 +247,7 @@ private:
     bool initializeSchema();
     bool migrateLegacySchema();
     bool migrateInvestmentSchema();
+    bool migrateBankImportSchema();
     bool seedDefaults();
     void setLastError(const QString& error);
 

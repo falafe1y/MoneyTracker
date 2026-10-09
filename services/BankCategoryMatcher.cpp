@@ -2,28 +2,6 @@
 #include <QRegularExpression>
 
 namespace {
-struct MerchantEntry { QString name; QString expression; QStringList categories; };
-const QVector<MerchantEntry>& merchants()
-{
-    static const QVector<MerchantEntry> entries{
-        {QStringLiteral("Пятёрочка"), QStringLiteral("пятерочка|pyaterochka|pyateroch|5ka"), {QStringLiteral("Продукты"), QStringLiteral("Еда"), QStringLiteral("Продукты питания")}},
-        {QStringLiteral("Перекрёсток"), QStringLiteral("перекресток|perekrestok|perekrest"), {QStringLiteral("Продукты"), QStringLiteral("Еда"), QStringLiteral("Продукты питания")}},
-        {QStringLiteral("Магнит"), QStringLiteral("магнит|magnit"), {QStringLiteral("Продукты"), QStringLiteral("Еда"), QStringLiteral("Продукты питания")}},
-        {QStringLiteral("Лента"), QStringLiteral("лента|lenta"), {QStringLiteral("Продукты"), QStringLiteral("Еда"), QStringLiteral("Продукты питания")}},
-        {QStringLiteral("ВкусВилл"), QStringLiteral("вкусвилл|vkusvill"), {QStringLiteral("Продукты"), QStringLiteral("Еда"), QStringLiteral("Продукты питания")}},
-        {QStringLiteral("Ашан"), QStringLiteral("ашан|auchan"), {QStringLiteral("Продукты"), QStringLiteral("Еда"), QStringLiteral("Продукты питания")}},
-        {QStringLiteral("Вкусно — и точка"), QStringLiteral("вкусно и точка|vkusno i tochka"), {QStringLiteral("Кафе и рестораны"), QStringLiteral("Рестораны"), QStringLiteral("Общепит")}},
-        {QStringLiteral("Бургер Кинг"), QStringLiteral("бургер кинг|burger king|burgerking"), {QStringLiteral("Кафе и рестораны"), QStringLiteral("Рестораны"), QStringLiteral("Общепит")}},
-        {QStringLiteral("Додо Пицца"), QStringLiteral("додо|dodo"), {QStringLiteral("Кафе и рестораны"), QStringLiteral("Рестораны"), QStringLiteral("Общепит")}},
-        {QStringLiteral("Лукойл"), QStringLiteral("лукойл|lukoil|lukoyl"), {QStringLiteral("Топливо"), QStringLiteral("Бензин"), QStringLiteral("Автомобиль")}},
-        {QStringLiteral("Газпромнефть"), QStringLiteral("газпромнефть|gazpromneft"), {QStringLiteral("Топливо"), QStringLiteral("Бензин"), QStringLiteral("Автомобиль")}},
-        {QStringLiteral("Роснефть"), QStringLiteral("роснефть|rosneft"), {QStringLiteral("Топливо"), QStringLiteral("Бензин"), QStringLiteral("Автомобиль")}},
-        {QStringLiteral("Ozon"), QStringLiteral("ozon|озон"), {}},
-        {QStringLiteral("Wildberries"), QStringLiteral("wildberries|вайлдберриз"), {}},
-        {QStringLiteral("Яндекс"), QStringLiteral("яндекс|yandex|yandeks"), {}}
-    };
-    return entries;
-}
 bool matches(const QString& text, const QString& expression)
 {
     // Unicode token boundaries prevent e.g. MAGNIT from matching MAGNITOGORSK.
@@ -34,39 +12,35 @@ bool matches(const QString& text, const QString& expression)
 
 QString BankCategoryMatcher::normalize(const QString& text)
 {
-    QString result = text.normalized(QString::NormalizationForm_KC).toCaseFolded();
-    result.replace(QChar(0x0451), QChar(0x0435));
-    result.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}]+")), QStringLiteral(" "));
-    return result.simplified();
+    return BankRecipientMatcher::normalize(text);
 }
 
 QString BankCategoryMatcher::merchant(const QString& description)
 {
-    const QString normalized = normalize(description);
-    QString found;
-    for (const auto& entry : merchants()) {
-        if (matches(normalized, entry.expression)) {
-            if (!found.isEmpty()) return normalized; // Multiple merchants: do not merge.
-            found = entry.name;
-        }
-    }
-    // Unknown merchants keep their complete descriptor, including identifying numbers.
-    return found.isEmpty() ? normalized : found;
+    BankCsvOperation operation;operation.description=description;operation.signedMinor=-1;
+    const auto result=BankRecipientMatcher::identify(operation);
+    return result.status=="known" ? result.recipient.name : QString();
 }
 
 bool BankCategoryMatcher::isSpecialOperation(const QString& description)
 {
-    return matches(normalize(description), QStringLiteral(
-        "перевод|перевода|переводы|transfer|сбп|sbp|возврат|возврата|refund|reversal|снятие|cash|внесение"));
+    const auto text = normalize(description);
+    if (matches(text, QStringLiteral(
+        "перевод|перевода|переводы|transfer|возврат|возврата|refund|reversal|снятие|внесение|"
+        "cash withdrawal|cash withdraw|withdrawal|cash out|cashout|atm|выдача наличных"))) return true;
+    // A merchant purchase through SBP is still an ordinary expense.
+    return matches(text, QStringLiteral("сбп|sbp"))
+        && !matches(text, QStringLiteral("оплата|покупка|payment|purchase|pos"));
 }
 
 BankCategorySuggestion BankCategoryMatcher::suggest(
     const BankCsvOperation& operation, const QVector<Category>& categories,
     const QSet<QString>& archived, const QVector<BankCategoryRule>& rules,
-    const QString& fallbackCategoryId)
+    const QString& fallbackCategoryId, const BankRecipientMatch* recipient)
 {
     BankCategorySuggestion result;
-    result.merchant = merchant(operation.description);
+    const auto resolved=recipient ? *recipient : BankRecipientMatcher::identify(operation);
+    result.merchant = resolved.recipient.name;
     const auto type = operation.signedMinor > 0 ? CategoryType::Income : CategoryType::Expense;
     const auto valid = [&](const QString& id) {
         for (const auto& category : categories)
@@ -85,11 +59,12 @@ BankCategorySuggestion BankCategoryMatcher::suggest(
             if (rule.type != type || rule.matchMode != mode || !valid(rule.categoryId)) continue;
             const QString pattern = normalize(rule.pattern);
             if (pattern.isEmpty()) continue;
+            const QString target=rule.field=="recipient" ? merchantKey : descriptor;
             const bool match = mode == QStringLiteral("exact")
-                ? (pattern == merchantKey || pattern == descriptor)
-                : matches(descriptor, QRegularExpression::escape(pattern));
+                ? (rule.field=="legacy" ? pattern==merchantKey || pattern==descriptor : pattern==target)
+                : matches(target, QRegularExpression::escape(pattern));
             if (!match) continue;
-            const qsizetype score = mode == QStringLiteral("exact") ? 0 : pattern.size();
+            const qsizetype score = (mode == QStringLiteral("exact") ? 0 : pattern.size()) + (rule.field=="legacy"?0:1000);
             if (score > specificity) { selected = rule.categoryId; specificity = score; conflict = false; }
             else if (score == specificity && selected != rule.categoryId) conflict = true;
         }
@@ -118,9 +93,7 @@ BankCategorySuggestion BankCategoryMatcher::suggest(
             }
         }
         if (type == CategoryType::Expense) {
-            QStringList aliases;
-            for (const auto& entry : merchants())
-                if (entry.name == result.merchant) aliases = entry.categories;
+            QStringList aliases = resolved.categoryNames;
             if (aliases.isEmpty() && matches(descriptor, QStringLiteral("аптека|apteka")))
                 aliases = {QStringLiteral("Здоровье"), QStringLiteral("Аптека"), QStringLiteral("Лекарства"), QStringLiteral("Медицина")};
             QString selected;
@@ -131,8 +104,9 @@ BankCategorySuggestion BankCategoryMatcher::suggest(
                     if (normalize(category.name()) == normalize(alias)) { selected = category.id(); ++count; break; }
             }
             if (count == 1) {
-                result.categoryId = selected; result.reason = QStringLiteral("Справочник магазинов — проверьте предложение");
-                // Grocery stores can also sell non-food goods: dictionary suggestions need review.
+                result.categoryId = selected;
+                result.needsReview = resolved.status != "known";
+                result.reason = QStringLiteral("Категория по локальному справочнику");
                 return result;
             }
         }

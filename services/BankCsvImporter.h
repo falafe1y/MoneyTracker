@@ -25,6 +25,8 @@ struct BankCsvProfile
     int incomeColumn = -1;
     int expenseColumn = -1;
     int descriptionColumn = -1;
+    int recipientColumn = -1;
+    int recipientIdColumn = -1;
     int idColumn = -1;
     int categoryColumn = -1;
     int directionColumn = -1;
@@ -40,11 +42,14 @@ struct BankCsvOperation
     QDateTime occurredAt;
     qint64 signedMinor = 0;
     QString description;
+    QString rawRecipient;
+    QString recipientId;
     QString externalId;
     QString categoryName;
     QString currencyCode;
     QString fingerprint;
     QString legacyFingerprint;
+    QString reviewFingerprint;
     int sourceRow = 0;
 };
 

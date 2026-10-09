@@ -33,7 +33,8 @@ Dialog {
     property var operationRows: []
     property var categoryChoices: ({})
     property var savedCategoryRules: []
-    property bool showReviewOnly: false
+    property var savedRecipientRules: []
+    property bool showReviewOnly: true
     property bool showSavedRules: false
     property string previewConfiguration: ""
     property bool inspecting: false
@@ -57,74 +58,32 @@ Dialog {
     function choiceFor(row) {
         return categoryChoices[row.rowKey] || {
             categoryId: row.categoryId, confirmed: false, remember: false, fingerprint: row.fingerprint,
-            pattern: row.merchant, matchMode: "exact"
+            pattern: row.merchant, matchMode: "exact", categoryField: "recipient",
+            recipientName: row.merchant || "", recipientConfirmed: false, rememberRecipient: false,
+            recipientPattern: row.recipientPattern || "", recipientField: row.recipientField || "description",
+            recipientMode: row.recipientMode || "contains"
         };
+    }
+
+    function applyPendingRules(choices) {
+        const result = controller.resolveBankImportRows(operationRows, choices);
+        if (!result.ok) {
+            statusOk = false; statusText = result.error;
+            return categoryChoices;
+        }
+        operationRows = result.operationRows;
+        statusOk = true; statusText = "";
+        return choices;
     }
 
     function setChoice(row, changes) {
         const next = Object.assign({}, categoryChoices);
-        // Restore the choices underneath previous automatic assignments.
-        for (const key in next)
-            if (next[key].ruleBaseChoice)
-                next[key] = next[key].ruleBaseChoice;
-        const edited = Object.assign({}, choiceFor(row), changes);
-        delete edited.ruleBaseChoice;
+        const original = choiceFor(row);
+        const edited = Object.assign({}, original, changes);
+        if (original.remember && changes.categoryId !== undefined)
+            edited.rememberedCategoryId = original.rememberedCategoryId || original.categoryId;
         next[row.rowKey] = edited;
         categoryChoices = applyPendingRules(next);
-    }
-
-    function ruleMatches(row, rule, pattern) {
-        if (row.type !== rule.type || !pattern) return false;
-        const description = controller.normalizeBankCategoryText(row.description || "");
-        const merchant = controller.normalizeBankCategoryText(row.merchant || "");
-        if (rule.matchMode === "exact")
-            return pattern === merchant || pattern === description;
-        // Normalized descriptions contain only words separated by single spaces.
-        return rule.matchMode === "contains"
-            && (" " + description + " ").indexOf(" " + pattern + " ") >= 0;
-    }
-
-    function applyPendingRules(base) {
-        const rules = [];
-        for (let i = 0; i < operationRows.length; ++i) {
-            const row = operationRows[i];
-            const choice = base[row.rowKey];
-            if (!choice || !choice.remember || !choice.confirmed
-                    || categoryIndex(categoryItems(row.type), choice.categoryId) < 0)
-                continue;
-            const pattern = controller.normalizeBankCategoryText(choice.pattern || "");
-            const rule = Object.assign({}, choice, { type: row.type });
-            if (pattern.length <= 240 && ruleMatches(row, rule, pattern))
-                rules.push({ rule: rule, pattern: pattern });
-        }
-        const next = Object.assign({}, base);
-        for (let i = 0; i < operationRows.length; ++i) {
-            const row = operationRows[i];
-            const original = base[row.rowKey] || choiceFor(row);
-            // Explicit confirmations remain available as one-off exceptions.
-            if (original.confirmed || original.remember) continue;
-            let selected = "";
-            let best = -1;
-            let conflict = false;
-            for (let j = 0; j < rules.length; ++j) {
-                const entry = rules[j];
-                if (!ruleMatches(row, entry.rule, entry.pattern)) continue;
-                const score = entry.rule.matchMode === "exact" ? 241 : entry.pattern.length;
-                if (score > best) {
-                    best = score;
-                    selected = entry.rule.categoryId;
-                    conflict = false;
-                } else if (score === best && selected !== entry.rule.categoryId) {
-                    conflict = true;
-                }
-            }
-            if (selected && !conflict)
-                next[row.rowKey] = Object.assign({}, original, {
-                    categoryId: selected, confirmed: !row.special,
-                    ruleBaseChoice: original
-                });
-        }
-        return next;
     }
 
     function categoryIndex(items, id) {
@@ -133,55 +92,67 @@ Dialog {
         return -1;
     }
 
-    function unresolved(row) {
-        const choice = choiceFor(row);
-        return categoryIndex(categoryItems(row.type), choice.categoryId) < 0
-            || (row.needsReview && !choice.confirmed);
-    }
-
-    function reviewRows() {
-        return operationRows.filter(function(row) {
-            return !showReviewOnly || unresolved(row);
-        });
-    }
-
+    function unresolved(row) { return !!row.needsReview; }
     function remainingReviews() {
         return operationRows.filter(function(row) { return unresolved(row); }).length;
     }
 
-    function applyToMerchant(row) {
-        const choice = choiceFor(row);
-        if (!choice.categoryId) return;
-        const next = Object.assign({}, categoryChoices);
+    function reviewGroups() {
+        const groups = [], byKey = ({});
         for (let i = 0; i < operationRows.length; ++i) {
-            const other = operationRows[i];
-            if (other.merchant === row.merchant && other.type === row.type && !other.special) {
-                next[other.rowKey] = Object.assign({}, choiceFor(other), {
-                    categoryId: choice.categoryId, confirmed: true
-                });
-                delete next[other.rowKey].ruleBaseChoice;
+            const row = operationRows[i];
+            let group = byKey[row.groupKey];
+            if (!group) {
+                group = { key: row.groupKey, rows: [], merchant: row.merchant || "", total: 0,
+                    currency: row.currency, type: row.type, needsReview: false, categoryId: row.categoryId,
+                    mixedCategory: false, reason: row.reason, recipientReason: row.recipientReason,
+                    recipientPattern: row.recipientPattern || "", recipientField: row.recipientField || "description",
+                    recipientMode: row.recipientMode || "contains", recipientStatus: row.recipientStatus,
+                    special: row.special, firstDate: row.date, lastDate: row.date };
+                byKey[row.groupKey] = group; groups.push(group);
             }
+            group.rows.push(row); group.total += Number(row.signedMinor);
+            group.needsReview = group.needsReview || unresolved(row);
+            if (group.categoryId !== row.categoryId) group.mixedCategory = true;
+            group.lastDate = row.date;
         }
-        categoryChoices = next;
+        return groups.filter(function(group) { return !showReviewOnly || group.needsReview; });
+    }
+
+    function applyGroup(group, name, categoryId, rememberCategory, rememberRecipient, pattern, field, mode) {
+        if (!categoryId) return;
+        const next = Object.assign({}, categoryChoices);
+        const recipient = name.trim();
+        for (let i = 0; i < group.rows.length; ++i) {
+            const row = group.rows[i];
+            next[row.rowKey] = Object.assign({}, choiceFor(row), {
+                categoryId: categoryId, confirmed: true, recipientName: recipient, recipientConfirmed: true,
+                remember: i === 0 && rememberCategory && !!recipient,
+                pattern: recipient, matchMode: "exact", categoryField: "recipient", rememberedCategoryId: categoryId,
+                rememberRecipient: i === 0 && rememberRecipient,
+                recipientPattern: pattern.trim(), recipientField: field, recipientMode: mode
+            });
+        }
+        categoryChoices = applyPendingRules(next);
     }
 
     function acceptSuggestions() {
         const next = Object.assign({}, categoryChoices);
         for (let i = 0; i < operationRows.length; ++i) {
             const row = operationRows[i];
-            const choice = choiceFor(row);
-            if (!row.special && categoryIndex(categoryItems(row.type), choice.categoryId) >= 0) {
-                next[row.rowKey] = Object.assign({}, choice, { confirmed: true });
-                delete next[row.rowKey].ruleBaseChoice;
-            }
+            if (!row.special && row.recipientStatus !== "candidate" && row.recipientStatus !== "ambiguous"
+                    && categoryIndex(categoryItems(row.type), row.categoryId) >= 0)
+                next[row.rowKey] = Object.assign({}, choiceFor(row), { confirmed: true });
         }
-        categoryChoices = next;
+        categoryChoices = applyPendingRules(next);
     }
 
     function reloadRules() {
-        const result = controller.bankCategoryRules();
-        if (result.ok) savedCategoryRules = result.items;
-        else { statusOk = false; statusText = result.error; }
+        const categories = controller.bankCategoryRules();
+        const recipients = controller.bankRecipientRules();
+        if (categories.ok && recipients.ok) {
+            savedCategoryRules = categories.items; savedRecipientRules = recipients.items;
+        } else { statusOk = false; statusText = categories.error || recipients.error; }
     }
 
     signal importFinished(var result)
@@ -242,9 +213,10 @@ Dialog {
         return String(label).toLowerCase().replace(/[ _\-.]/g, "");
     }
 
-    function findHeader(words) {
+    function findHeader(words, excluded) {
         for (let word = 0; word < words.length; ++word) {
             for (let i = 0; i < headers.length; ++i) {
+                if (excluded && excluded.indexOf(headers[i].value) >= 0) continue;
                 const label = normalizedHeader(headers[i].label);
                 if (label.indexOf(normalizedHeader(words[word])) >= 0)
                     return headers[i].value;
@@ -268,7 +240,12 @@ Dialog {
                      findHeader(["суммаплатежа", "суммаввалютесчета", "суммаоперации", "сумма", "amount"]));
         }
         setValue(descriptionColumnBox,
-                 findHeader(["описание", "назначение", "merchant", "description"]));
+                 findHeader(["описание", "назначение", "description"]));
+        setValue(recipientIdColumnBox,
+                 findHeader(["иннполучателя", "идентификаторполучателя", "merchantid", "recipientid"]));
+        setValue(recipientColumnBox,
+                 findHeader(["наименованиеполучателя", "контрагент", "торговаяточка", "merchant", "recipient", "получатель"],
+                            [recipientIdColumnBox.currentValue]));
         setValue(idColumnBox,
                  findHeader(["идентификатороперации", "номероперации", "operationid", "transactionid"]));
         setValue(categoryColumnBox,
@@ -311,6 +288,7 @@ Dialog {
         if (pdfFile) {
             setValue(dateColumnBox, 0); setValue(amountColumnBox, 1);
             setValue(descriptionColumnBox, 2); setValue(idColumnBox, 3);
+            setValue(recipientColumnBox, -1); setValue(recipientIdColumnBox, -1);
             setValue(currencyColumnBox, 4); setValue(categoryColumnBox, -1);
             setValue(directionColumnBox, -1); setValue(amountModeBox, "signed");
             setValue(dateFormatBox, "auto"); positiveIncomeCheck.checked = true;
@@ -322,6 +300,8 @@ Dialog {
             setValue(incomeColumnBox, profile.incomeColumn);
             setValue(expenseColumnBox, profile.expenseColumn);
             setValue(descriptionColumnBox, profile.descriptionColumn);
+            setValue(recipientColumnBox, profile.recipientColumn === undefined ? -1 : profile.recipientColumn);
+            setValue(recipientIdColumnBox, profile.recipientIdColumn === undefined ? -1 : profile.recipientIdColumn);
             setValue(idColumnBox, profile.idColumn);
             setValue(categoryColumnBox, profile.categoryColumn);
             setValue(directionColumnBox, profile.directionColumn);
@@ -392,6 +372,8 @@ Dialog {
             incomeColumn: incomeColumnBox.currentValue,
             expenseColumn: expenseColumnBox.currentValue,
             descriptionColumn: descriptionColumnBox.currentValue,
+            recipientColumn: pdfFile ? -1 : recipientColumnBox.currentValue,
+            recipientIdColumn: pdfFile ? -1 : recipientIdColumnBox.currentValue,
             idColumn: idColumnBox.currentValue,
             categoryColumn: categoryColumnBox.currentValue,
             directionColumn: directionColumnBox.currentValue,
@@ -424,9 +406,9 @@ Dialog {
             const row = operationRows[i];
             const choice = categoryChoices[row.rowKey];
             if (choice && choice.fingerprint === row.fingerprint)
-                keptChoices[row.rowKey] = choice.ruleBaseChoice || choice;
+                keptChoices[row.rowKey] = choice;
         }
-        categoryChoices = applyPendingRules(keptChoices);
+        categoryChoices = Object.keys(keptChoices).length ? applyPendingRules(keptChoices) : ({});
         previewSummary = qsTr("Найдено: %1 · Новых: %2 · Дубликатов: %3 · Возможных переводов: %4 · %5 — %6 · Доходы: %7 · Расходы: %8 · Ошибок: %9 · Другая валюта: %10")
             .arg(result.operationCount)
             .arg(result.newCount)
@@ -459,7 +441,7 @@ Dialog {
     function openForFile(fileUrl) {
         csvFile = fileUrl;
         operationRows = []; categoryChoices = ({}); previewConfiguration = "";
-        showReviewOnly = false; showSavedRules = false;
+        showReviewOnly = true; showSavedRules = false;
         reloadRules();
         statusText = "";
         detectedInfo = "";
@@ -586,6 +568,7 @@ Dialog {
 
         Flickable {
             id: importScroll
+            objectName: "bankImportScroll"
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.leftMargin: 22
@@ -777,6 +760,20 @@ Dialog {
                         Layout.fillWidth: true
                         model: dialog.columnItems(true)
                     }
+                    FormLabel { text: qsTr("Получатель из файла"); color: dialog.mutedColor }
+                    FormCombo {
+                        id: recipientColumnBox
+                        enabled: !dialog.pdfFile
+                        Layout.fillWidth: true
+                        model: dialog.columnItems(true)
+                    }
+                    FormLabel { text: qsTr("ИНН / ID получателя"); color: dialog.mutedColor }
+                    FormCombo {
+                        id: recipientIdColumnBox
+                        enabled: !dialog.pdfFile
+                        Layout.fillWidth: true
+                        model: dialog.columnItems(true)
+                    }
                     FormLabel { text: qsTr("Идентификатор операции"); color: dialog.mutedColor }
                     FormCombo {
                         id: idColumnBox
@@ -828,7 +825,7 @@ Dialog {
                 Text {
                     Layout.fillWidth: true
                     visible: dialog.operationRows.length > 0
-                    text: qsTr("Категории новых операций · Требуют проверки: %1")
+                    text: qsTr("Получатели и категории · Требуют проверки: %1 операций")
                         .arg(dialog.remainingReviews())
                     font.pixelSize: 16
                     font.weight: Font.DemiBold
@@ -854,25 +851,26 @@ Dialog {
                 Text {
                     visible: dialog.operationRows.length > 0
                     Layout.fillWidth: true
-                    text: qsTr("«Принять предложения» подтверждает категории обычных операций. Переводы, возвраты и снятия проверьте отдельно: импорт сохраняет их как доходы или расходы и не связывает счета автоматически.")
+                    text: qsTr("Проверьте группы: одно исправление применяется ко всем операциям группы. Без имени получателя можно импортировать, сохранив полное описание отдельно. Переводы, возвраты и снятия проверьте по одному — импорт сохраняет их как доходы или расходы.")
                     color: dialog.mutedColor
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
                 }
                 ListView {
                     id: categoryReviewList
+                    objectName: "recipientReviewList"
                     visible: dialog.operationRows.length > 0
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(420, contentHeight)
+                    Layout.preferredHeight: Math.min(560, contentHeight)
                     clip: true
                     spacing: 8
-                    model: dialog.reviewRows()
-                    ScrollBar.vertical: StyledScrollBar { policy: ScrollBar.AlwaysOff }
+                    model: dialog.reviewGroups()
+                    ScrollBar.vertical: StyledScrollBar {}
                     delegate: Rectangle {
-                        id: reviewRow
+                        id: reviewGroup
                         required property var modelData
-                        readonly property var choice: dialog.choiceFor(modelData)
                         readonly property var items: dialog.categoryItems(modelData.type)
+                        property bool expanded: false
                         width: categoryReviewList.width
                         height: reviewContent.implicitHeight + 32
                         radius: 8
@@ -885,109 +883,189 @@ Dialog {
                             anchors.right: parent.right
                             anchors.top: parent.top
                             anchors.margins: 16
-                            spacing: 8
+                            spacing: 10
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text {
                                     Layout.fillWidth: true
-                                    text: reviewRow.modelData.merchant || qsTr("Неизвестный получатель")
-                                    font.pixelSize: 14
+                                    text: reviewGroup.modelData.merchant || qsTr("Получатель не определён")
+                                    font.pixelSize: 16
                                     font.weight: Font.DemiBold
                                     color: dialog.textColor
                                     elide: Text.ElideRight
                                 }
                                 Text {
-                                    text: reviewRow.modelData.date + " · " + dialog.formatMinor(
-                                        reviewRow.modelData.signedMinor, reviewRow.modelData.currency)
+                                    text: qsTr("Операций: %1 · %2").arg(reviewGroup.modelData.rows.length)
+                                        .arg(dialog.formatMinor(reviewGroup.modelData.total, reviewGroup.modelData.currency))
                                     color: dialog.textColor
                                     font.pixelSize: 14
                                 }
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: reviewRow.modelData.description
+                                text: reviewGroup.modelData.recipientReason + " · " + reviewGroup.modelData.reason
+                                    + (reviewGroup.modelData.mixedCategory ? qsTr(" · Разные категории — сохраните исключения ниже") : "")
                                 color: dialog.mutedColor
-                                font.pixelSize: 14
+                                font.pixelSize: 13
                                 wrapMode: Text.WordWrap
-                                maximumLineCount: 3
-                                elide: Text.ElideRight
                             }
-                            Text {
+                            Repeater {
+                                model: reviewGroup.modelData.rows.slice(0, 2)
+                                delegate: Text {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    text: modelData.date + " · " + dialog.formatMinor(modelData.signedMinor, modelData.currency)
+                                        + " · " + modelData.description
+                                    color: dialog.mutedColor
+                                    font.pixelSize: 13
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 3
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: dialog.unresolved(reviewRow.modelData)
-                                    ? qsTr("Требует проверки · %1").arg(reviewRow.modelData.reason)
-                                    : reviewRow.choice.confirmed ? qsTr("Выбор подтверждён") : reviewRow.modelData.reason
-                                color: dialog.mutedColor
-                                font.pixelSize: 14
-                                wrapMode: Text.WordWrap
+                                spacing: 12
+                                FormField {
+                                    id: recipientNameField
+                                    objectName: "recipientNameField"
+                                    Layout.fillWidth: true
+                                    Layout.maximumWidth: 10000
+                                    text: reviewGroup.modelData.merchant
+                                    maximumLength: 160
+                                    placeholderText: qsTr("Имя получателя (можно оставить пустым)")
+                                }
+                                FormCombo {
+                                    id: groupCategoryBox
+                                    objectName: "groupCategoryBox"
+                                    Layout.preferredWidth: 240
+                                    Layout.maximumWidth: 240
+                                    model: reviewGroup.items
+                                    currentIndex: reviewGroup.modelData.mixedCategory ? -1
+                                        : dialog.categoryIndex(reviewGroup.items, reviewGroup.modelData.categoryId)
+                                    emptyText: qsTr("Выберите категорию")
+                                }
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 16
+                                FormCheckBox {
+                                    id: rememberCategoryCheck
+                                    text: qsTr("Запомнить категорию получателя")
+                                    checked: !!recipientNameField.text.trim() && !reviewGroup.modelData.special
+                                    enabled: !!recipientNameField.text.trim()
+                                }
+                                FormCheckBox {
+                                    id: rememberRecipientCheck
+                                    text: qsTr("Запомнить имя по правилу")
+                                    checked: reviewGroup.modelData.rows.some(function(row) {
+                                        return dialog.choiceFor(row).rememberRecipient;
+                                    }) || (!!recipientNameField.text.trim() && !!recipientPatternField.text.trim()
+                                        && recipientNameField.text.trim() !== reviewGroup.modelData.merchant)
+                                    enabled: !!recipientNameField.text.trim()
+                                }
+                            }
+                            GridLayout {
+                                visible: rememberRecipientCheck.checked
+                                    || recipientNameField.text.trim() !== reviewGroup.modelData.merchant
+                                Layout.fillWidth: true
+                                columns: 2
+                                columnSpacing: 12
                                 FormCombo {
+                                    id: recipientRuleFieldBox
                                     Layout.preferredWidth: 240
                                     Layout.maximumWidth: 240
-                                    model: reviewRow.items
-                                    textRole: "label"
-                                    valueRole: "value"
-                                    emptyText: qsTr("Добавьте категорию")
-                                    currentIndex: dialog.categoryIndex(reviewRow.items, reviewRow.choice.categoryId)
-                                    onActivated: dialog.setChoice(reviewRow.modelData, {
-                                        categoryId: currentValue, confirmed: true
-                                    })
+                                    model: [{label: qsTr("Описание содержит"), value: "description"},
+                                        {label: qsTr("Получатель из файла"), value: "bank_recipient"},
+                                        {label: qsTr("ИНН / ID совпадает"), value: "recipient_id"},
+                                        {label: qsTr("Распознанное имя"), value: "recipient"}]
+                                    currentIndex: dialog.indexByValue(model, reviewGroup.modelData.recipientField)
                                 }
-                                StyledCheckBox {
-                                    text: qsTr("Подтверждено")
-                                    checked: reviewRow.choice.confirmed
-                                    enabled: dialog.categoryIndex(reviewRow.items, reviewRow.choice.categoryId) >= 0
-                                    onClicked: dialog.setChoice(reviewRow.modelData, { confirmed: checked })
-                                    appTextColor: dialog.textColor
-                                    appAccentColor: dialog.accentColor
+                                FormField {
+                                    id: recipientPatternField
+                                    objectName: "recipientPatternField"
+                                    Layout.fillWidth: true
+                                    Layout.maximumWidth: 10000
+                                    text: reviewGroup.modelData.recipientPattern
+                                    maximumLength: 240
+                                    placeholderText: qsTr("Устойчивые слова из описания")
                                 }
-                                StyledCheckBox {
-                                    text: qsTr("Запомнить")
-                                    checked: reviewRow.choice.remember
-                                    enabled: reviewRow.choice.confirmed && reviewRow.modelData.merchant.length > 0
-                                    onClicked: dialog.setChoice(reviewRow.modelData, { remember: checked })
-                                    appTextColor: dialog.textColor
-                                    appAccentColor: dialog.accentColor
+                                Text {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    text: qsTr("Для описания — целые слова без даты, суммы и номера карты. Остальные поля должны совпасть целиком. Правило сразу применяется к этой выписке и сохраняется после импорта.")
+                                    color: dialog.mutedColor
+                                    font.pixelSize: 13
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                FormButton {
+                                    objectName: "applyRecipientGroup"
+                                    text: reviewGroup.modelData.rows.length > 1 ? qsTr("Применить к группе") : qsTr("Подтвердить")
+                                    enabled: !!groupCategoryBox.currentValue
+                                    onClicked: dialog.applyGroup(reviewGroup.modelData, recipientNameField.text,
+                                        groupCategoryBox.currentValue, rememberCategoryCheck.checked,
+                                        rememberRecipientCheck.checked, recipientPatternField.text,
+                                        recipientRuleFieldBox.currentValue,
+                                        recipientRuleFieldBox.currentValue === "description" ? "contains" : "exact")
+                                }
+                                FormButton {
+                                    text: reviewGroup.expanded ? qsTr("Скрыть операции") : qsTr("Операции и исключения")
+                                    onClicked: reviewGroup.expanded = !reviewGroup.expanded
                                 }
                                 Item { Layout.fillWidth: true }
                             }
-                            FormButton {
-                                text: qsTr("Применить к этому магазину в выписке")
-                                enabled: !!reviewRow.choice.categoryId && !reviewRow.modelData.special
-                                onClicked: dialog.applyToMerchant(reviewRow.modelData)
-                            }
-                            RowLayout {
-                                visible: reviewRow.choice.remember
-                                Layout.fillWidth: true
-                                spacing: 16
-                                FormCombo {
-                                    Layout.preferredWidth: 240
-                                    Layout.maximumWidth: 240
-                                    model: [ { label: qsTr("Получатель совпадает"), value: "exact" },
-                                             { label: qsTr("Описание содержит"), value: "contains" } ]
-                                    textRole: "label"
-                                    valueRole: "value"
-                                    currentIndex: reviewRow.choice.matchMode === "contains" ? 1 : 0
-                                    onActivated: dialog.setChoice(reviewRow.modelData, { matchMode: currentValue })
-                                }
-                                FormField {
+                            Repeater {
+                                model: reviewGroup.expanded ? reviewGroup.modelData.rows : []
+                                delegate: ColumnLayout {
+                                    id: exceptionRow
+                                    required property var modelData
                                     Layout.fillWidth: true
-                                    Layout.maximumWidth: 10000
-                                    text: reviewRow.choice.pattern
-                                    maximumLength: 240
-                                    placeholderText: qsTr("Название или слова из описания")
-                                    onTextEdited: dialog.setChoice(reviewRow.modelData, { pattern: text })
+                                    Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: exceptionRow.modelData.date + " · " + dialog.formatMinor(
+                                            exceptionRow.modelData.signedMinor, exceptionRow.modelData.currency)
+                                            + " · " + exceptionRow.modelData.description
+                                        color: dialog.mutedColor
+                                        font.pixelSize: 13
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        FormCombo {
+                                            id: exceptionCategoryBox
+                                            Layout.preferredWidth: 240
+                                            Layout.maximumWidth: 240
+                                            model: reviewGroup.items
+                                            currentIndex: dialog.categoryIndex(model, exceptionRow.modelData.categoryId)
+                                        }
+                                        FormButton {
+                                            text: qsTr("Только эта операция")
+                                            enabled: !!exceptionCategoryBox.currentValue
+                                            onClicked: dialog.setChoice(exceptionRow.modelData, {
+                                                categoryId: exceptionCategoryBox.currentValue, confirmed: true
+                                            })
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                Text {
+                    visible: dialog.operationRows.length > 0 && dialog.showReviewOnly && dialog.reviewGroups().length === 0
+                    Layout.fillWidth: true
+                    text: qsTr("Все операции готовы к импорту. Снимите фильтр, чтобы посмотреть распознанных получателей.")
+                    color: dialog.successColor
+                    font.pixelSize: 14
+                    wrapMode: Text.WordWrap
+                }
                 FormButton {
                     text: dialog.showSavedRules ? qsTr("Скрыть сохранённые правила")
-                                                : qsTr("Сохранённые правила (%1)").arg(dialog.savedCategoryRules.length)
+                                                : qsTr("Сохранённые правила (%1)").arg(dialog.savedCategoryRules.length + dialog.savedRecipientRules.length)
                     onClicked: { dialog.reloadRules(); dialog.showSavedRules = !dialog.showSavedRules; }
                 }
                 ListView {
@@ -1006,7 +1084,8 @@ Dialog {
                         Text {
                             Layout.fillWidth: true
                             text: (modelData.type === "income" ? qsTr("Доход: ") : qsTr("Расход: "))
-                                + (modelData.matchMode === "contains" ? qsTr("Содержит «") : qsTr("Получатель «"))
+                                + (modelData.field === "description" ? qsTr("Описание «")
+                                    : modelData.field === "legacy" ? qsTr("Имя / описание «") : qsTr("Получатель «"))
                                 + modelData.pattern + "» → " + modelData.categoryName
                             color: dialog.textColor
                             font.pixelSize: 14
@@ -1020,6 +1099,38 @@ Dialog {
                                 if (result.ok) {
                                     dialog.reloadRules(); dialog.previewImport();
                                 } else { dialog.statusOk = false; dialog.statusText = result.error; }
+                            }
+                        }
+                    }
+                }
+
+                ListView {
+                    id: savedRecipientRulesList
+                    visible: dialog.showSavedRules
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(180, contentHeight)
+                    model: dialog.savedRecipientRules
+                    clip: true
+                    spacing: 8
+                    ScrollBar.vertical: StyledScrollBar {}
+                    delegate: RowLayout {
+                        required property var modelData
+                        width: savedRecipientRulesList.width
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Имя получателя: «%1» → %2 (%3)").arg(modelData.pattern)
+                                .arg(modelData.recipientName).arg(modelData.type === "income" ? qsTr("доход") : qsTr("расход"))
+                            color: dialog.textColor
+                            font.pixelSize: 14
+                            wrapMode: Text.WordWrap
+                        }
+                        FormButton {
+                            text: qsTr("Удалить")
+                            onClicked: {
+                                const result = controller.deleteBankRecipientRule(modelData.pattern, modelData.field,
+                                    modelData.matchMode, modelData.type);
+                                if (result.ok) { dialog.reloadRules(); dialog.previewImport(); }
+                                else { dialog.statusOk = false; dialog.statusText = result.error; }
                             }
                         }
                     }
@@ -1108,7 +1219,7 @@ Dialog {
                         return;
                     if (dialog.remainingReviews() > 0) {
                         dialog.statusOk = false;
-                        dialog.statusText = qsTr("Проверьте категории новых операций выше: осталось %1")
+                        dialog.statusText = qsTr("Проверьте получателей и категории выше: осталось %1 операций")
                             .arg(dialog.remainingReviews());
                         return;
                     }

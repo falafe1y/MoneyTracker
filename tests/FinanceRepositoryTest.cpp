@@ -233,7 +233,7 @@ void FinanceRepositoryTest::restoresEveryBackupTableAndRollsBackUniqueConflicts(
             QStringLiteral("INSERT INTO budget_category_limits VALUES('budget','c',10000)"),
             QStringLiteral("INSERT INTO budget_months VALUES('budget','2026-10-01',10000)"),
             QStringLiteral("INSERT INTO financial_goals VALUES('goal','Цель','RUB',10000,NULL,1,'[]')"),
-            QStringLiteral("INSERT INTO transactions VALUES('interest','a','c',0,100,1,'Проценты','p',1),('recurring-tx','a','c',0,200,1,'Доход',NULL,1)"),
+            QStringLiteral("INSERT INTO transactions(id,account_id,category_id,type,amount_minor,occurred_at,description,project_id,created_at) VALUES('interest','a','c',0,100,1,'Проценты','p',1),('recurring-tx','a','c',0,200,1,'Доход',NULL,1)"),
             QStringLiteral("INSERT INTO deposit_settings VALUES('a',1000,1,0,'2026-10-01','2026-10-01',1)"),
             QStringLiteral("INSERT INTO deposit_interest_occurrences VALUES('a','2026-10-01','interest')"),
             QStringLiteral("INSERT INTO recurring_transactions VALUES('recurring','Доход','a','c',0,200,'RUB',3,1,1,1,'2026-10-01','2026-10-01',1,1)"),
@@ -249,7 +249,7 @@ void FinanceRepositoryTest::restoresEveryBackupTableAndRollsBackUniqueConflicts(
             QStringLiteral("INSERT INTO investment_operations VALUES('investment-op','b','position','instrument','buy',-100,1000000,1,'Покупка')"),
             QStringLiteral("INSERT INTO capital_snapshots VALUES('2026-10-01','RUB',1000,1)"),
             QStringLiteral("INSERT INTO bank_csv_profiles VALUES('profile','Импорт','{}',1,1)"),
-            QStringLiteral("INSERT INTO bank_category_rules VALUES('банк','exact',0,'c')"),
+            QStringLiteral("INSERT INTO bank_category_rules(pattern,match_mode,type,category_id) VALUES('банк','exact',0,'c')"),
             QStringLiteral("INSERT INTO settings VALUES('custom_setting','value')")};
         for (const QString& statement : statements) QVERIFY2(query.exec(statement), qPrintable(query.lastError().text()));
         const QStringList tables = database.tables();

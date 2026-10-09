@@ -117,8 +117,8 @@ void prepareTransactionInsert(QSqlQuery& query)
 {
     query.prepare(QStringLiteral(
         "INSERT INTO transactions(id, account_id, category_id, type, "
-        "amount_minor, occurred_at, description, project_id, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "amount_minor, occurred_at, description, project_id, created_at, recipient_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
 }
 
 bool insertTransactionRow(
@@ -140,6 +140,7 @@ bool insertTransactionRow(
         query.bindValue(7, transaction.projectId());
     }
     query.bindValue(8, createdAt);
+    query.bindValue(9, transaction.recipient().serialize());
     return query.exec();
 }
 
@@ -218,7 +219,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath)
         return;
     }
 
-    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !seedDefaults()) {
+    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !seedDefaults()) {
         database_.close();
     }
 }
@@ -352,7 +353,7 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                 QStringLiteral("investment_positions"), QStringLiteral("investment_quotes"),
                 QStringLiteral("investment_operations"),
                 QStringLiteral("capital_snapshots"), QStringLiteral("bank_csv_profiles"),
-                QStringLiteral("bank_category_rules"), QStringLiteral("settings")};
+                QStringLiteral("bank_category_rules"), QStringLiteral("bank_recipient_rules"), QStringLiteral("settings")};
             QSet<QString> sourceTables;
             if (!check.exec(QStringLiteral("SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','view')"))) {
                 return fail(check.lastError().text());
@@ -462,6 +463,7 @@ bool FinanceRepository::clearAllUserData()
         QStringLiteral("DELETE FROM financial_goals"),
         QStringLiteral("DELETE FROM capital_snapshots"),
         QStringLiteral("DELETE FROM bank_csv_profiles"),
+        QStringLiteral("DELETE FROM bank_recipient_rules"),
         QStringLiteral("DELETE FROM bank_category_rules"),
         QStringLiteral("DELETE FROM crypto_wallets"),
         QStringLiteral("DELETE FROM crypto_prices"),
@@ -510,7 +512,7 @@ QVector<Transaction> FinanceRepository::loadTransactions()
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
             "SELECT t.id, t.account_id, t.category_id, t.amount_minor, "
-            "t.type, t.occurred_at, t.description, a.currency, t.project_id "
+            "t.type, t.occurred_at, t.description, a.currency, t.project_id, t.recipient_json "
             "FROM transactions t JOIN accounts a ON a.id = t.account_id "
             "ORDER BY t.occurred_at DESC, t.created_at DESC"))) {
         setLastError(query.lastError().text());
@@ -528,7 +530,7 @@ QVector<Transaction> FinanceRepository::loadTransactions()
             QDateTime::fromMSecsSinceEpoch(
                 query.value(5).toLongLong(), QTimeZone::UTC),
             query.value(6).toString(),
-            query.value(8).toString()));
+            query.value(8).toString(), TransactionRecipient::deserialize(query.value(9).toString())));
     }
     return result;
 }
@@ -1311,10 +1313,11 @@ bool FinanceRepository::insertTransfer(
 
 bool FinanceRepository::insertTransactions(
     const QVector<Transaction>& transactions,
-    const QVector<BankCategoryRule>& rules
+    const QVector<BankCategoryRule>& rules,
+    const QVector<BankRecipientRule>& recipientRules
     )
 {
-    if (transactions.isEmpty() && rules.isEmpty()) {
+    if (transactions.isEmpty() && rules.isEmpty() && recipientRules.isEmpty()) {
         return true;
     }
     if (!database_.transaction()) {
@@ -1349,10 +1352,10 @@ bool FinanceRepository::insertTransactions(
     // Transactions and remembered choices are committed together.
     QSqlQuery ruleQuery(database_);
     ruleQuery.prepare(QStringLiteral(
-        "INSERT INTO bank_category_rules(pattern,match_mode,type,category_id) "
-        "SELECT ?,?,?,id FROM categories WHERE id=? AND type=? AND is_archived=0 "
+        "INSERT INTO bank_category_rules(pattern,match_mode,type,category_id,match_field) "
+        "SELECT ?,?,?,id,? FROM categories WHERE id=? AND type=? AND is_archived=0 "
         "AND id NOT IN ('transfer-in','transfer-out') "
-        "ON CONFLICT(pattern,match_mode,type) DO UPDATE SET category_id=excluded.category_id"));
+        "ON CONFLICT(pattern,match_mode,type) DO UPDATE SET category_id=excluded.category_id,match_field=excluded.match_field"));
     for (const auto& rule : rules) {
         const QString pattern = rule.pattern.trimmed();
         if (pattern.isEmpty() || (rule.matchMode != QStringLiteral("exact") &&
@@ -1362,14 +1365,40 @@ bool FinanceRepository::insertTransactions(
         }
         const int type = rule.type == CategoryType::Income ? 0 : 1;
         ruleQuery.bindValue(0, pattern); ruleQuery.bindValue(1, rule.matchMode);
-        ruleQuery.bindValue(2, type); ruleQuery.bindValue(3, rule.categoryId);
-        ruleQuery.bindValue(4, type);
+        ruleQuery.bindValue(2, type); ruleQuery.bindValue(3, rule.field);
+        ruleQuery.bindValue(4, rule.categoryId); ruleQuery.bindValue(5, type);
         if (!ruleQuery.exec() || ruleQuery.numRowsAffected() != 1) {
             setLastError(ruleQuery.lastError().isValid() ? ruleQuery.lastError().text()
                          : QStringLiteral("Категория правила недоступна"));
             database_.rollback(); return false;
         }
     }
+    QSqlQuery recipientQuery(database_);
+    recipientQuery.prepare(QStringLiteral(
+        "INSERT INTO bank_recipient_rules(pattern,match_field,match_mode,type,recipient_name) VALUES(?,?,?,?,?) "
+        "ON CONFLICT(pattern,match_field,match_mode,type) DO UPDATE SET recipient_name=excluded.recipient_name"));
+    for (const auto& rule : recipientRules) {
+        const auto pattern = rule.pattern.trimmed();
+        const auto name = rule.name.trimmed();
+        if (pattern.isEmpty() || pattern.size() > 240 || name.isEmpty() || name.size() > 160 ||
+            (rule.field == "recipient_id" && rule.matchMode != "exact")) {
+            setLastError(QStringLiteral("Некорректное правило получателя"));
+            database_.rollback();
+            return false;
+        }
+        recipientQuery.bindValue(0, pattern);
+        recipientQuery.bindValue(1, rule.field);
+        recipientQuery.bindValue(2, rule.matchMode);
+        recipientQuery.bindValue(3, rule.type == CategoryType::Income ? 0 : 1);
+        recipientQuery.bindValue(4, name);
+        if (!recipientQuery.exec()) {
+            setLastError(recipientQuery.lastError().text());
+            database_.rollback();
+            return false;
+        }
+        recipientQuery.finish();
+    }
+
     if (!database_.commit()) {
         setLastError(database_.lastError().text());
         database_.rollback();
@@ -1384,7 +1413,7 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
     query.prepare(QStringLiteral(
         "UPDATE transactions "
         "SET account_id = ?, category_id = ?, type = ?, amount_minor = ?, "
-        "    occurred_at = ?, description = ?, project_id = ? "
+        "    occurred_at = ?, description = ?, project_id = ?, recipient_json = ? "
         "WHERE id = ?"));
     query.addBindValue(transaction.accountId());
     query.addBindValue(transaction.categoryId());
@@ -1397,6 +1426,7 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
     } else {
         query.addBindValue(transaction.projectId());
     }
+    query.addBindValue(transaction.recipient().serialize());
     query.addBindValue(transaction.id());
 
     if (!query.exec() || query.numRowsAffected() != 1) {
@@ -3013,13 +3043,13 @@ QVector<BankCategoryRule> FinanceRepository::loadBankCategoryRules(QString* erro
     QVector<BankCategoryRule> result;
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
-        "SELECT r.pattern,r.match_mode,r.type,r.category_id FROM bank_category_rules r "
+        "SELECT r.pattern,r.match_mode,r.type,r.category_id,r.match_field FROM bank_category_rules r "
         "JOIN categories c ON c.id=r.category_id AND c.type=r.type "
         "WHERE c.is_archived=0 ORDER BY r.type,r.pattern,r.match_mode"))) {
         if (error) *error = query.lastError().text(); return result;
     }
     while (query.next()) result.append({query.value(0).toString(), query.value(1).toString(),
-        query.value(3).toString(), query.value(2).toInt() == 0 ? CategoryType::Income : CategoryType::Expense});
+        query.value(3).toString(), query.value(2).toInt() == 0 ? CategoryType::Income : CategoryType::Expense, query.value(4).toString()});
     return result;
 }
 
@@ -3043,7 +3073,13 @@ bool FinanceRepository::initializeSchema()
                        "match_mode TEXT NOT NULL CHECK(match_mode IN ('exact','contains')), "
                        "type INTEGER NOT NULL CHECK(type IN (0,1)), "
                        "category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE, "
+                       "match_field TEXT NOT NULL DEFAULT 'legacy' CHECK(match_field IN ('legacy','recipient','description')), "
                        "PRIMARY KEY(pattern,match_mode,type))"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS bank_recipient_rules (pattern TEXT NOT NULL CHECK(length(trim(pattern)) BETWEEN 1 AND 240), "
+                       "match_field TEXT NOT NULL CHECK(match_field IN ('description','bank_recipient','recipient_id','recipient')), "
+                       "match_mode TEXT NOT NULL CHECK(match_mode IN ('exact','contains')), type INTEGER NOT NULL CHECK(type IN (0,1)), "
+                       "recipient_name TEXT NOT NULL CHECK(length(trim(recipient_name)) BETWEEN 1 AND 160), "
+                       "PRIMARY KEY(pattern,match_field,match_mode,type))"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS capital_snapshots ("
                        "snapshot_date TEXT PRIMARY KEY CHECK(length(snapshot_date) = 10), "
                        "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
@@ -3108,6 +3144,7 @@ bool FinanceRepository::initializeSchema()
                        "type INTEGER NOT NULL CHECK(type IN (0,1)), "
                        "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
                        "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
+                       "recipient_json TEXT NOT NULL DEFAULT '{}', "
                        "project_id TEXT REFERENCES projects(id) ON DELETE SET NULL, "
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS deposit_settings ("
@@ -4174,4 +4211,74 @@ bool FinanceRepository::bookInvestmentOperation(const InvestmentOperation& op,
     if(quote && !saveInvestmentQuote(*quote))return fail(lastError_);
     QString error;if(!insertInvestmentOperation(database_,op,error))return fail(error);
     if(!database_.commit())return fail(database_.lastError().text());return true;
+}
+
+bool FinanceRepository::migrateBankImportSchema()
+{
+    if (!database_.transaction()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+    const auto ensure = [&](const QString& table, const QString& column, const QString& definition) {
+        QSqlQuery query(database_);
+        if (!query.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table))) {
+            setLastError(query.lastError().text());
+            return false;
+        }
+        while (query.next())
+            if (query.value(1).toString() == column) return true;
+        query.finish();
+        if (!query.exec(QStringLiteral("ALTER TABLE %1 ADD COLUMN %2 %3").arg(table, column, definition))) {
+            setLastError(query.lastError().text());
+            return false;
+        }
+        return true;
+    };
+    if (!ensure("transactions", "recipient_json", "TEXT NOT NULL DEFAULT '{}'") ||
+        !ensure("bank_category_rules", "match_field",
+            "TEXT NOT NULL DEFAULT 'legacy' CHECK(match_field IN ('legacy','recipient','description'))")) {
+        database_.rollback();
+        return false;
+    }
+    if (!database_.commit()) {
+        setLastError(database_.lastError().text());
+        database_.rollback();
+        return false;
+    }
+    return true;
+}
+
+QVector<BankRecipientRule> FinanceRepository::loadBankRecipientRules(QString* error) const
+{
+    if (error) error->clear();
+    QVector<BankRecipientRule> result;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral(
+        "SELECT pattern,match_field,match_mode,type,recipient_name FROM bank_recipient_rules "
+        "ORDER BY type,pattern,match_field,match_mode"))) {
+        if (error) *error = query.lastError().text();
+        return result;
+    }
+    while (query.next()) {
+        result.append({query.value(0).toString(), query.value(1).toString(), query.value(2).toString(),
+            query.value(3).toInt() == 0 ? CategoryType::Income : CategoryType::Expense, query.value(4).toString()});
+    }
+    return result;
+}
+
+bool FinanceRepository::deleteBankRecipientRule(const QString& pattern, const QString& field,
+    const QString& mode, CategoryType type)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "DELETE FROM bank_recipient_rules WHERE pattern=? AND match_field=? AND match_mode=? AND type=?"));
+    query.addBindValue(pattern);
+    query.addBindValue(field);
+    query.addBindValue(mode);
+    query.addBindValue(type == CategoryType::Income ? 0 : 1);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
 }

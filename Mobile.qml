@@ -402,6 +402,12 @@ ApplicationWindow {
         return { minimum: low, maximum: low + intervals * step };
     }
 
+    function transactionSummary(row) {
+        if (row.recipientSource)
+            return row.recipientName || qsTr("Получатель не определён");
+        return row.rawDescription || row.description || "—";
+    }
+
     function visibleTransactions() {
         const result = [], ids = {}, accounts = financeController.accounts;
         for (let i = 0; i < accounts.length; ++i)
@@ -413,7 +419,7 @@ ApplicationWindow {
                 continue;
             if (financeController.selectedAccountId && row.accountId !== financeController.selectedAccountId)
                 continue;
-            const text = ((row.description || row.rawDescription || "") + " " + row.categoryName + " " + accountName(row.accountId)).toLowerCase();
+            const text = ((row.description || row.rawDescription || "") + " " + (row.recipientName || "") + " " + row.categoryName + " " + accountName(row.accountId)).toLowerCase();
             if (!query || text.indexOf(query) >= 0)
                 result.push(row);
         }
@@ -1568,7 +1574,7 @@ ApplicationWindow {
                                     elide: Text.ElideRight
                                 }
                                 Text {
-                                    text: modelData.rawDescription || "—"
+                                    text: root.transactionSummary(modelData)
                                     color: root.muted
                                     font.pixelSize: 14
                                     Layout.fillWidth: true
@@ -1658,7 +1664,7 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                             }
                             Text {
-                                text: modelData.rawDescription || "—"
+                                text: root.transactionSummary(modelData)
                                 color: root.muted
                                 font.pixelSize: 14
                                 Layout.fillWidth: true
@@ -1775,7 +1781,7 @@ ApplicationWindow {
                 Text {
                     Layout.fillWidth: true
                     text: mobileTransactionCard.rowData
-                          ? (mobileTransactionCard.rowData.rawDescription || "—")
+                          ? root.transactionSummary(mobileTransactionCard.rowData)
                           : ""
                     color: root.accent
                     font.pixelSize: 14

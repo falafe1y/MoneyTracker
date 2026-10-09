@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Money.h"
+#include "TransactionRecipient.h"
 
 #include <QDateTime>
 #include <QString>
@@ -22,7 +23,8 @@ public:
         TransactionType type,
         QDateTime date,
         QString description = {},
-        QString projectId = {}
+        QString projectId = {},
+        TransactionRecipient recipient = {}
         )
         : id_(std::move(id))
         , accountId_(std::move(accountId))
@@ -32,6 +34,7 @@ public:
         , date_(std::move(date))
         , description_(std::move(description))
         , projectId_(std::move(projectId))
+        , recipient_(std::move(recipient))
     {
     }
 
@@ -75,6 +78,8 @@ public:
         return projectId_;
     }
 
+    const TransactionRecipient& recipient() const noexcept { return recipient_; }
+
 private:
     QString id_;
     QString accountId_;
@@ -84,4 +89,5 @@ private:
     QDateTime date_;
     QString description_;
     QString projectId_;
+    TransactionRecipient recipient_;
 };

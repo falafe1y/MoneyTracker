@@ -111,6 +111,8 @@ QJsonObject BankCsvProfile::toJson() const
         {QStringLiteral("incomeColumn"), incomeColumn},
         {QStringLiteral("expenseColumn"), expenseColumn},
         {QStringLiteral("descriptionColumn"), descriptionColumn},
+        {QStringLiteral("recipientColumn"), recipientColumn},
+        {QStringLiteral("recipientIdColumn"), recipientIdColumn},
         {QStringLiteral("idColumn"), idColumn},
         {QStringLiteral("categoryColumn"), categoryColumn},
         {QStringLiteral("directionColumn"), directionColumn},
@@ -142,6 +144,8 @@ BankCsvProfile BankCsvProfile::fromJson(const QJsonObject& object)
     profile.amountColumn = object.value(QStringLiteral("amountColumn")).toInt(-1);
     profile.incomeColumn = object.value(QStringLiteral("incomeColumn")).toInt(-1);
     profile.expenseColumn = object.value(QStringLiteral("expenseColumn")).toInt(-1);
+    profile.recipientColumn = object.value(QStringLiteral("recipientColumn")).toInt(-1);
+    profile.recipientIdColumn = object.value(QStringLiteral("recipientIdColumn")).toInt(-1);
     profile.descriptionColumn = object.value(
         QStringLiteral("descriptionColumn")).toInt(-1);
     profile.idColumn = object.value(QStringLiteral("idColumn")).toInt(-1);
@@ -346,6 +350,7 @@ BankCsvParseResult BankCsvImporter::parse(
         profile.headerRow = 0;
         profile.dateColumn = 0; profile.amountColumn = 1;
         profile.descriptionColumn = 2; profile.idColumn = 3;
+        profile.recipientColumn = -1; profile.recipientIdColumn = -1;
         profile.currencyColumn = 4; profile.directionColumn = -1;
         profile.categoryColumn = -1; profile.amountMode = QStringLiteral("signed");
         profile.dateFormat = QStringLiteral("auto"); profile.positiveMeansIncome = true;
@@ -424,6 +429,8 @@ BankCsvParseResult BankCsvImporter::parse(
         operation.occurredAt = occurredAt;
         operation.signedMinor = signedMinor;
         operation.description = fieldAt(row, profile.descriptionColumn);
+        operation.rawRecipient = fieldAt(row, profile.recipientColumn);
+        operation.recipientId = fieldAt(row, profile.recipientIdColumn);
         operation.externalId = fieldAt(row, profile.idColumn);
         operation.categoryName = fieldAt(row, profile.categoryColumn);
         operation.currencyCode = normalizedCurrency(
@@ -434,6 +441,9 @@ BankCsvParseResult BankCsvImporter::parse(
                         operation.description.simplified().toLower(),
                         operation.currencyCode}.join(QChar(0x001F)).toUtf8(),
             QCryptographicHash::Sha256).toHex());
+        operation.reviewFingerprint = QString::fromLatin1(QCryptographicHash::hash(
+            QStringList{operation.fingerprint, operation.rawRecipient, operation.recipientId, operation.categoryName}
+                .join(QChar(0x001F)).toUtf8(), QCryptographicHash::Sha256).toHex());
         operation.legacyFingerprint = legacyFingerprint(row);
         operation.sourceRow = static_cast<int>(rowIndex + 1);
         result.operations.append(operation);

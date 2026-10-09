@@ -18,6 +18,7 @@ endif()
 qt_add_executable(appMoneyTracker
     main.cpp
     resources.qrc
+    services/BankRecipients.qrc
 )
 
 qt_add_qml_module(appMoneyTracker
@@ -59,6 +60,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/FinancialTrajectoryCalculator.h
         SOURCES services/FinancialTrajectoryCalculator.cpp
         SOURCES core/Project.h
+        SOURCES core/TransactionRecipient.h
         SOURCES core/Transaction.h
         SOURCES core/RecurringTransaction.h
         SOURCES core/DepositSettings.h
@@ -84,6 +86,10 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/CsvCodec.cpp
         SOURCES services/BankCsvImporter.h
         SOURCES services/BankCsvImporter.cpp
+        SOURCES services/BankRecipientMatcher.h
+        SOURCES services/BankRecipientMatcher.cpp
+        SOURCES services/BankImportReview.h
+        SOURCES services/BankImportReview.cpp
         SOURCES services/BankCategoryMatcher.h
         SOURCES services/BankCategoryMatcher.cpp
         SOURCES services/PdfStatementReader.h
@@ -273,7 +279,7 @@ add_test(
 
 file(GLOB investment_controller_test_sources CONFIGURE_DEPENDS
     core/*.cpp services/*.cpp persistence/*.cpp interface/*.cpp)
-add_executable(InvestmentControllerTest tests/InvestmentControllerTest.cpp ${investment_controller_test_sources})
+add_executable(InvestmentControllerTest tests/InvestmentControllerTest.cpp ${investment_controller_test_sources} services/BankRecipients.qrc)
 target_link_libraries(InvestmentControllerTest PRIVATE Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
 if(WIN32)
     target_link_libraries(InvestmentControllerTest PRIVATE crypt32)
@@ -480,6 +486,20 @@ add_test(NAME BybitProviderTest COMMAND BybitProviderTest)
 add_executable(BankCategoryMatcherTest
     tests/BankCategoryMatcherTest.cpp
     services/BankCategoryMatcher.cpp
+    services/BankRecipientMatcher.cpp
+    services/BankRecipients.qrc
 )
 target_link_libraries(BankCategoryMatcherTest PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME BankCategoryMatcherTest COMMAND BankCategoryMatcherTest)
+
+add_executable(BankImportReviewTest tests/BankImportReviewTest.cpp
+    services/BankImportReview.cpp services/BankCategoryMatcher.cpp services/BankRecipientMatcher.cpp services/BankRecipients.qrc)
+target_link_libraries(BankImportReviewTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME BankImportReviewTest COMMAND BankImportReviewTest)
+
+add_executable(BankImportControllerTest tests/BankImportControllerTest.cpp ${investment_controller_test_sources} services/BankRecipients.qrc)
+target_link_libraries(BankImportControllerTest PRIVATE Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(BankImportControllerTest PRIVATE crypt32)
+endif()
+add_test(NAME BankImportControllerTest COMMAND BankImportControllerTest)

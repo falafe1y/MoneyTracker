@@ -126,15 +126,15 @@ database transaction, and skips operation identifiers that already exist.
 Bank statement import accepts CSV and XLSX files. CSV delimiter and encoding
 are detected automatically; UTF-8, Windows-1251 and UTF-16 are supported. A
 saved profile maps the statement date, amount, direction, account currency,
-description, external identifier and optional category. Before writing to the
+description, external identifier, optional recipient name/identifier and category. Before writing to the
 database the UI shows the date range, income and expense totals, malformed rows
 and rows whose currency differs from the selected account. Rows without a bank
 identifier use a stable fingerprint based on date, amount, description and
 currency, so overlapping statement periods do not create duplicates.
 
 The Ledgera CSV is a portable operation exchange format, not a complete
-application backup. Imported bank operations become ordinary Ledgera data and
-will be included when full database backup and restore is added.
+application backup. Database backups include imported recipients and personal
+recipient/category rules. Older backups remain supported.
 
 ## Финансовые цели
 
@@ -200,3 +200,30 @@ Poppler рядом с приложением либо добавьте ката�
 со всеми версиями выписок банков. Реальные обезличенные PDF каждого банка
 нужны для проверки их конкретного шаблона. Сборка всего приложения под
 Windows в этой среде не выполнялась.
+
+## Распознавание получателей банковских операций
+
+Импорт CSV, XLSX и PDF использует встроенный локальный справочник из 195
+получателей с русскими и латинскими вариантами написания. Яндекс Такси, Еда,
+Маркет и другие сервисы распознаются отдельно. Если определить имя не удалось,
+оно остаётся пустым: полное описание сохраняется отдельно, без подстановки
+в имя получателя. Для CSV/XLSX можно сопоставить отдельные столбцы имени и ИНН/ID.
+
+Обычные операции с уверенно распознанным получателем объединяются по имени,
+направлению и валюте. По умолчанию показаны группы, требующие проверки.
+Имя и категория выбираются сразу для группы; разовые исключения можно задать
+через «Операции и исключения». Неизвестные и неоднозначные получатели, переводы,
+возвраты и снятия не объединяются автоматически.
+
+Исправленное имя можно запомнить по устойчивым словам из описания, имени из
+файла, точному ИНН/ID или распознанному имени. Правило применяется сразу ко всем
+совпадающим операциям текущей выписки и сохраняется вместе с импортом.
+Личные правила имеют приоритет над справочником и доступны для удаления.
+Категории подбираются только из существующих активных категорий пользователя:
+однозначное совпадение можно импортировать без ручной проверки; маркетплейсы
+и другие неоднозначные покупки требуют выбора. Справочник не гарантирует
+распознавание любого описания банка и не отправляет операции во внешние сервисы.
+
+Миграция добавляет поля и таблицу правил без изменения старых операций.
+Существующая проверка дубликатов сохранена, а выбор из предварительного
+просмотра дополнительно проверяется при изменении имени/ID/категории в файле.

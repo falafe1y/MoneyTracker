@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/bank-import">
+    <file alias="recipients.json">BankRecipientDictionary.json</file>
+  </qresource>
+</RCC>

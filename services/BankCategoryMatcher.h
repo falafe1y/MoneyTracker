@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BankCsvImporter.h"
+#include "BankRecipientMatcher.h"
 #include "../core/Category.h"
 #include <QSet>
 
@@ -10,6 +11,7 @@ struct BankCategoryRule
     QString matchMode = QStringLiteral("exact");
     QString categoryId;
     CategoryType type = CategoryType::Expense;
+    QString field = QStringLiteral("legacy");
 };
 
 struct BankCategorySuggestion
@@ -31,5 +33,6 @@ public:
         const QVector<Category>& categories,
         const QSet<QString>& archived,
         const QVector<BankCategoryRule>& rules,
-        const QString& fallbackCategoryId);
+        const QString& fallbackCategoryId,
+        const BankRecipientMatch* recipient = nullptr);
 };

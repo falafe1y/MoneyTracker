@@ -1,0 +1,2301 @@
+{
+  "version": 1,
+  "recipients": [
+    {
+      "id": "food-1",
+      "name": "Пятёрочка",
+      "aliases": [
+        "pyaterochka",
+        "pyateroch",
+        "5ka",
+        "пятерочка"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-2",
+      "name": "Перекрёсток",
+      "aliases": [
+        "perekrestok",
+        "perekrest",
+        "перекресток"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "magnit",
+      "name": "Магнит",
+      "aliases": [
+        "magnit"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-4",
+      "name": "Лента",
+      "aliases": [
+        "lenta"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "food-5",
+      "name": "ВкусВилл",
+      "aliases": [
+        "vkusvill"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-6",
+      "name": "Ашан",
+      "aliases": [
+        "auchan"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-7",
+      "name": "Дикси",
+      "aliases": [
+        "dixy",
+        "diksi"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-8",
+      "name": "Окей",
+      "aliases": [
+        "o key",
+        "okey",
+        "о кей"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-9",
+      "name": "Метро Кэш энд Керри",
+      "aliases": [
+        "metro cash carry",
+        "metro c c"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "food-10",
+      "name": "Верный",
+      "aliases": [
+        "verny",
+        "vernyi"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "food-11",
+      "name": "Чижик",
+      "aliases": [
+        "chizhik"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-12",
+      "name": "Светофор",
+      "aliases": [
+        "svetofor"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-13",
+      "name": "Победа",
+      "aliases": [
+        "pobeda"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "food-14",
+      "name": "Красное и Белое",
+      "aliases": [
+        "krasnoe beloe",
+        "krasnoe i beloe",
+        "красное белое"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-15",
+      "name": "Бристоль",
+      "aliases": [
+        "bristol"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-16",
+      "name": "Азбука вкуса",
+      "aliases": [
+        "azbuka vkusa",
+        "azbukavkusa"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-17",
+      "name": "Глобус",
+      "aliases": [
+        "globus"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-18",
+      "name": "Спар",
+      "aliases": [
+        "spar",
+        "euro spar",
+        "eurospar"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-19",
+      "name": "Мираторг",
+      "aliases": [
+        "miratorg"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-20",
+      "name": "Мясновъ",
+      "aliases": [
+        "myasnov",
+        "myasnovъ"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-21",
+      "name": "Виктория",
+      "aliases": [
+        "victoria",
+        "viktoriya"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "food-22",
+      "name": "Мария-Ра",
+      "aliases": [
+        "maria ra",
+        "mariya ra"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-23",
+      "name": "Монетка",
+      "aliases": [
+        "monetka"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-24",
+      "name": "Бахетле",
+      "aliases": [
+        "bakhetle",
+        "bahetle"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-25",
+      "name": "Самокат",
+      "aliases": [
+        "samokat"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-26",
+      "name": "Купер",
+      "aliases": [
+        "kuper",
+        "sbermarket",
+        "сбермаркет"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "food-27",
+      "name": "СберМегаМаркет",
+      "aliases": [
+        "sbermegamarket"
+      ],
+      "categories": []
+    },
+    {
+      "id": "cafe-28",
+      "name": "Вкусно — и точка",
+      "aliases": [
+        "vkusno i tochka",
+        "вкусно и точка"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-29",
+      "name": "Бургер Кинг",
+      "aliases": [
+        "burger king",
+        "burgerking"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-30",
+      "name": "Ростикс",
+      "aliases": [
+        "rostics",
+        "ростикс"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-31",
+      "name": "KFC",
+      "aliases": [
+        "kentucky fried chicken"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-32",
+      "name": "Додо Пицца",
+      "aliases": [
+        "dodo pizza",
+        "dodopizza",
+        "додо"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-33",
+      "name": "Доминос Пицца",
+      "aliases": [
+        "dominos pizza",
+        "domino s pizza"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-34",
+      "name": "Папа Джонс",
+      "aliases": [
+        "papa johns",
+        "papa john s",
+        "papajohns"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-35",
+      "name": "Теремок",
+      "aliases": [
+        "teremok"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-36",
+      "name": "Шоколадница",
+      "aliases": [
+        "shokoladnitsa",
+        "shokoladnica"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-37",
+      "name": "Кофемания",
+      "aliases": [
+        "coffeemania",
+        "kofemania"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-38",
+      "name": "Кофе Хауз",
+      "aliases": [
+        "coffee house",
+        "coffeehouse"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-39",
+      "name": "Даблби",
+      "aliases": [
+        "double b",
+        "doubleb"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-40",
+      "name": "Буше",
+      "aliases": [
+        "bushe",
+        "bouche"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-41",
+      "name": "Хлеб Насущный",
+      "aliases": [
+        "khleb nasushchny"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-42",
+      "name": "Тануки",
+      "aliases": [
+        "tanuki"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-43",
+      "name": "Якитория",
+      "aliases": [
+        "yakitoriya",
+        "yakitoria"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-44",
+      "name": "Суши Wok",
+      "aliases": [
+        "sushi wok",
+        "sushiwok"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-45",
+      "name": "Суши Мастер",
+      "aliases": [
+        "sushi master",
+        "sushimaster"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-46",
+      "name": "ПиццаФабрика",
+      "aliases": [
+        "pizza fabrika",
+        "pizzafabrika"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-47",
+      "name": "Хачапури и вино",
+      "aliases": [
+        "khachapuri i vino"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-48",
+      "name": "Старбакс",
+      "aliases": [
+        "starbucks"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-49",
+      "name": "Stars Coffee",
+      "aliases": [
+        "stars coffee"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-50",
+      "name": "Surf Coffee",
+      "aliases": [
+        "surf coffee"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-51",
+      "name": "One Price Coffee",
+      "aliases": [
+        "one price coffee"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-52",
+      "name": "Милти",
+      "aliases": [
+        "milti"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-53",
+      "name": "Grow Food",
+      "aliases": [
+        "grow food",
+        "growfood"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "cafe-54",
+      "name": "Шефмаркет",
+      "aliases": [
+        "chefmarket",
+        "shefmarket"
+      ],
+      "categories": [
+        "Кафе и рестораны",
+        "Рестораны",
+        "Общепит",
+        "Питание вне дома"
+      ]
+    },
+    {
+      "id": "fuel-55",
+      "name": "Лукойл",
+      "aliases": [
+        "lukoil",
+        "lukoyl"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "fuel-56",
+      "name": "Газпромнефть",
+      "aliases": [
+        "gazpromneft",
+        "gazprom neft"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "fuel-57",
+      "name": "Роснефть",
+      "aliases": [
+        "rosneft"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "fuel-58",
+      "name": "Татнефть",
+      "aliases": [
+        "tatneft"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "fuel-59",
+      "name": "Башнефть",
+      "aliases": [
+        "bashneft"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "fuel-60",
+      "name": "Сургутнефтегаз",
+      "aliases": [
+        "surgutneftegaz"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "fuel-61",
+      "name": "Тебойл",
+      "aliases": [
+        "teboil"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "fuel-62",
+      "name": "Нефтьмагистраль",
+      "aliases": [
+        "neftmagistral"
+      ],
+      "categories": [
+        "Топливо",
+        "Бензин",
+        "Автомобиль"
+      ]
+    },
+    {
+      "id": "health-63",
+      "name": "Аптека.ру",
+      "aliases": [
+        "apteka ru",
+        "apteka.ru"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-64",
+      "name": "Еаптека",
+      "aliases": [
+        "eapteka",
+        "e apteka"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-65",
+      "name": "Ригла",
+      "aliases": [
+        "rigla"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-66",
+      "name": "Горздрав",
+      "aliases": [
+        "gorzdrav"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-67",
+      "name": "Аптеки Столички",
+      "aliases": [
+        "stolichki",
+        "столички"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-68",
+      "name": "Аптека 36,6",
+      "aliases": [
+        "apteka 36 6",
+        "36 6"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-69",
+      "name": "Неофарм",
+      "aliases": [
+        "neopharm",
+        "neofarm"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-70",
+      "name": "Самсон-Фарма",
+      "aliases": [
+        "samson pharma",
+        "samson farma"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-71",
+      "name": "Планета здоровья",
+      "aliases": [
+        "planeta zdorovya"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-72",
+      "name": "Аптека Апрель",
+      "aliases": [
+        "apteka aprel",
+        "аптека апрель"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "health-73",
+      "name": "Озерки",
+      "aliases": [
+        "ozerki"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-74",
+      "name": "Инвитро",
+      "aliases": [
+        "invitro"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-75",
+      "name": "Гемотест",
+      "aliases": [
+        "gemotest"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-76",
+      "name": "Хеликс",
+      "aliases": [
+        "helix"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-77",
+      "name": "Ситилаб",
+      "aliases": [
+        "citilab"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-78",
+      "name": "Медси",
+      "aliases": [
+        "medsi"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "health-79",
+      "name": "СМ-Клиника",
+      "aliases": [
+        "sm klinika",
+        "sm clinic"
+      ],
+      "categories": [
+        "Здоровье",
+        "Аптека",
+        "Лекарства",
+        "Медицина"
+      ]
+    },
+    {
+      "id": "clothes-80",
+      "name": "Спортмастер",
+      "aliases": [
+        "sportmaster"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-81",
+      "name": "Декатлон",
+      "aliases": [
+        "decathlon"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-82",
+      "name": "Lamoda",
+      "aliases": [
+        "lamoda"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-83",
+      "name": "Глория Джинс",
+      "aliases": [
+        "gloria jeans",
+        "gloriajeans"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-84",
+      "name": "Остин",
+      "aliases": [
+        "o stin",
+        "ostin"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-85",
+      "name": "Фамилия",
+      "aliases": [
+        "familia"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "clothes-86",
+      "name": "Золла",
+      "aliases": [
+        "zolla"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-87",
+      "name": "Лайм",
+      "aliases": [
+        "lime"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "clothes-88",
+      "name": "Села",
+      "aliases": [
+        "sela"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-89",
+      "name": "Снежная Королева",
+      "aliases": [
+        "snezhnaya koroleva"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-90",
+      "name": "Henderson",
+      "aliases": [
+        "henderson"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-91",
+      "name": "Эконика",
+      "aliases": [
+        "ekonika",
+        "econika"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-92",
+      "name": "Кари",
+      "aliases": [
+        "kari"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "clothes-93",
+      "name": "Рандеву",
+      "aliases": [
+        "rendez vous",
+        "rendezvous"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-94",
+      "name": "Respect",
+      "aliases": [
+        "respect"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-95",
+      "name": "Zenden",
+      "aliases": [
+        "zenden"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-96",
+      "name": "Mascotte",
+      "aliases": [
+        "mascotte"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-97",
+      "name": "Adidas",
+      "aliases": [
+        "adidas"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-98",
+      "name": "Nike",
+      "aliases": [
+        "nike"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-99",
+      "name": "Uniqlo",
+      "aliases": [
+        "uniqlo"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-100",
+      "name": "Zara",
+      "aliases": [
+        "zara"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "clothes-101",
+      "name": "H&M",
+      "aliases": [
+        "h m",
+        "h and m"
+      ],
+      "categories": [
+        "Одежда",
+        "Одежда и обувь"
+      ]
+    },
+    {
+      "id": "electronics-102",
+      "name": "DNS",
+      "aliases": [
+        "dns shop"
+      ],
+      "categories": [
+        "Электроника",
+        "Техника"
+      ]
+    },
+    {
+      "id": "electronics-103",
+      "name": "М.Видео",
+      "aliases": [
+        "m video",
+        "mvideo",
+        "м видео"
+      ],
+      "categories": [
+        "Электроника",
+        "Техника"
+      ]
+    },
+    {
+      "id": "electronics-104",
+      "name": "Эльдорадо",
+      "aliases": [
+        "eldorado"
+      ],
+      "categories": [
+        "Электроника",
+        "Техника"
+      ]
+    },
+    {
+      "id": "electronics-105",
+      "name": "Ситилинк",
+      "aliases": [
+        "citilink"
+      ],
+      "categories": [
+        "Электроника",
+        "Техника"
+      ]
+    },
+    {
+      "id": "electronics-106",
+      "name": "Онлайнтрейд",
+      "aliases": [
+        "onlinetrade",
+        "online trade"
+      ],
+      "categories": [
+        "Электроника",
+        "Техника"
+      ]
+    },
+    {
+      "id": "electronics-107",
+      "name": "Холодильник.ру",
+      "aliases": [
+        "holodilnik ru"
+      ],
+      "categories": [
+        "Электроника",
+        "Техника"
+      ]
+    },
+    {
+      "id": "electronics-108",
+      "name": "Соколов",
+      "aliases": [
+        "sokolov"
+      ],
+      "categories": []
+    },
+    {
+      "id": "electronics-109",
+      "name": "Sunlight",
+      "aliases": [
+        "sunlight"
+      ],
+      "categories": []
+    },
+    {
+      "id": "home-110",
+      "name": "Лемана ПРО",
+      "aliases": [
+        "lemanapro",
+        "lemana pro",
+        "leroy merlin",
+        "леруа мерлен"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "home-111",
+      "name": "Петрович",
+      "aliases": [
+        "petrovich"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ],
+      "contextual": true
+    },
+    {
+      "id": "home-112",
+      "name": "ВсеИнструменты.ру",
+      "aliases": [
+        "vseinstrumenti",
+        "vseinstrumenty",
+        "vse instrumenty"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "home-113",
+      "name": "ОБИ",
+      "aliases": [
+        "obi"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "home-114",
+      "name": "Хофф",
+      "aliases": [
+        "hoff"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "home-115",
+      "name": "ИКЕА",
+      "aliases": [
+        "ikea"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "home-116",
+      "name": "Аскона",
+      "aliases": [
+        "askona"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "home-117",
+      "name": "Лазурит",
+      "aliases": [
+        "lazurit"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "home-118",
+      "name": "Столплит",
+      "aliases": [
+        "stolplit"
+      ],
+      "categories": [
+        "Дом",
+        "Дом и ремонт",
+        "Ремонт"
+      ]
+    },
+    {
+      "id": "telecom-119",
+      "name": "МТС",
+      "aliases": [
+        "mts"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-120",
+      "name": "Билайн",
+      "aliases": [
+        "beeline",
+        "bilayn"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-121",
+      "name": "МегаФон",
+      "aliases": [
+        "megafon",
+        "mega fon"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-122",
+      "name": "Т2",
+      "aliases": [
+        "tele2",
+        "t2",
+        "теле2"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-123",
+      "name": "Йота",
+      "aliases": [
+        "yota"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-124",
+      "name": "Ростелеком",
+      "aliases": [
+        "rostelecom",
+        "rostelekom"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-125",
+      "name": "Дом.ру",
+      "aliases": [
+        "dom ru"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-126",
+      "name": "МГТС",
+      "aliases": [
+        "mgts"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "telecom-127",
+      "name": "ТТК",
+      "aliases": [
+        "ttk"
+      ],
+      "categories": [
+        "Связь",
+        "Телефон",
+        "Интернет и связь"
+      ]
+    },
+    {
+      "id": "transport-128",
+      "name": "Ситимобил",
+      "aliases": [
+        "citymobil",
+        "citimobil"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-129",
+      "name": "Максим Такси",
+      "aliases": [
+        "taxi maxim",
+        "maxim taxi"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-130",
+      "name": "Индрайв",
+      "aliases": [
+        "indrive",
+        "in drive"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-131",
+      "name": "Делимобиль",
+      "aliases": [
+        "delimobil"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-132",
+      "name": "БелкаКар",
+      "aliases": [
+        "belkacar",
+        "belka car"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-133",
+      "name": "Ситидрайв",
+      "aliases": [
+        "citydrive"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-134",
+      "name": "РЖД",
+      "aliases": [
+        "rzd",
+        "russian railways"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-135",
+      "name": "Туту.ру",
+      "aliases": [
+        "tutu ru",
+        "tutu.ru"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-136",
+      "name": "Аэрофлот",
+      "aliases": [
+        "aeroflot"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-137",
+      "name": "С7",
+      "aliases": [
+        "s7 airlines",
+        "s7"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-138",
+      "name": "Уральские авиалинии",
+      "aliases": [
+        "ural airlines",
+        "uralskie avialinii"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-139",
+      "name": "Победа Авиа",
+      "aliases": [
+        "pobeda airlines"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-140",
+      "name": "Ютэйр",
+      "aliases": [
+        "utair"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-141",
+      "name": "Вуш",
+      "aliases": [
+        "whoosh"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "transport-142",
+      "name": "Юрент",
+      "aliases": [
+        "urent"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "pets-143",
+      "name": "Бетховен",
+      "aliases": [
+        "bethowen",
+        "beethoven"
+      ],
+      "categories": [
+        "Питомцы",
+        "Животные"
+      ]
+    },
+    {
+      "id": "pets-144",
+      "name": "Четыре лапы",
+      "aliases": [
+        "4lapy",
+        "4 lapy",
+        "четыре лапы"
+      ],
+      "categories": [
+        "Питомцы",
+        "Животные"
+      ]
+    },
+    {
+      "id": "pets-145",
+      "name": "ЛеМуррр",
+      "aliases": [
+        "lemurrr"
+      ],
+      "categories": [
+        "Питомцы",
+        "Животные"
+      ]
+    },
+    {
+      "id": "pets-146",
+      "name": "Зоозавр",
+      "aliases": [
+        "zoozavr"
+      ],
+      "categories": [
+        "Питомцы",
+        "Животные"
+      ]
+    },
+    {
+      "id": "pets-147",
+      "name": "Зоомаг",
+      "aliases": [
+        "zoomag"
+      ],
+      "categories": [
+        "Питомцы",
+        "Животные"
+      ]
+    },
+    {
+      "id": "other-148",
+      "name": "Ozon",
+      "aliases": [
+        "озон"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-149",
+      "name": "Wildberries",
+      "aliases": [
+        "вайлдберриз",
+        "wild berries",
+        "wb ru"
+      ],
+      "categories": []
+    },
+    {
+      "id": "yandex",
+      "name": "Яндекс",
+      "aliases": [
+        "yandex",
+        "yandeks"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-151",
+      "name": "Авито",
+      "aliases": [
+        "avito"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-152",
+      "name": "АлиЭкспресс",
+      "aliases": [
+        "aliexpress",
+        "ali express"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-153",
+      "name": "МегаМаркет",
+      "aliases": [
+        "megamarket",
+        "мегамаркет"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-154",
+      "name": "КазаньЭкспресс",
+      "aliases": [
+        "kazanexpress",
+        "kazan express"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-155",
+      "name": "Магнит Маркет",
+      "aliases": [
+        "magnit market",
+        "магнит маркет"
+      ],
+      "categories": [],
+      "parent": "magnit"
+    },
+    {
+      "id": "other-156",
+      "name": "Плати по миру",
+      "aliases": [
+        "plati po miru",
+        "platipomiru",
+        "plati pomiru"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-157",
+      "name": "Детский мир",
+      "aliases": [
+        "detskiy mir",
+        "detsky mir"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-158",
+      "name": "Читай-город",
+      "aliases": [
+        "chitai gorod",
+        "chitay gorod"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-159",
+      "name": "Буквоед",
+      "aliases": [
+        "bukvoed"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-160",
+      "name": "Лабиринт",
+      "aliases": [
+        "labirint"
+      ],
+      "categories": [],
+      "contextual": true
+    },
+    {
+      "id": "other-161",
+      "name": "Подружка",
+      "aliases": [
+        "podruzhka"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-162",
+      "name": "Летуаль",
+      "aliases": [
+        "letual",
+        "l etoile"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-163",
+      "name": "Рив Гош",
+      "aliases": [
+        "rive gauche",
+        "riv gosh"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-164",
+      "name": "Золотое Яблоко",
+      "aliases": [
+        "gold apple",
+        "zolotoe yabloko"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-165",
+      "name": "Почта России",
+      "aliases": [
+        "pochta rossii",
+        "russian post"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-166",
+      "name": "СДЭК",
+      "aliases": [
+        "cdek",
+        "sdek"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-167",
+      "name": "Боксберри",
+      "aliases": [
+        "boxberry"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-168",
+      "name": "Деловые линии",
+      "aliases": [
+        "delovye linii"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-169",
+      "name": "ПЭК",
+      "aliases": [
+        "pek"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-170",
+      "name": "Кинопоиск",
+      "aliases": [
+        "kinopoisk"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-171",
+      "name": "Иви",
+      "aliases": [
+        "ivi",
+        "ivi ru"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-172",
+      "name": "Окко",
+      "aliases": [
+        "okko"
+      ],
+      "categories": [],
+      "contextual": true
+    },
+    {
+      "id": "other-173",
+      "name": "Кион",
+      "aliases": [
+        "kion"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-174",
+      "name": "ВК Музыка",
+      "aliases": [
+        "vk music",
+        "vk muzyka"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-175",
+      "name": "Звук",
+      "aliases": [
+        "zvuk"
+      ],
+      "categories": [],
+      "contextual": true
+    },
+    {
+      "id": "other-176",
+      "name": "Спотифай",
+      "aliases": [
+        "spotify"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-177",
+      "name": "Нетфликс",
+      "aliases": [
+        "netflix"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-178",
+      "name": "Стим",
+      "aliases": [
+        "steam",
+        "steampowered"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-179",
+      "name": "Эпик Геймс",
+      "aliases": [
+        "epic games"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-180",
+      "name": "Плейстейшен",
+      "aliases": [
+        "playstation",
+        "psn"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-181",
+      "name": "Иксбокс",
+      "aliases": [
+        "xbox"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-182",
+      "name": "Литрес",
+      "aliases": [
+        "litres"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-183",
+      "name": "Букмейт",
+      "aliases": [
+        "bookmate"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-184",
+      "name": "Ютуб",
+      "aliases": [
+        "youtube"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-185",
+      "name": "OpenAI",
+      "aliases": [
+        "openai",
+        "chatgpt"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-186",
+      "name": "Google",
+      "aliases": [
+        "гугл"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-187",
+      "name": "Apple",
+      "aliases": [
+        "эппл"
+      ],
+      "categories": []
+    },
+    {
+      "id": "other-188",
+      "name": "Microsoft",
+      "aliases": [
+        "майкрософт"
+      ],
+      "categories": []
+    },
+    {
+      "id": "yandex-taxi",
+      "name": "Яндекс Такси",
+      "parent": "yandex-go",
+      "aliases": [
+        "yandex taxi",
+        "yandex go taxi",
+        "яндекс такси"
+      ],
+      "categories": [
+        "Транспорт",
+        "Такси",
+        "Поездки"
+      ]
+    },
+    {
+      "id": "yandex-go",
+      "name": "Яндекс Go",
+      "parent": "yandex",
+      "aliases": [
+        "yandex go",
+        "яндекс го"
+      ],
+      "categories": []
+    },
+    {
+      "id": "yandex-food",
+      "name": "Яндекс Еда",
+      "parent": "yandex",
+      "aliases": [
+        "yandex eda",
+        "yandex eats",
+        "яндекс еда"
+      ],
+      "categories": [
+        "Доставка еды",
+        "Кафе и рестораны",
+        "Рестораны"
+      ]
+    },
+    {
+      "id": "yandex-market",
+      "name": "Яндекс Маркет",
+      "parent": "yandex",
+      "aliases": [
+        "yandex market",
+        "яндекс маркет",
+        "market yandex"
+      ],
+      "categories": []
+    },
+    {
+      "id": "yandex-lavka",
+      "name": "Яндекс Лавка",
+      "parent": "yandex",
+      "aliases": [
+        "yandex lavka",
+        "яндекс лавка"
+      ],
+      "categories": [
+        "Продукты",
+        "Продукты питания",
+        "Еда"
+      ]
+    },
+    {
+      "id": "yandex-plus",
+      "name": "Яндекс Плюс",
+      "parent": "yandex",
+      "aliases": [
+        "yandex plus",
+        "яндекс плюс"
+      ],
+      "categories": [
+        "Подписки",
+        "Сервисы"
+      ]
+    },
+    {
+      "id": "yandex-drive",
+      "name": "Яндекс Драйв",
+      "parent": "yandex",
+      "aliases": [
+        "yandex drive",
+        "яндекс драйв"
+      ],
+      "categories": [
+        "Транспорт",
+        "Поездки"
+      ]
+    }
+  ]
+}
