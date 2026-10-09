@@ -3946,7 +3946,7 @@ ApplicationWindow {
                                : operationDateButton.hovered
                                  ? root.controlHovered
                                  : root.soft
-                        border.width: operationDateButton.activeFocus ? 2 : 1
+                        border.width: 1
                         border.color: operationDateButton.activeFocus
                                       ? root.navSelected
                                       : root.line

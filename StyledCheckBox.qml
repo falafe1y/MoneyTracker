@@ -31,7 +31,7 @@ CheckBox {
                                   : control.appAccentColor)
                : (control.hovered ? control.appHoverColor : control.appSoftColor)
         opacity: control.enabled ? 1 : 0.55
-        border.width: control.neo ? 2 : control.visualFocus ? 2 : control.checked ? 0 : 1
+        border.width: control.checked && !control.neo && !control.visualFocus ? 0 : 1
         border.color: control.neo
                       ? (control.checked ? control.appOnAccentColor : control.appAccentColor)
                       : control.visualFocus

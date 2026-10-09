@@ -140,7 +140,7 @@ Dialog {
 
         color: dialog.panelColor
         radius: 16
-        border.width: 2
+        border.width: 1
         border.color: dialog.accentColor
     }
 
@@ -236,7 +236,7 @@ Dialog {
             Layout.fillHeight: true
             Layout.minimumHeight: 180
             color: dialog.softColor
-            border.width: 2
+            border.width: 1
             border.color: dialog.accentColor
             radius: 12
 

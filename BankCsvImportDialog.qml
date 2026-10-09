@@ -539,7 +539,7 @@ Dialog {
 
         color: panelColor
         radius: 16
-        border.width: 2
+        border.width: 1
         border.color: dialog.accentColor
     }
 

@@ -23,7 +23,7 @@ ApplicationWindow {
 
     // Outlined card style: solid dark outline + hard offset shadow (no blur).
     // Panels / buttons / fields opt in with `neo: true`.
-    readonly property int outlineWidth: 2
+    readonly property int outlineWidth: 1
     readonly property int shadowDepth: 6
 
     // Color palette
@@ -1381,7 +1381,7 @@ ApplicationWindow {
                         radius: 8
                         color: currencyBox.hovered || currencyBox.pressed || currencyBox.popup.visible
                                ? root.controlHovered : root.panel
-                        border.width: currencyBox.visualFocus ? 2 : 1
+                        border.width: 1
                         border.color: root.line
                     }
                     model: ["RUB", "USD", "EUR"]
@@ -2948,7 +2948,7 @@ ApplicationWindow {
                             radius: 12
                             color: financeController.selectedBudgetId === modelData.id
                                  ? root.pale : root.soft
-                            border.width: budgetCard.activeFocus ? 3 : root.outlineWidth
+                            border.width: root.outlineWidth
                             border.color: root.accent
 
                             ColumnLayout {
@@ -3408,7 +3408,7 @@ ApplicationWindow {
                                    === modelData.id
                                    ? root.pale
                                    : root.soft
-                            border.width: projectCard.activeFocus ? 3 : root.outlineWidth
+                            border.width: root.outlineWidth
                             border.color: root.accent
 
                             ColumnLayout {
@@ -7153,7 +7153,7 @@ ApplicationWindow {
                                : operationDateButton.hovered
                                  ? root.controlHovered
                                  : root.soft
-                        border.width: operationDateButton.visualFocus ? 2 : 1
+                        border.width: 1
                         border.color: root.line
                     }
                 }

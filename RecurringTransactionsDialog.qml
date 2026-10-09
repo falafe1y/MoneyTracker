@@ -245,7 +245,7 @@ Dialog {
 
         color: dialog.panelColor
         radius: 16
-        border.width: 2
+        border.width: 1
         border.color: dialog.accentColor
     }
 
@@ -313,7 +313,7 @@ Dialog {
                             height: 98
                             radius: 12
                             color: dialog.softColor
-                            border.width: 2
+                            border.width: 1
                             border.color: dialog.accentColor
 
                             RowLayout {
@@ -620,7 +620,7 @@ Dialog {
 
             color: dialog.panelColor
             radius: 16
-            border.width: 2
+            border.width: 1
             border.color: dialog.accentColor
         }
         contentItem: ColumnLayout {
@@ -685,7 +685,7 @@ Dialog {
 
             color: dialog.panelColor
             radius: 16
-            border.width: 2
+            border.width: 1
             border.color: dialog.accentColor
         }
         contentItem: ColumnLayout {

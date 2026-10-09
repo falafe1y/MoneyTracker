@@ -29,7 +29,7 @@ TextField {
         radius: control.neo ? 8 : 11
         color: control.activeFocus ? appPanelColor : appSoftColor
         opacity: control.enabled ? 1 : 0.62
-        border.width: control.activeFocus ? 2 : 1
+        border.width: 1
         border.color: control.appLineColor
     }
 }

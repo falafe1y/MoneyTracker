@@ -91,7 +91,7 @@ ColumnLayout {
             width: ListView.view.width
             height: cardContent.implicitHeight + 36
             radius: 16; color: theme.panel; border.color: theme.accent
-            border.width: activeFocus ? 3 : 2
+            border.width: 1
             activeFocusOnTab: true
             Accessible.role: Accessible.Button
             Accessible.name: modelData.name
@@ -217,7 +217,7 @@ ColumnLayout {
 
             color: theme.panel
             radius: 12
-            border.width: 2
+            border.width: 1
             border.color: theme.accent
         }
     }
@@ -234,7 +234,7 @@ ColumnLayout {
             HardShadow { depth: 6; shadowColor: theme.accent }
             radius: 16
             color: theme.panel
-            border.width: 2
+            border.width: 1
             border.color: theme.accent
         }
         contentItem: ColumnLayout {

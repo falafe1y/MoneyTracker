@@ -51,7 +51,7 @@ ComboBox {
                : control.pressed || control.popup.visible
                  ? control.appPanelColor
                  : control.hovered ? control.appHoverColor : control.appSoftColor
-        border.width: control.visualFocus ? 2 : 1
+        border.width: 1
         border.color: control.appLineColor
     }
 

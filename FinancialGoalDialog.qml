@@ -89,7 +89,7 @@ Dialog {
         HardShadow { depth: 6; shadowColor: theme.accent }
         radius: 16
         color: theme.panel
-        border.width: 2
+        border.width: 1
         border.color: theme.accent
     }
     component Field: StyledTextField {

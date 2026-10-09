@@ -40,7 +40,7 @@ ScrollView {
     component Card: Rectangle {
         HardShadow { depth: 6; shadowColor: theme.accent }
 
-        radius: 16; color: theme.panel; border.width: 2; border.color: theme.accent
+        radius: 16; color: theme.panel; border.width: 1; border.color: theme.accent
     }
     component Caption: Text { color: theme.muted; font.pixelSize: 14 }
     component Field: StyledTextField {
