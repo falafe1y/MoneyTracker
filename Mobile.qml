@@ -61,6 +61,9 @@ ApplicationWindow {
     readonly property color transparentColor: "transparent"
 
     property string page: "overview"
+    onPageChanged: browserScroll.stop()
+    readonly property var scrollController: browserScroll
+    AutoScrollController { id: browserScroll; parent: root.contentItem }
     property string searchText: ""
     readonly property int pageMargin: width < 360 ? 10 : 14
     readonly property int touchHeight: 48

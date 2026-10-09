@@ -6,6 +6,7 @@
 #include <QTranslator>
 
 #include "interface/FinanceController.h"
+#include "ui/WindowScrollInput.h"
 
 int main(int argc, char *argv[])
 {
@@ -13,8 +14,10 @@ int main(int argc, char *argv[])
 
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
+    WindowScrollInput windowScrollInput;
     QQmlApplicationEngine engine;
 
+    engine.rootContext()->setContextProperty("windowScrollInput", &windowScrollInput);
     FinanceController financeController;
     QTranslator translator;
 

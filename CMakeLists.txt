@@ -46,6 +46,8 @@ qt_add_qml_module(appMoneyTracker
         StyledScrollBar.qml
         # BankComboBox.qml
         # CategoryPicker.qml
+        SOURCES ui/WindowScrollInput.h
+        SOURCES ui/WindowScrollInput.cpp
         SOURCES core/Account.h
         SOURCES core/Asset.h
         SOURCES core/Category.h
@@ -503,3 +505,8 @@ if(WIN32)
     target_link_libraries(BankImportControllerTest PRIVATE crypt32)
 endif()
 add_test(NAME BankImportControllerTest COMMAND BankImportControllerTest)
+
+add_executable(WindowScrollInputTest tests/WindowScrollInputTest.cpp ui/WindowScrollInput.cpp)
+target_link_libraries(WindowScrollInputTest PRIVATE Qt6::Gui Qt6::Test)
+add_test(NAME WindowScrollInputTest COMMAND WindowScrollInputTest)
+set_tests_properties(WindowScrollInputTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

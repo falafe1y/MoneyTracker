@@ -31,6 +31,53 @@ Dialog {
     property bool statusOk: true
     property string previewSummary: ""
     property var operationRows: []
+    property var reviewData: ({})
+    onOperationRowsChanged: syncReviewGroups()
+    onShowReviewOnlyChanged: syncReviewGroups()
+    ListModel { id: reviewModel }
+
+    function syncReviewGroups() {
+        const groups = reviewGroups();
+        const data = ({});
+        for (let i = 0; i < groups.length; ++i) data[groups[i].key] = groups[i];
+        reviewData = data;
+        // Update rows by stable keys; assigning a new array resets ListView's viewport.
+        for (let i = 0; i < groups.length; ++i) {
+            const key = groups[i].key;
+            if (i < reviewModel.count && reviewModel.get(i).reviewKey === key) continue;
+            let existing = -1;
+            for (let j = i + 1; j < reviewModel.count; ++j)
+                if (reviewModel.get(j).reviewKey === key) { existing = j; break; }
+            if (existing >= 0) reviewModel.move(existing, i, 1);
+            else reviewModel.insert(i, {reviewKey: key});
+        }
+        if (reviewModel.count > groups.length) reviewModel.remove(groups.length, reviewModel.count - groups.length);
+    }
+
+    function restoreReviewPosition(anchor) {
+        if (!anchor) return;
+        const groups = reviewGroups();
+        const index = groups.findIndex(function(group) {
+            return group.rows.some(function(row) { return row.rowKey === anchor.rowKey; });
+        });
+        if (index < 0) return;
+        importScroll.contentY = anchor.outerY;
+        categoryReviewList.forceLayout();
+        if (!categoryReviewList.itemAtIndex(index)) {
+            categoryReviewList.positionViewAtIndex(index, ListView.Beginning);
+            categoryReviewList.forceLayout();
+        }
+        const item = categoryReviewList.itemAtIndex(index);
+        if (!item) return;
+        const offset = item.mapToItem(importScroll, 0, 0).y - anchor.top;
+        const top = categoryReviewList.originY;
+        const bottom = Math.max(top, top + categoryReviewList.contentHeight - categoryReviewList.height);
+        categoryReviewList.contentY = Math.max(top, Math.min(bottom, categoryReviewList.contentY + offset));
+        // A short review list may rely on the surrounding dialog for scrolling.
+        const remaining = item.mapToItem(importScroll, 0, 0).y - anchor.top;
+        importScroll.contentY = Math.max(0, Math.min(Math.max(0, importScroll.contentHeight - importScroll.height),
+            importScroll.contentY + remaining));
+    }
     property var categoryChoices: ({})
     property var savedCategoryRules: []
     property var savedRecipientRules: []
@@ -122,7 +169,12 @@ Dialog {
         return groups.filter(function(group) { return !showReviewOnly || group.needsReview; });
     }
 
-    function setGroupType(group, type) {
+    function setGroupType(group, type, item) {
+        const anchor = item && group.rows.length ? {
+            rowKey: group.rows[0].rowKey,
+            top: item.mapToItem(importScroll, 0, 0).y,
+            outerY: importScroll.contentY
+        } : null;
         const next = Object.assign({}, categoryChoices);
         for (let i = 0; i < group.rows.length; ++i) {
             const row = group.rows[i];
@@ -135,6 +187,7 @@ Dialog {
             next[row.rowKey] = choice;
         }
         categoryChoices = applyPendingRules(next);
+        if (anchor) Qt.callLater(function() { dialog.restoreReviewPosition(anchor); });
     }
 
     function transferAccountCurrency(id) {
@@ -1009,16 +1062,41 @@ Dialog {
                     Layout.preferredHeight: Math.min(560, contentHeight)
                     clip: true
                     spacing: 8
-                    model: dialog.reviewGroups()
+                    model: reviewModel
                     ScrollBar.vertical: StyledScrollBar {}
                     delegate: Rectangle {
                         id: reviewGroup
-                        required property var modelData
+                        required property string reviewKey
+                        property var modelData: dialog.reviewData[reviewKey]
+                        // Keep the delegate's last data while its key is being removed.
+                        Component.onCompleted: modelData = dialog.reviewData[reviewKey]
+                        Connections {
+                            target: dialog
+                            function onReviewDataChanged() {
+                                const data = dialog.reviewData[reviewGroup.reviewKey];
+                                if (data) reviewGroup.updateData(data);
+                            }
+                        }
                         readonly property var items: dialog.categoryItems(modelData.type)
                         property bool expanded: false
                         property var ruleDrafts: ({})
                         // A user's checkbox choice is independent of the selected rule source.
                         property int rememberRecipientSelection: -1
+
+                        function updateData(data) {
+                            if (JSON.stringify(modelData) === JSON.stringify(data)) return;
+                            const changedExample = modelData.rows[0].rowKey !== data.rows[0].rowKey;
+                            modelData = data;
+                            if (changedExample) {
+                                ruleDrafts = ({});
+                                rememberRecipientSelection = -1;
+                                recipientNameField.text = data.merchant;
+                                groupCategoryBox.currentIndex = data.mixedCategory ? -1
+                                    : dialog.categoryIndex(items, data.categoryId);
+                                dialog.setValue(recipientRuleFieldBox, data.recipientField);
+                                fillRulePattern(recipientRuleFieldBox.currentValue);
+                            }
+                        }
 
                         function patternForField(field) {
                             if (Object.prototype.hasOwnProperty.call(ruleDrafts, field))
@@ -1101,7 +1179,7 @@ Dialog {
                                             value: reviewGroup.modelData.statementType},
                                         {label: qsTr("Перевод"), value: "transfer"}]
                                     currentIndex: reviewGroup.modelData.type === "transfer" ? 1 : 0
-                                    onActivated: dialog.setGroupType(reviewGroup.modelData, currentValue)
+                                    onActivated: dialog.setGroupType(reviewGroup.modelData, currentValue, reviewGroup)
                                 }
                             }
                             TransferFields {
@@ -1253,7 +1331,7 @@ Dialog {
                                         }
                                         FormButton {
                                             text: qsTr("Это перевод")
-                                            onClicked: dialog.setGroupType({ rows: [exceptionRow.modelData] }, "transfer")
+                                            onClicked: dialog.setGroupType({ rows: [exceptionRow.modelData] }, "transfer", reviewGroup)
                                         }
                                         FormButton {
                                             text: qsTr("Только эта операция")
