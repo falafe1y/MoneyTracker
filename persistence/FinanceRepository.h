@@ -21,6 +21,7 @@
 #include <QDate>
 #include <QDateTime>
 #include <QSet>
+#include <QMap>
 #include <QVector>
 #include <QVariant>
 
@@ -132,7 +133,10 @@ public:
         );
     bool insertTransactions(const QVector<Transaction>& transactions,
                             const QVector<BankCategoryRule>& rules = {},
-                            const QVector<BankRecipientRule>& recipientRules = {});
+                            const QVector<BankRecipientRule>& recipientRules = {},
+                            const QMap<QString, QString>& bankLinks = {},
+                            const QSet<QString>& replacedBankTransactions = {});
+    QMap<QString, QString> loadBankImportLinks(QString* error = nullptr) const;
     QVector<BankRecipientRule> loadBankRecipientRules(QString* error = nullptr) const;
     bool deleteBankRecipientRule(const QString& pattern, const QString& field, const QString& mode, CategoryType type);
     QVector<BankCategoryRule> loadBankCategoryRules(QString* error = nullptr) const;

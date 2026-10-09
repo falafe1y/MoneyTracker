@@ -41,12 +41,12 @@
 namespace
 {
 QVariantMap bankOperationRow(const BankCsvOperation& operation, const QString& rowKey,
-    const QString& currency, const QString& fallbackCategoryId)
+    const QString& currency, const QString& fallbackCategoryId, const QString& statementAccountId)
 {
     return {{"rowKey", rowKey}, {"sourceRow", operation.sourceRow},
         {"fingerprint", operation.reviewFingerprint}, {"occurredAt", operation.occurredAt},
         {"date", operation.occurredAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy"))},
-        {"signedMinor", operation.signedMinor}, {"currency", currency},
+        {"signedMinor", operation.signedMinor}, {"currency", currency}, {"statementAccountId", statementAccountId},
         {"type", operation.signedMinor > 0 ? QStringLiteral("income") : QStringLiteral("expense")},
         {"description", operation.description}, {"rawRecipient", operation.rawRecipient},
         {"recipientId", operation.recipientId}, {"bankCategory", operation.categoryName},
@@ -1853,7 +1853,14 @@ QVariantMap FinanceController::previewBankImport(
     QDate lastDate;
     const QString accountCurrency = currencyCode(account->currency());
     QSet<QString> existingIds;
-    for (const auto& transaction : transactions_) existingIds.insert(transaction.id());
+    for (const auto& transaction : transactions_) {
+        existingIds.insert(transaction.id());
+        if (isTransfer(transaction)) existingIds.insert(transferId(transaction));
+    }
+    QString linkError;
+    const auto bankLinks = repository_.loadBankImportLinks(&linkError);
+    if (!linkError.isEmpty()) { result["error"] = linkError; return result; }
+    for (auto it = bankLinks.cbegin(); it != bankLinks.cend(); ++it) existingIds.insert(it.key());
     QHash<QString, int> fingerprintOccurrences;
     QHash<QString, int> legacyFingerprintOccurrences;
     for (const auto& operation : parsed.operations) {
@@ -1874,7 +1881,7 @@ QVariantMap FinanceController::previewBankImport(
         if (!duplicate) {
             const bool income = operation.signedMinor > 0;
             operationRows.append(bankOperationRow(operation, rowKey, accountCurrency,
-                income ? profile.incomeCategoryId : profile.expenseCategoryId));
+                income ? profile.incomeCategoryId : profile.expenseCategoryId, account->id()));
         }
         if (looksLikeTransfer(operation.description)) {
             const auto match = std::find_if(
@@ -2263,9 +2270,104 @@ QVariantMap FinanceController::resolveBankImportRows(const QVariantList& rows,
     if (!error.isEmpty()) return {{"ok", false}, {"error", error}};
     const auto recipients = repository_.loadBankRecipientRules(&error);
     if (!error.isEmpty()) return {{"ok", false}, {"error", error}};
-    const auto review = BankImportReview::resolve(rows, choices, categories_,
+    auto review = BankImportReview::resolve(rows, choices, categories_,
         archivedCategoryIds_, categories, recipients);
+    if (review.error.isEmpty()) {
+        for (auto& value : review.rows) {
+            auto row = value.toMap();
+            if (row.value("type").toString() != "transfer") continue;
+            const auto choice = choices.value(row.value("rowKey").toString()).toMap();
+            const auto details = bankImportTransferDetails(row, choice);
+            if (choice.value("confirmed").toBool() && !details.value("ok").toBool()) {
+                review.error = details.value("error").toString(); break;
+            }
+            row["needsReview"] = !choice.value("confirmed").toBool() || !details.value("ok").toBool();
+            row["reason"] = row.value("needsReview").toBool()
+                ? details.value("error", tr("Подтвердите перевод")) : tr("Перевод подтверждён");
+            value = row;
+        }
+    }
     return {{"ok", review.error.isEmpty()}, {"error", review.error}, {"operationRows", review.rows}};
+}
+
+QVariantMap FinanceController::bankImportTransferDetails(const QVariantMap& row,
+    const QVariantMap& choice) const
+{
+    QVariantMap result{{"ok", false}};
+    const auto fail = [&](const QString& message) { auto failed = result; failed["error"] = message; return failed; };
+    const Account* source = nullptr;
+    const Account* target = nullptr;
+    for (const auto& account : accounts_) {
+        if (account.id() == choice.value("sourceAccountId").toString()) source = &account;
+        if (account.id() == choice.value("targetAccountId").toString()) target = &account;
+    }
+    if (!source || !target || source->assetType() != AssetType::Fiat || target->assetType() != AssetType::Fiat)
+        return fail(tr("Выберите счёт списания и счёт зачисления"));
+    if (source->id() == target->id()) return fail(tr("Для перевода нужны разные счета"));
+    const qint64 signedMinor = row.value("signedMinor").toLongLong();
+    const bool income = signedMinor > 0;
+    const Account* own = income ? target : source;
+    const Account* peer = income ? source : target;
+    if (!signedMinor || own->id() != row.value("statementAccountId").toString()
+        || currencyCode(own->currency()) != row.value("currency").toString())
+        return fail(tr("Счёт выписки должен совпадать со счётом %1")
+            .arg(income ? tr("зачисления") : tr("списания")));
+    const qint64 ownMinor = positiveMinorMagnitude(signedMinor);
+    qint64 peerMinor = ownMinor;
+    if (source->currency() != target->currency()) {
+        qint64 peerMicros = 0;
+        if (!parsePositiveMicros(choice.value("peerAmount").toString(), peerMicros) || peerMicros % 10'000 != 0)
+            return fail(tr("Укажите фактическую сумму на втором счёте в его валюте, до 2 знаков после запятой"));
+        peerMinor = peerMicros / 10'000;
+    }
+    const auto date = row.value("occurredAt").toDateTime();
+    if (!date.isValid()) return fail(tr("Проверьте дату перевода"));
+    result["sourceMinor"] = income ? peerMinor : ownMinor;
+    result["targetMinor"] = income ? ownMinor : peerMinor;
+    QString error;
+    const auto links = repository_.loadBankImportLinks(&error);
+    if (!error.isEmpty()) return fail(error);
+    QSet<QString> linkedLegs;
+    for (auto it = links.cbegin(); it != links.cend(); ++it) linkedLegs.insert(it.value());
+    QVariantList matches;
+    for (const auto& transaction : transactions_) {
+        if (std::abs(transaction.date().toLocalTime().date().daysTo(date.toLocalTime().date())) > 2) continue;
+        if (isTransfer(transaction)) {
+            if (transaction.accountId() != own->id() || linkedLegs.contains(transaction.id())
+                || transaction.type() != (income ? TransactionType::Income : TransactionType::Expense)
+                || transaction.money().currency() != own->currency() || transaction.money().minorUnits() != ownMinor) continue;
+            const QString id = transferId(transaction);
+            const auto opposite = std::find_if(transactions_.cbegin(), transactions_.cend(), [&](const auto& candidate) {
+                return candidate.id() == id + (income ? QStringLiteral("-out") : QStringLiteral("-in"))
+                    && candidate.accountId() == peer->id() && candidate.money().currency() == peer->currency()
+                    && candidate.money().minorUnits() == peerMinor
+                    && candidate.categoryId() == (income ? "transfer-out" : "transfer-in");
+            });
+            if (id.isEmpty() || opposite == transactions_.cend()) continue;
+            matches.append(QVariantMap{{"value", transaction.id()}, {"kind", "transfer"},
+                {"label", tr("Уже учтённый перевод · %1 · %2").arg(transaction.date().toLocalTime().toString("dd.MM.yyyy"), transaction.description())}});
+        } else if (transaction.id().startsWith("bankcsv-") && transaction.projectId().isEmpty()
+            && transaction.accountId() == peer->id() && transaction.money().currency() == peer->currency()
+            && transaction.money().minorUnits() == peerMinor
+            && transaction.type() == (income ? TransactionType::Expense : TransactionType::Income)) {
+            matches.append(QVariantMap{{"value", transaction.id()}, {"kind", "operation"},
+                {"label", tr("Объединить с операцией второго счёта · %1 · %2")
+                    .arg(transaction.date().toLocalTime().toString("dd.MM.yyyy"), transaction.description())}});
+        }
+    }
+    result["matches"] = matches;
+    if (!matches.isEmpty() && !choice.contains("transferMatchId"))
+        return fail(tr("Найдена похожая операция. Выберите её или создание нового перевода"));
+    const QString selected = choice.value("transferMatchId").toString();
+    if (!selected.isEmpty()) {
+        const auto match = std::find_if(matches.cbegin(), matches.cend(), [&](const auto& item) {
+            return item.toMap().value("value").toString() == selected;
+        });
+        if (match == matches.cend()) return fail(tr("Выбранный перевод изменился. Обновите предварительный просмотр"));
+        result["matchKind"] = match->toMap().value("kind");
+    }
+    result["ok"] = true;
+    return result;
 }
 
 QVariantMap FinanceController::bankRecipientRules() const
@@ -2361,7 +2463,13 @@ QVariantMap FinanceController::importBankCsv(
     const QVariantMap choices = options.value("choices").toMap();
     const bool requireReview = options.value("requireReview", true).toBool();
     QSet<QString> usedChoices, existingIds, pendingIds;
-    for (const auto& transaction : std::as_const(transactions_)) existingIds.insert(transaction.id());
+    for (const auto& transaction : std::as_const(transactions_)) {
+        existingIds.insert(transaction.id());
+        if (isTransfer(transaction)) existingIds.insert(transferId(transaction));
+    }
+    const auto previousLinks = repository_.loadBankImportLinks(&ruleError);
+    if (!ruleError.isEmpty()) { result["error"] = ruleError; return result; }
+    for (auto it = previousLinks.cbegin(); it != previousLinks.cend(); ++it) existingIds.insert(it.key());
     QHash<QString, int> fingerprintOccurrences, legacyFingerprintOccurrences;
     QVariantList rows;
     int skipped = 0;
@@ -2385,20 +2493,66 @@ QVariantMap FinanceController::importBankCsv(
         pendingIds.insert(transactionId);
         usedChoices.insert(transactionId);
         rows.append(bankOperationRow(operation, transactionId, accountCurrency,
-            operation.signedMinor > 0 ? profile->incomeCategoryId : profile->expenseCategoryId));
+            operation.signedMinor > 0 ? profile->incomeCategoryId : profile->expenseCategoryId, account->id()));
     }
     const auto review = BankImportReview::resolve(rows, choices, categories_, archivedCategoryIds_, rules, recipientRules);
     if (!review.error.isEmpty()) { result["error"] = review.error; return result; }
     QVector<Transaction> imported;
+    QMap<QString, QString> newLinks;
+    QSet<QString> replacedBankTransactions, matchedOperations;
+    int importedOperations = 0, transferCount = 0;
     for (const auto& value : review.rows) {
         const auto row = value.toMap();
         const bool income = row.value("signedMinor").toLongLong() > 0;
         const QString categoryId = row.value("categoryId").toString();
+        if (row.value("type").toString() == "transfer") {
+            const auto choice = choices.value(row.value("rowKey").toString()).toMap();
+            const auto details = bankImportTransferDetails(row, choice);
+            if (!choice.value("confirmed").toBool() || !details.value("ok").toBool()) {
+                result["error"] = details.value("error", tr("Подтвердите перевод в строке %1").arg(row.value("sourceRow").toInt()));
+                return result;
+            }
+            const QString matchId = choice.value("transferMatchId").toString();
+            if (!matchId.isEmpty() && matchedOperations.contains(matchId)) {
+                result["error"] = tr("Одна операция выбрана для нескольких переводов. Проверьте совпадения."); return result;
+            }
+            if (!matchId.isEmpty()) matchedOperations.insert(matchId);
+            const QString rowKey = row.value("rowKey").toString();
+            if (details.value("matchKind").toString() == "transfer") {
+                newLinks.insert(rowKey, matchId);
+            } else {
+                const QString id = rowKey;
+                const QString sourceId = choice.value("sourceAccountId").toString();
+                const QString targetId = choice.value("targetAccountId").toString();
+                const auto source = std::find_if(accounts_.cbegin(), accounts_.cend(), [&](const auto& a) { return a.id() == sourceId; });
+                const auto target = std::find_if(accounts_.cbegin(), accounts_.cend(), [&](const auto& a) { return a.id() == targetId; });
+                const auto opposite = std::find_if(transactions_.cbegin(), transactions_.cend(), [&](const auto& t) { return t.id() == matchId; });
+                const bool combine = details.value("matchKind").toString() == "operation";
+                const auto ownDate = row.value("occurredAt").toDateTime();
+                const auto description = row.value("description").toString();
+                const auto peerDate = combine ? opposite->date() : ownDate;
+                const auto peerDescription = combine ? opposite->description() : description;
+                imported.append(Transaction(id + "-out", sourceId, "transfer-out",
+                    Money(details.value("sourceMinor").toLongLong(), source->currency()), TransactionType::Expense,
+                    income ? peerDate : ownDate, income ? peerDescription : description));
+                imported.append(Transaction(id + "-in", targetId, "transfer-in",
+                    Money(details.value("targetMinor").toLongLong(), target->currency()), TransactionType::Income,
+                    income ? ownDate : peerDate, income ? description : peerDescription));
+                newLinks.insert(rowKey, id + (income ? "-in" : "-out"));
+                if (combine) {
+                    replacedBankTransactions.insert(matchId);
+                    newLinks.insert(matchId, id + (income ? "-out" : "-in"));
+                }
+            }
+            ++importedOperations; ++transferCount;
+            continue;
+        }
         if (!categoryById(categoryId, income ? CategoryType::Income : CategoryType::Expense) ||
             (requireReview && row.value("needsReview").toBool())) {
             result["error"] = tr("Проверьте получателя и категорию в строке %1").arg(row.value("sourceRow").toInt());
             return result;
         }
+        ++importedOperations;
         TransactionRecipient recipient{{}, {}, QStringLiteral("unresolved")};
         if (row.value("recipientStatus").toString() == "known")
             recipient = {row.value("merchant").toString(), row.value("recipientKey").toString(), row.value("recipientSource").toString()};
@@ -2424,7 +2578,7 @@ QVariantMap FinanceController::importBankCsv(
             return result;
         }
     }
-    if (!repository_.insertTransactions(imported, review.categoryRules, review.recipientRules)) {
+    if (!repository_.insertTransactions(imported, review.categoryRules, review.recipientRules, newLinks, replacedBankTransactions)) {
         result[QStringLiteral("error")] = repository_.lastError();
         return result;
     }
@@ -2435,7 +2589,8 @@ QVariantMap FinanceController::importBankCsv(
     emit accountsChanged();
 
     result[QStringLiteral("ok")] = true;
-    result[QStringLiteral("imported")] = imported.size();
+    result[QStringLiteral("imported")] = importedOperations;
+    result[QStringLiteral("transfers")] = transferCount;
     result[QStringLiteral("rememberedRules")] = review.categoryRules.size();
     result[QStringLiteral("rememberedRecipientRules")] = review.recipientRules.size();
     result[QStringLiteral("skipped")] = skipped;

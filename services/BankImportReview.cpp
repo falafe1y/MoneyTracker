@@ -56,6 +56,13 @@ BankImportReviewResult BankImportReview::resolve(const QVariantList& input,
             result.error = QStringLiteral("Выписка изменилась. Обновите предварительный просмотр.");
             return result;
         }
+        const QString statementType = operation.signedMinor > 0 ? QStringLiteral("income") : QStringLiteral("expense");
+        const QString selectedType = choice.value("transactionType", statementType).toString();
+        if (selectedType != statementType && selectedType != "transfer") {
+            result.error = QStringLiteral("Тип операции не соответствует направлению суммы в выписке");
+            return result;
+        }
+        if (selectedType == "transfer") continue;
         if (choice.contains("recipientName") && choice.value("recipientName").toString().trimmed().size() > 160) {
             result.error = QStringLiteral("Имя получателя должно быть не длиннее 160 символов");
             return result;
@@ -110,7 +117,7 @@ BankImportReviewResult BankImportReview::resolve(const QVariantList& input,
             }
         }
         recipients.append(recipient);
-        if (!choice.value("remember").toBool()) continue;
+        if (choice.value("transactionType").toString() == "transfer" || !choice.value("remember").toBool()) continue;
         const auto type = operation.signedMinor > 0 ? CategoryType::Income : CategoryType::Expense;
         const auto mode = choice.value("matchMode", "exact").toString();
         BankCategoryRule rule{
@@ -163,14 +170,25 @@ BankImportReviewResult BankImportReview::resolve(const QVariantList& input,
         row["recipientPattern"] = recipient.rulePattern;
         row["recipientField"] = recipient.ruleField;
         row["recipientMode"] = recipient.ruleMode;
-        row["categoryId"] = categoryId;
+        const bool transfer = choice.value("transactionType").toString() == "transfer";
+        row["statementType"] = operation.signedMinor > 0 ? QStringLiteral("income") : QStringLiteral("expense");
+        row["type"] = transfer ? QStringLiteral("transfer") : row["statementType"];
+        row["categoryId"] = transfer ? QString() : categoryId;
         row["confirmed"] = confirmed;
         row["reason"] = confirmed ? QStringLiteral("Выбор подтверждён") : suggestion.reason;
         row["needsReview"] = !validCategory(categoryId, type, categories, archived)
             || (!confirmed && (suggestion.needsReview || recipient.status == "candidate" || recipient.status == "ambiguous"));
-        row["special"] = special;
+        if (transfer) {
+            row["sourceAccountId"] = choice.value("sourceAccountId");
+            row["targetAccountId"] = choice.value("targetAccountId");
+            row["peerAmount"] = choice.value("peerAmount", QString());
+            row["transferMatchId"] = choice.value("transferMatchId", QString());
+            row["needsReview"] = true; // Account and existing-operation checks are performed by the controller.
+            row["reason"] = QStringLiteral("Выберите счета и подтвердите перевод");
+        }
+        row["special"] = special || transfer;
         // Unknown names, opposite directions/currencies and special operations never share a group.
-        row["groupKey"] = recipient.recipient.key.isEmpty() || recipient.status != "known" || special
+        row["groupKey"] = recipient.recipient.key.isEmpty() || recipient.status != "known" || special || transfer
             ? "row:" + row.value("rowKey").toString()
             : row.value("type").toString() + QChar(0x1f) + row.value("currency").toString() + QChar(0x1f) + recipient.recipient.key;
         result.rows.append(row);

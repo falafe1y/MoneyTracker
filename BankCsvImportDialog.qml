@@ -61,7 +61,8 @@ Dialog {
             pattern: row.merchant, matchMode: "exact", categoryField: "recipient",
             recipientName: row.merchant || "", recipientConfirmed: false, rememberRecipient: false,
             recipientPattern: row.recipientPattern || "", recipientField: row.recipientField || "description",
-            recipientMode: row.recipientMode || "contains"
+            recipientMode: row.recipientMode || "contains", transactionType: row.type,
+            sourceAccountId: row.sourceAccountId || "", targetAccountId: row.targetAccountId || ""
         };
     }
 
@@ -104,10 +105,12 @@ Dialog {
             let group = byKey[row.groupKey];
             if (!group) {
                 group = { key: row.groupKey, rows: [], merchant: row.merchant || "", total: 0,
-                    currency: row.currency, type: row.type, needsReview: false, categoryId: row.categoryId,
+                    currency: row.currency, type: row.type, statementType: row.statementType || row.type,
+                    needsReview: false, categoryId: row.categoryId,
                     mixedCategory: false, reason: row.reason, recipientReason: row.recipientReason,
                     recipientPattern: row.recipientPattern || "", recipientField: row.recipientField || "description",
-                    recipientMode: row.recipientMode || "contains", recipientStatus: row.recipientStatus,
+                    recipientMode: row.recipientMode || "contains", transactionType: row.type,
+            sourceAccountId: row.sourceAccountId || "", targetAccountId: row.targetAccountId || "", recipientStatus: row.recipientStatus,
                     special: row.special, firstDate: row.date, lastDate: row.date };
                 byKey[row.groupKey] = group; groups.push(group);
             }
@@ -117,6 +120,36 @@ Dialog {
             group.lastDate = row.date;
         }
         return groups.filter(function(group) { return !showReviewOnly || group.needsReview; });
+    }
+
+    function setGroupType(group, type) {
+        const next = Object.assign({}, categoryChoices);
+        for (let i = 0; i < group.rows.length; ++i) {
+            const row = group.rows[i];
+            const choice = Object.assign({}, choiceFor(row), {
+                transactionType: type, confirmed: false, remember: false, rememberRecipient: false,
+                sourceAccountId: row.signedMinor < 0 ? row.statementAccountId : "",
+                targetAccountId: row.signedMinor > 0 ? row.statementAccountId : ""
+            });
+            delete choice.transferMatchId;
+            next[row.rowKey] = choice;
+        }
+        categoryChoices = applyPendingRules(next);
+    }
+
+    function transferAccountCurrency(id) {
+        const account = controller.allAccounts.find(function(a) { return a.id === id; });
+        return account ? account.currency : "";
+    }
+
+    function transferChoice(row, source, target, peerAmount, matchId) {
+        const choice = Object.assign({}, choiceFor(row), {
+            transactionType: "transfer", sourceAccountId: source, targetAccountId: target,
+            peerAmount: peerAmount, confirmed: true, remember: false, rememberRecipient: false
+        });
+        if (matchId !== undefined) choice.transferMatchId = matchId;
+        else delete choice.transferMatchId;
+        return choice;
     }
 
     function recipientRuleSource(group, field) {
@@ -429,7 +462,7 @@ Dialog {
                 keptChoices[row.rowKey] = choice;
         }
         categoryChoices = Object.keys(keptChoices).length ? applyPendingRules(keptChoices) : ({});
-        previewSummary = qsTr("Найдено: %1 · Новых: %2 · Дубликатов: %3 · Возможных переводов: %4 · %5 — %6 · Доходы: %7 · Расходы: %8 · Ошибок: %9 · Другая валюта: %10")
+        previewSummary = qsTr("Найдено: %1 · Новых: %2 · Дубликатов: %3 · Возможных переводов: %4 · %5 — %6 · Зачисления по выписке: %7 · Списания по выписке: %8 · Ошибок: %9 · Другая валюта: %10")
             .arg(result.operationCount)
             .arg(result.newCount)
             .arg(result.duplicateCount)
@@ -534,6 +567,98 @@ Dialog {
         appAccentColor: dialog.accentColor
         appHoverColor: "#E4E8F1"
         appOnAccentColor: dialog.panelColor
+    }
+
+    component TransferFields: ColumnLayout {
+        id: transferFields
+        required property var row
+        readonly property var existingChoice: dialog.choiceFor(row)
+        readonly property string sourceCurrency: dialog.transferAccountCurrency(sourceBox.currentValue)
+        readonly property string targetCurrency: dialog.transferAccountCurrency(targetBox.currentValue)
+        readonly property bool differentCurrency: !!sourceCurrency && !!targetCurrency && sourceCurrency !== targetCurrency
+        readonly property var draft: dialog.transferChoice(row, sourceBox.currentValue, targetBox.currentValue,
+            peerAmountField.text, undefined)
+        readonly property var details: visible ? dialog.controller.bankImportTransferDetails(row, draft) : ({})
+        readonly property var matchingItems: [{label: qsTr("Создать новый перевод"), value: ""}].concat(details.matches || [])
+        readonly property string peerCurrency: row.signedMinor > 0 ? sourceCurrency : targetCurrency
+        spacing: 8
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Перевод перемещает деньги между вашими счетами и не входит в доходы и расходы. Счёт выписки уже выбран по направлению суммы.")
+            color: dialog.mutedColor; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+        GridLayout {
+            Layout.fillWidth: true; columns: 2; columnSpacing: 12
+            Text { text: qsTr("Со счёта"); color: dialog.mutedColor; font.pixelSize: 14 }
+            Text { text: qsTr("На счёт"); color: dialog.mutedColor; font.pixelSize: 14 }
+            FormCombo {
+                id: sourceBox; objectName: "transferSourceBox"
+                Layout.fillWidth: true; Layout.maximumWidth: 10000
+                model: dialog.fiatAccounts(); emptyText: qsTr("Выберите счёт списания")
+                displayText: currentIndex < 0 ? emptyText : currentText
+                enabled: transferFields.row.signedMinor > 0
+                currentIndex: dialog.categoryIndex(model, transferFields.existingChoice.sourceAccountId)
+                onActivated: existingMatchBox.currentIndex = -1
+            }
+            FormCombo {
+                id: targetBox; objectName: "transferTargetBox"
+                Layout.fillWidth: true; Layout.maximumWidth: 10000
+                model: dialog.fiatAccounts(); emptyText: qsTr("Выберите счёт зачисления")
+                displayText: currentIndex < 0 ? emptyText : currentText
+                enabled: transferFields.row.signedMinor < 0
+                currentIndex: dialog.categoryIndex(model, transferFields.existingChoice.targetAccountId)
+                onActivated: existingMatchBox.currentIndex = -1
+            }
+        }
+        Text {
+            visible: transferFields.differentCurrency
+            Layout.fillWidth: true
+            text: (transferFields.row.signedMinor > 0 ? qsTr("Фактически списано со второго счёта, %1")
+                : qsTr("Фактически зачислено на второй счёт, %1")).arg(transferFields.peerCurrency)
+            color: dialog.mutedColor; font.pixelSize: 14; wrapMode: Text.WordWrap
+        }
+        FormField {
+            id: peerAmountField; objectName: "transferPeerAmountField"
+            visible: transferFields.differentCurrency
+            Layout.fillWidth: true; Layout.maximumWidth: 10000
+            text: transferFields.existingChoice.peerAmount || ""
+            placeholderText: qsTr("Сумма в валюте второго счёта")
+            inputMethodHints: Qt.ImhFormattedNumbersOnly
+            onTextEdited: existingMatchBox.currentIndex = -1
+        }
+        Text {
+            visible: transferFields.matchingItems.length > 1
+            Layout.fillWidth: true
+            text: qsTr("Найдены похожие операции. Если это тот же перевод, выберите его, чтобы не учесть сумму дважды. Объединение с операцией второго счёта также сохранит связь с её выпиской.")
+            color: dialog.mutedColor; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+        FormCombo {
+            id: existingMatchBox; objectName: "transferMatchBox"
+            visible: transferFields.matchingItems.length > 1
+            Layout.fillWidth: true; Layout.maximumWidth: 10000
+            model: transferFields.matchingItems
+            currentIndex: transferFields.existingChoice.transferMatchId !== undefined
+                ? dialog.categoryIndex(model, transferFields.existingChoice.transferMatchId) : -1
+            emptyText: qsTr("Выберите совпадение или новый перевод")
+            displayText: currentIndex < 0 ? emptyText : currentText
+        }
+        Text {
+            visible: !!transferFields.details.error && !(transferFields.matchingItems.length > 1 && existingMatchBox.currentIndex >= 0)
+            Layout.fillWidth: true
+            text: transferFields.details.error || ""
+            color: dialog.mutedColor; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+        FormButton {
+            objectName: "confirmImportTransfer"
+            text: qsTr("Подтвердить перевод")
+            enabled: !!sourceBox.currentValue && !!targetBox.currentValue
+                && sourceBox.currentValue !== targetBox.currentValue
+                && (!transferFields.differentCurrency || !!peerAmountField.text.trim())
+                && (transferFields.matchingItems.length === 1 || existingMatchBox.currentIndex >= 0)
+            onClicked: dialog.setChoice(transferFields.row, dialog.transferChoice(transferFields.row,
+                sourceBox.currentValue, targetBox.currentValue, peerAmountField.text,
+                existingMatchBox.currentIndex >= 0 ? existingMatchBox.currentValue : undefined))
+        }
     }
 
     background: Rectangle {
@@ -871,7 +996,7 @@ Dialog {
                 Text {
                     visible: dialog.operationRows.length > 0
                     Layout.fillWidth: true
-                    text: qsTr("Проверьте группы: одно исправление применяется ко всем операциям группы. Без имени получателя можно импортировать, сохранив полное описание отдельно. Переводы, возвраты и снятия проверьте по одному — импорт сохраняет их как доходы или расходы.")
+                    text: qsTr("Проверьте группы: одно исправление применяется ко всем операциям группы. Без имени получателя можно импортировать, сохранив полное описание отдельно. Для движения между своими счетами выберите «Перевод» и укажите оба счёта. Возвраты, переводы другим людям и снятия проверьте по одному.")
                     color: dialog.mutedColor
                     font.pixelSize: 14
                     wrapMode: Text.WordWrap
@@ -926,7 +1051,8 @@ Dialog {
                                 Layout.fillWidth: true
                                 Text {
                                     Layout.fillWidth: true
-                                    text: reviewGroup.modelData.merchant || qsTr("Получатель не определён")
+                                    text: reviewGroup.modelData.type === "transfer" ? qsTr("Перевод между счетами")
+                                        : reviewGroup.modelData.merchant || qsTr("Получатель не определён")
                                     font.pixelSize: 16
                                     font.weight: Font.DemiBold
                                     color: dialog.textColor
@@ -941,7 +1067,8 @@ Dialog {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: reviewGroup.modelData.recipientReason + " · " + reviewGroup.modelData.reason
+                                text: (reviewGroup.modelData.type === "transfer" ? "" : reviewGroup.modelData.recipientReason + " · ")
+                                    + reviewGroup.modelData.reason
                                     + (reviewGroup.modelData.mixedCategory ? qsTr(" · Разные категории — сохраните исключения ниже") : "")
                                 color: dialog.mutedColor
                                 font.pixelSize: 13
@@ -962,6 +1089,28 @@ Dialog {
                                 }
                             }
                             RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                Text { text: qsTr("Тип операции"); color: dialog.mutedColor; font.pixelSize: 14 }
+                                FormCombo {
+                                    id: groupTypeBox
+                                    objectName: "groupTypeBox"
+                                    Layout.preferredWidth: 240
+                                    Layout.maximumWidth: 240
+                                    model: [{label: reviewGroup.modelData.statementType === "income" ? qsTr("Доход") : qsTr("Расход"),
+                                            value: reviewGroup.modelData.statementType},
+                                        {label: qsTr("Перевод"), value: "transfer"}]
+                                    currentIndex: reviewGroup.modelData.type === "transfer" ? 1 : 0
+                                    onActivated: dialog.setGroupType(reviewGroup.modelData, currentValue)
+                                }
+                            }
+                            TransferFields {
+                                visible: reviewGroup.modelData.type === "transfer"
+                                Layout.fillWidth: true
+                                row: reviewGroup.modelData.rows[0]
+                            }
+                            RowLayout {
+                                visible: reviewGroup.modelData.type !== "transfer"
                                 Layout.fillWidth: true
                                 spacing: 12
                                 FormField {
@@ -985,6 +1134,7 @@ Dialog {
                                 }
                             }
                             RowLayout {
+                                visible: reviewGroup.modelData.type !== "transfer"
                                 Layout.fillWidth: true
                                 spacing: 16
                                 FormCheckBox {
@@ -1008,8 +1158,8 @@ Dialog {
                                 }
                             }
                             GridLayout {
-                                visible: rememberRecipientCheck.checked
-                                    || recipientNameField.text.trim() !== reviewGroup.modelData.merchant
+                                visible: reviewGroup.modelData.type !== "transfer" && (rememberRecipientCheck.checked
+                                    || recipientNameField.text.trim() !== reviewGroup.modelData.merchant)
                                 Layout.fillWidth: true
                                 columns: 2
                                 columnSpacing: 12
@@ -1050,7 +1200,7 @@ Dialog {
                                 }
                             }
                             Text {
-                                visible: rememberRecipientCheck.checked && recipientPatternField.text.length > 240
+                                visible: reviewGroup.modelData.type !== "transfer" && rememberRecipientCheck.checked && recipientPatternField.text.length > 240
                                 Layout.fillWidth: true
                                 text: qsTr("Сократите правило до 240 символов: оставьте слова, по которым узнаётся получатель.")
                                 color: dialog.errorColor
@@ -1058,6 +1208,7 @@ Dialog {
                                 wrapMode: Text.WordWrap
                             }
                             RowLayout {
+                                visible: reviewGroup.modelData.type !== "transfer"
                                 Layout.fillWidth: true
                                 FormButton {
                                     objectName: "applyRecipientGroup"
@@ -1099,6 +1250,10 @@ Dialog {
                                             Layout.maximumWidth: 240
                                             model: reviewGroup.items
                                             currentIndex: dialog.categoryIndex(model, exceptionRow.modelData.categoryId)
+                                        }
+                                        FormButton {
+                                            text: qsTr("Это перевод")
+                                            onClicked: dialog.setGroupType({ rows: [exceptionRow.modelData] }, "transfer")
                                         }
                                         FormButton {
                                             text: qsTr("Только эта операция")

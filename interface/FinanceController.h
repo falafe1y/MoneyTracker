@@ -599,6 +599,8 @@ public:
         );
     Q_INVOKABLE QString normalizeBankCategoryText(const QString& text) const;
     Q_INVOKABLE QVariantMap resolveBankImportRows(const QVariantList& rows, const QVariantMap& choices) const;
+    Q_INVOKABLE QVariantMap bankImportTransferDetails(const QVariantMap& row,
+        const QVariantMap& choice) const;
     Q_INVOKABLE QVariantMap bankRecipientRules() const;
     Q_INVOKABLE QVariantMap deleteBankRecipientRule(const QString& pattern,
         const QString& field, const QString& matchMode, const QString& type);

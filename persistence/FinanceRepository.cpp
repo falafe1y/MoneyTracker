@@ -144,6 +144,44 @@ bool insertTransactionRow(
     return query.exec();
 }
 
+// Replacement deletes/reinserts rows; retain bank statement identities across edits.
+QMap<QString, bool> bankLinksForOperation(QSqlDatabase& database, const QString& id, QString& error)
+{
+    QMap<QString, bool> links;
+    QSqlQuery lookup(database);
+    lookup.prepare(QStringLiteral("SELECT category_id,type FROM transactions WHERE id=?"));
+    lookup.addBindValue(id);
+    if (!lookup.exec() || !lookup.next()) {
+        error = QStringLiteral("Transaction was not found"); return links;
+    }
+    const auto category = lookup.value(0).toString();
+    const bool income = lookup.value(1).toInt() == 0;
+    const auto components = transferComponentIds(id, category);
+    lookup.finish();
+    lookup.prepare(QStringLiteral("SELECT l.row_key,t.type FROM bank_import_links l "
+        "JOIN transactions t ON t.id=l.transaction_id WHERE t.id=? OR t.id=? OR t.id=?"));
+    lookup.addBindValue(id);
+    lookup.addBindValue(components.valid ? components.outgoing : id);
+    lookup.addBindValue(components.valid ? components.incoming : id);
+    if (!lookup.exec()) { error = lookup.lastError().text(); return links; }
+    while (lookup.next()) links.insert(lookup.value(0).toString(), lookup.value(1).toInt() == 0);
+    if (lookup.lastError().isValid()) error = lookup.lastError().text();
+    if (id.startsWith("bankcsv-") && !isTransferCategory(category)) links.insert(id, income);
+    return links;
+}
+
+bool restoreBankLinks(QSqlDatabase& database, const QMap<QString, bool>& links,
+    const QString& outgoingId, const QString& incomingId, QString& error)
+{
+    QSqlQuery query(database);
+    query.prepare(QStringLiteral("INSERT INTO bank_import_links(row_key,transaction_id) VALUES(?,?)"));
+    for (auto it = links.cbegin(); it != links.cend(); ++it) {
+        query.bindValue(0, it.key()); query.bindValue(1, it.value() ? incomingId : outgoingId);
+        if (!query.exec()) { error = query.lastError().text(); return false; }
+    }
+    return true;
+}
+
 bool deleteOperationRows(
     QSqlDatabase& database,
     const QString& id,
@@ -353,7 +391,8 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                 QStringLiteral("investment_positions"), QStringLiteral("investment_quotes"),
                 QStringLiteral("investment_operations"),
                 QStringLiteral("capital_snapshots"), QStringLiteral("bank_csv_profiles"),
-                QStringLiteral("bank_category_rules"), QStringLiteral("bank_recipient_rules"), QStringLiteral("settings")};
+                QStringLiteral("bank_category_rules"), QStringLiteral("bank_recipient_rules"),
+                QStringLiteral("bank_import_links"), QStringLiteral("settings")};
             QSet<QString> sourceTables;
             if (!check.exec(QStringLiteral("SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','view')"))) {
                 return fail(check.lastError().text());
@@ -456,6 +495,7 @@ bool FinanceRepository::clearAllUserData()
         QStringLiteral("DELETE FROM budget_accounts"),
         QStringLiteral("DELETE FROM budget_category_limits"),
         QStringLiteral("DELETE FROM budget_months"),
+        QStringLiteral("DELETE FROM bank_import_links"),
         QStringLiteral("DELETE FROM transactions"),
         QStringLiteral("DELETE FROM deposit_settings"),
         QStringLiteral("DELETE FROM recurring_transactions"),
@@ -1314,10 +1354,13 @@ bool FinanceRepository::insertTransfer(
 bool FinanceRepository::insertTransactions(
     const QVector<Transaction>& transactions,
     const QVector<BankCategoryRule>& rules,
-    const QVector<BankRecipientRule>& recipientRules
+    const QVector<BankRecipientRule>& recipientRules,
+    const QMap<QString, QString>& bankLinks,
+    const QSet<QString>& replacedBankTransactions
     )
 {
-    if (transactions.isEmpty() && rules.isEmpty() && recipientRules.isEmpty()) {
+    if (transactions.isEmpty() && rules.isEmpty() && recipientRules.isEmpty() && bankLinks.isEmpty()
+        && replacedBankTransactions.isEmpty()) {
         return true;
     }
     if (!database_.transaction()) {
@@ -1339,6 +1382,20 @@ bool FinanceRepository::insertTransactions(
         return false;
     }
 
+    QSqlQuery remove(database_);
+    remove.prepare(QStringLiteral("DELETE FROM transactions WHERE id=? AND id LIKE 'bankcsv-%' "
+        "AND category_id NOT IN ('transfer-in','transfer-out') AND COALESCE(project_id,'')=''"));
+    for (const auto& id : replacedBankTransactions) {
+        if (!bankLinks.contains(id)) {
+            setLastError(QStringLiteral("Не сохранена связь заменяемой банковской операции"));
+            database_.rollback(); return false;
+        }
+        remove.bindValue(0, id);
+        if (!remove.exec() || remove.numRowsAffected() != 1) {
+            setLastError(QStringLiteral("Банковская операция для объединения изменилась"));
+            database_.rollback(); return false;
+        }
+    }
     QSqlQuery query(database_);
     prepareTransactionInsert(query);
     const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
@@ -1399,6 +1456,17 @@ bool FinanceRepository::insertTransactions(
         recipientQuery.finish();
     }
 
+    QSqlQuery link(database_);
+    link.prepare(QStringLiteral("INSERT INTO bank_import_links(row_key,transaction_id) "
+        "SELECT ?,id FROM transactions WHERE id=? AND category_id IN ('transfer-in','transfer-out')"));
+    for (auto it = bankLinks.cbegin(); it != bankLinks.cend(); ++it) {
+        link.bindValue(0, it.key()); link.bindValue(1, it.value());
+        if (!link.exec() || link.numRowsAffected() != 1) {
+            setLastError(link.lastError().isValid() ? link.lastError().text()
+                : QStringLiteral("Не найдена сторона перевода для банковской операции"));
+            database_.rollback(); return false;
+        }
+    }
     if (!database_.commit()) {
         setLastError(database_.lastError().text());
         database_.rollback();
@@ -1455,6 +1523,8 @@ bool FinanceRepository::replaceTransaction(
         database_.rollback();
         return false;
     }
+    const auto bankLinks = bankLinksForOperation(database_, currentId, error);
+    if (!error.isEmpty()) { setLastError(error); database_.rollback(); return false; }
     QSqlQuery insertion(database_);
     prepareTransactionInsert(insertion);
     const bool succeeded =
@@ -1462,7 +1532,8 @@ bool FinanceRepository::replaceTransaction(
         insertTransactionRow(
             insertion,
             replacement,
-            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
+            QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) &&
+        restoreBankLinks(database_, bankLinks, replacement.id(), replacement.id(), error);
 
     if (!succeeded || !database_.commit()) {
         if (error.isEmpty()) {
@@ -1494,13 +1565,16 @@ bool FinanceRepository::replaceTransactionWithTransfer(
         database_.rollback();
         return false;
     }
+    const auto bankLinks = bankLinksForOperation(database_, currentId, error);
+    if (!error.isEmpty()) { setLastError(error); database_.rollback(); return false; }
     QSqlQuery insertion(database_);
     prepareTransactionInsert(insertion);
     const qint64 createdAt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
     const bool succeeded =
         deleteOperationRows(database_, currentId, error) &&
         insertTransactionRow(insertion, outgoing, createdAt) &&
-        insertTransactionRow(insertion, incoming, createdAt);
+        insertTransactionRow(insertion, incoming, createdAt) &&
+        restoreBankLinks(database_, bankLinks, outgoing.id(), incoming.id(), error);
 
     if (!succeeded || !database_.commit()) {
         if (error.isEmpty()) {
@@ -3068,6 +3142,8 @@ bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
         // Additive, idempotent migration: existing operations are untouched.
+        QStringLiteral("CREATE TABLE IF NOT EXISTS bank_import_links (row_key TEXT PRIMARY KEY, "
+                       "transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS bank_category_rules ("
                        "pattern TEXT NOT NULL CHECK(length(trim(pattern)) > 0), "
                        "match_mode TEXT NOT NULL CHECK(match_mode IN ('exact','contains')), "
@@ -4281,4 +4357,18 @@ bool FinanceRepository::deleteBankRecipientRule(const QString& pattern, const QS
         return false;
     }
     return true;
+}
+
+QMap<QString, QString> FinanceRepository::loadBankImportLinks(QString* error) const
+{
+    if (error) error->clear();
+    QSqlQuery query(database_);
+    QMap<QString, QString> links;
+    if (!query.exec(QStringLiteral("SELECT row_key,transaction_id FROM bank_import_links"))) {
+        if (error) *error = query.lastError().text();
+        return links;
+    }
+    while (query.next()) links.insert(query.value(0).toString(), query.value(1).toString());
+    if (query.lastError().isValid() && error) *error = query.lastError().text();
+    return links;
 }
