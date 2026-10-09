@@ -80,28 +80,16 @@ updated.
 
 ## Investments
 
-The investment domain is split into three independent records:
+The unified investment search covers shares, preferred shares, depositary receipts,
+funds, bonds, spot currencies and metals, futures and options through MOEX ISS.
+Position valuation uses instrument-specific terms, signed derivative liabilities,
+actual brokerage cash movements and the last booked clearing price. Instruments
+with unavailable quotes or special settlement rules support manual valuation.
+Desktop and mobile offer position and operation forms. Existing positions and
+quotes are preserved by a transactional schema migration.
 
-`InvestmentInstrument -> InvestmentPosition -> InvestmentQuote`
-
-An instrument describes a stock, ETF, bond, fund, or other security and owns
-its ticker, optional ISIN, name, and quote currency. A position links one
-instrument to an investment account and stores the quantity and average
-purchase price. A quote stores the latest known market price and its UTC
-timestamp.
-
-Fractional quantities and prices are stored as signed 64-bit integers scaled by
-1,000,000. SQLite prevents duplicate active positions for the same
-account/instrument pair and duplicate active non-empty ISIN values. Instruments
-with active positions cannot be archived, and deleting an investment account
-archives its positions in the same database transaction.
-
-The first market-data integration covers Russian shares and exchange-traded
-funds listed on Moscow Exchange. Search accepts a ticker or ISIN and uses the
-official keyless MOEX ISS API. The selected instrument's primary trading board
-is stored with the instrument so its market price can be refreshed after an app
-restart. Quotes are refreshed on demand and when stale by six hours; a failed
-request leaves the last saved quote visible.
+See [INVESTMENTS.md](INVESTMENTS.md) for the formulas, cash entry modes, supported
+operations, data sources and limits of this implementation.
 
 ## Currency rates
 

@@ -11,6 +11,7 @@
 #include "../core/InvestmentInstrument.h"
 #include "../core/InvestmentPosition.h"
 #include "../core/InvestmentQuote.h"
+#include "../core/InvestmentOperation.h"
 #include "../core/Project.h"
 #include "../core/Budget.h"
 #include "../core/FinancialGoal.h"
@@ -203,6 +204,14 @@ public:
     bool deleteInvestmentPosition(const QString& id);
     bool archiveInvestmentPosition(const QString& id);
     bool saveInvestmentQuote(const InvestmentQuote& quote);
+    QVector<InvestmentOperation> loadInvestmentOperations();
+    bool saveInvestmentBundle(const InvestmentInstrument& instrument,
+        const InvestmentPosition& position, const std::optional<InvestmentQuote>& quote,
+        bool editing, const std::optional<InvestmentOperation>& operation = {});
+    bool bookInvestmentOperation(const InvestmentOperation& operation,
+        const InvestmentPosition& expected, const InvestmentPosition& updated, bool close,
+        const std::optional<InvestmentQuote>& quote = {});
+    bool hasInvestmentOperations(const QString& positionId) const;
     bool updateCategoryName(const QString& id, const QString& name);
     bool archiveCategory(const QString& id);
     QString loadAppCurrency() const;
@@ -234,6 +243,7 @@ public:
 private:
     bool initializeSchema();
     bool migrateLegacySchema();
+    bool migrateInvestmentSchema();
     bool seedDefaults();
     void setLastError(const QString& error);
 

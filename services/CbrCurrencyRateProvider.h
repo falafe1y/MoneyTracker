@@ -21,6 +21,7 @@ public:
     explicit CbrCurrencyRateProvider(QObject* parent = nullptr);
 
     qint64 rateToUsd(Currency currency) const override;
+    qint64 rateToRubMicros(const QString& code) const;
     bool automaticUpdatesEnabled() const;
     void setAutomaticUpdatesEnabled(bool enabled);
     bool setManualRates(
@@ -50,6 +51,7 @@ private:
         12LL * 60LL * 60LL * 1000LL;
 
     CurrencyRateCache cache_;
+    QHash<QString,qint64> extraRatesToRubMicros_;
     std::array<qint64, 3> automaticRatesToUsd_{
         11'000'000,
         kCurrencyRateScale,

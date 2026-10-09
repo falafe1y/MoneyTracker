@@ -5,6 +5,7 @@
 #include "../services/BalanceCalculator.h"
 #include "../services/BankCsvImporter.h"
 #include "../services/CapitalHistoryCalculator.h"
+#include "../services/InvestmentValuation.h"
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
 #include "../services/CryptoProvider.h"
@@ -174,6 +175,8 @@ class FinanceController final : public QObject
                 NOTIFY accountsChanged
         )
 
+    Q_PROPERTY(QVariantList investmentOperations READ investmentOperations NOTIFY investmentPositionsChanged)
+    Q_PROPERTY(bool investmentValuationIncomplete READ investmentValuationIncomplete NOTIFY balanceChanged)
     Q_PROPERTY(
         QVariantList investmentPositions
             READ investmentPositions
@@ -345,7 +348,7 @@ public:
     QVariantMap financialTrajectory();
     Q_INVOKABLE QVariantMap saveFinancialTrajectorySettings(const QVariantMap& values);
 
-    explicit FinanceController(QObject* parent = nullptr);
+    explicit FinanceController(QObject* parent = nullptr, const QString& databasePath = {});
 
     QString notesText() const;
     bool notesDirty() const;
@@ -392,6 +395,10 @@ public:
     QVariantList cryptoTransactions() const;
     QVariantList investmentAccounts() const;
     QVariantList investmentPositions() const;
+    QVariantList investmentOperations() const;
+    bool investmentValuationIncomplete() const;
+    Q_INVOKABLE QVariantMap saveInvestmentPosition(const QVariantMap& values);
+    Q_INVOKABLE QVariantMap recordInvestmentOperation(const QVariantMap& values);
     QVariantList investmentSearchResults() const;
     bool investmentSearchBusy() const;
     bool investmentQuoteBusy() const;
@@ -674,6 +681,8 @@ private:
 
     qint64 accountBalanceMinor(const Account& account) const;
     qint64 investmentAccountValueMinor(const QString& accountId) const;
+    InvestmentValuation investmentPositionValue(const InvestmentPosition& position) const;
+    void reloadInvestments();
     int accountTransactionCount(const QString& accountId) const;
     qint64 assetBalanceMinor(AssetType asset) const;
     qint64 cryptoAmountValueMinor(
@@ -752,6 +761,7 @@ private:
     QVector<InvestmentInstrument> investmentInstruments_;
     QVector<InvestmentPosition> investmentPositions_;
     QVector<InvestmentQuote> investmentQuotes_;
+    QVector<InvestmentOperation> investmentOperations_;
     QVector<InvestmentMarketInstrument> investmentSearchResults_;
     CapitalHistorySeries capitalHistorySeries_;
     QVector<BankCsvProfile> bankCsvProfiles_;

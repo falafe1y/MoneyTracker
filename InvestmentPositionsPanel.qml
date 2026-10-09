@@ -8,6 +8,9 @@ Rectangle {
     id: panel
     signal contextMenuRequested(var position, var sourceItem, real x, real y)
     signal deleteRequested(var position)
+    signal operationRequested(var position)
+    signal editRequested(var position)
+    property bool showEditButton: false
 
     property var controller
     property bool confirmDeletion: false
@@ -57,6 +60,11 @@ Rectangle {
             }
         }
 
+        Label {
+            Layout.fillWidth: true; visible: panel.controller && panel.controller.investmentValuationIncomplete
+            text: qsTr("Оценка капитала неполная: для части позиций нужна котировка, курс или ручная стоимость.")
+            color: panel.errorColor; wrapMode: Text.WordWrap; font.pixelSize: 14
+        }
         ListView {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -67,18 +75,22 @@ Rectangle {
                 SurfaceShadow { }
 
                 required property var modelData
+                required property int index
                 width: ListView.view.width
-                height: 72
+                height: panel.width < 620 ? 144 : 104
                 color: index % 2 ? "#FAF9EC" : "transparent"
                 radius: 8
 
-                RowLayout {
+                GridLayout {
+                    columns: panel.width < 620 ? 2 : 3
                     anchors.fill: parent
                     anchors.leftMargin: 10
                     anchors.rightMargin: 6
-                    spacing: 10
+                    columnSpacing: 10
+                    rowSpacing: 8
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         spacing: 2
                         Text {
                             Layout.fillWidth: true
@@ -90,14 +102,17 @@ Rectangle {
                         Text {
                             Layout.fillWidth: true
                             text: modelData.accountName + " · "
-                                  + qsTr("Количество: %1").arg(modelData.quantityText)
+                                  + modelData.quantityText + " " + modelData.quantityUnit
+                                  + (modelData.direction === -1 ? " · " + qsTr("Продано") : "")
                             color: panel.mutedColor
                             font.pixelSize: 14
                             elide: Text.ElideRight
                         }
                     }
                     ColumnLayout {
-                        Layout.preferredWidth: 150
+                        Layout.preferredWidth: panel.width < 620 ? 165 : 190
+                        Layout.minimumWidth: 0
+                        Layout.maximumWidth: panel.width < 620 ? 165 : 250
                         spacing: 2
                         Text {
                             Layout.fillWidth: true
@@ -110,16 +125,35 @@ Rectangle {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: modelData.hasQuote
-                                  ? qsTr("%1 %2 за единицу")
-                                        .arg(modelData.priceText).arg(modelData.currency)
-                                  : ""
-                            color: panel.mutedColor
-                            horizontalAlignment: Text.AlignRight
-                            font.pixelSize: 14
+                            text: modelData.valuationLabel
+                            elide: Text.ElideRight
+                            color: panel.mutedColor; horizontalAlignment: Text.AlignRight; font.pixelSize: 14
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.hasMarketQuote && !modelData.manualValuation
+                                  ? modelData.priceText + (modelData.type === 2 ? "%" : modelData.type >= 9 ? " " + qsTr("пункт.") : " " + modelData.quoteCurrency)
+                                    + " · " + modelData.quoteSourceLabel
+                                  : modelData.valuationError
+                            color: panel.mutedColor; horizontalAlignment: Text.AlignRight; font.pixelSize: 14
+                            elide: Text.ElideRight
+                            ToolTip.visible: hover.hovered && text.length > 0
+                            ToolTip.text: text
+                            HoverHandler { id: hover }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.manualValuation ? modelData.valuedAtText : modelData.quotedAtText
+                            color: panel.mutedColor; horizontalAlignment: Text.AlignRight; font.pixelSize: 14
                         }
                     }
-                    PanelButton {
+                    RowLayout {
+                        Layout.columnSpan: panel.width < 620 ? 2 : 1
+                        Layout.fillWidth: panel.width < 620
+                        PanelButton { text: qsTr("Операция"); onClicked: panel.operationRequested(modelData) }
+                        PanelButton { visible: panel.showEditButton; text: qsTr("Изменить"); onClicked: panel.editRequested(modelData) }
+                        Item { visible: panel.width < 620; Layout.fillWidth: true }
+                        PanelButton {
                         text: "×"
                         flat: true
                         destructive: true
@@ -130,6 +164,7 @@ Rectangle {
                                 panel.deleteRequested(modelData);
                             else if (panel.controller)
                                 panel.controller.deleteInvestmentPosition(modelData.id);
+                        }
                         }
                     }
                 }

@@ -193,11 +193,13 @@ ApplicationWindow {
     }
 
     function transactionSignedAmount(row) {
+        if (row.type === "investment_cash") return row.amount;
         return row.type === "income" || (row.type === "transfer" && row.direction === "in")
              ? row.amount : -row.amount;
     }
 
     function transactionTypeLabel(row) {
+        if (row.type === "investment_cash") return qsTr("Инвестиция");
         if (row.type === "transfer")
             return qsTr("Перевод");
         return row.type === "income" ? qsTr("Доход") : qsTr("Расход");
@@ -404,17 +406,18 @@ ApplicationWindow {
         const result = [], ids = {}, accounts = financeController.accounts;
         for (let i = 0; i < accounts.length; ++i)
             ids[accounts[i].id] = true;
-        const rows = financeController.transactions, query = searchText.trim().toLowerCase();
+        const rows = financeController.transactions.concat(financeController.selectedAsset === "investment" ? financeController.investmentOperations : []), query = searchText.trim().toLowerCase();
         for (let j = 0; j < rows.length; ++j) {
             const row = rows[j];
             if (!ids[row.accountId])
                 continue;
             if (financeController.selectedAccountId && row.accountId !== financeController.selectedAccountId)
                 continue;
-            const text = (row.description + " " + row.categoryName + " " + accountName(row.accountId)).toLowerCase();
+            const text = ((row.description || row.rawDescription || "") + " " + row.categoryName + " " + accountName(row.accountId)).toLowerCase();
             if (!query || text.indexOf(query) >= 0)
                 result.push(row);
         }
+        result.sort(function(a, b) { return new Date(b.date).getTime() - new Date(a.date).getTime(); });
         return result;
     }
 
@@ -1579,7 +1582,7 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
-                                    color: modelData.type === "transfer" ? root.navSelected : modelData.type === "income" ? root.income : root.red
+                                    color: modelData.type === "transfer" ? root.navSelected : (modelData.type === "income" || (modelData.type === "investment_cash" && modelData.amount >= 0)) ? root.income : root.red
                                     font.pixelSize: 14
                                     font.weight: Font.DemiBold
                                     Layout.preferredWidth: transactionTable.amountColumnWidth
@@ -1669,7 +1672,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: root.money(root.transactionSignedAmount(modelData), modelData.currency, true)
-                                color: modelData.type === "transfer" ? root.navSelected : modelData.type === "income" ? root.income : root.red
+                                color: modelData.type === "transfer" ? root.navSelected : (modelData.type === "income" || (modelData.type === "investment_cash" && modelData.amount >= 0)) ? root.income : root.red
                                 font.pixelSize: 14
                                 font.weight: Font.DemiBold
                                 Layout.preferredWidth: transactionTable.amountColumnWidth
@@ -1727,7 +1730,7 @@ ApplicationWindow {
             radius: 2
             color: !mobileTransactionCard.rowData ? root.line
                  : mobileTransactionCard.rowData.type === "transfer" ? root.navSelected
-                 : mobileTransactionCard.rowData.type === "income" ? root.income
+                 : (mobileTransactionCard.rowData.type === "income" || (mobileTransactionCard.rowData.type === "investment_cash" && mobileTransactionCard.rowData.amount >= 0)) ? root.income
                  : root.red
         }
 
@@ -1811,7 +1814,7 @@ ApplicationWindow {
                           : ""
                     color: !mobileTransactionCard.rowData ? root.accent
                          : mobileTransactionCard.rowData.type === "transfer" ? root.navSelected
-                         : mobileTransactionCard.rowData.type === "income" ? root.income
+                         : (mobileTransactionCard.rowData.type === "income" || (mobileTransactionCard.rowData.type === "investment_cash" && mobileTransactionCard.rowData.amount >= 0)) ? root.income
                          : root.red
                     font.pixelSize: 14
                     font.weight: Font.Bold
@@ -2181,6 +2184,9 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.minimumHeight: 260
                 controller: financeController
+                showEditButton: true
+                onOperationRequested: function(position) { investmentOperationDialog.openFor(position); }
+                onEditRequested: function(position) { investmentPositionDialog.openForEdit(position); }
                 panelColor: root.panel
                 textColor: root.accent
                 mutedColor: root.muted
@@ -2827,6 +2833,13 @@ ApplicationWindow {
         }
     }
 
+    InvestmentOperationDialog {
+        id: investmentOperationDialog
+        controller: financeController
+        panelColor: root.panel; softColor: root.soft; textColor: root.accent
+        mutedColor: root.muted; lineColor: root.line; accentColor: root.accent; errorColor: root.red
+    }
+
     InvestmentPositionDialog {
         id: investmentPositionDialog
         controller: financeController
@@ -3139,7 +3152,8 @@ ApplicationWindow {
                       ? qsTr("Задолженность на момент добавления")
                       : accountDialog.depositSelected
                         ? qsTr("Сумма вклада")
-                      : qsTr("Начальный баланс")
+                      : accountTypeBox.currentIndex >= 0 && accountTypeBox.currentIndex < accountDialog.accountTypes.length && accountDialog.accountTypes[accountTypeBox.currentIndex].value === "brokerage"
+                        ? qsTr("Деньги на счёте, включая обеспечение") : qsTr("Начальный баланс")
                 color: root.muted
                 font.pixelSize: 14
             }
@@ -3150,7 +3164,8 @@ ApplicationWindow {
                                  ? qsTr("Задолженность на момент добавления")
                                  : accountDialog.depositSelected
                                    ? qsTr("Сумма вклада")
-                                 : qsTr("Начальный баланс")
+                                 : accountTypeBox.currentIndex >= 0 && accountTypeBox.currentIndex < accountDialog.accountTypes.length && accountDialog.accountTypes[accountTypeBox.currentIndex].value === "brokerage"
+                                   ? qsTr("Деньги на счёте, включая обеспечение") : qsTr("Начальный баланс")
                 validator: DoubleValidator {
                     bottom: accountDialog.creditCardSelected
                             || accountDialog.depositSelected ? 0 : -999999999
@@ -3488,6 +3503,7 @@ ApplicationWindow {
             width: transactionContextMenu.availableWidth
             text: qsTr("Редактировать")
             enabled: transactionContextMenu.transactionData !== null
+                     && transactionContextMenu.transactionData.type !== "investment_cash"
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     operationDialog.openForEdit(transactionContextMenu.transactionData);
@@ -3509,6 +3525,7 @@ ApplicationWindow {
             text: qsTr("Удалить")
             destructive: true
             enabled: transactionContextMenu.transactionData !== null
+                     && transactionContextMenu.transactionData.type !== "investment_cash"
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     deleteTransactionDialog.openFor(transactionContextMenu.transactionData);

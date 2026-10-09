@@ -287,7 +287,7 @@ ApplicationWindow {
     }
 
     function transactionSignedAmount(row) {
-        if (row.type === "investment_position")
+        if (row.type === "investment_position" || row.type === "investment_cash")
             return row.amount;
         return row.type === "income" || (row.type === "transfer" && row.direction === "in")
              ? row.amount : -row.amount;
@@ -296,6 +296,7 @@ ApplicationWindow {
     function transactionTypeLabel(row) {
         if (row.type === "investment_position")
             return qsTr("Позиция");
+        if (row.type === "investment_cash") return qsTr("Инвестиция");
         if (row.type === "transfer")
             return qsTr("Перевод");
         return row.type === "income" ? qsTr("Доход") : qsTr("Расход");
@@ -611,26 +612,10 @@ ApplicationWindow {
         const description = position.symbol + " · " + position.name
                           + " · " + qsTr("Количество: %1")
                                 .arg(position.quantityText);
-        return {
-            id: position.id,
-            accountId: position.accountId,
-            accountName: position.accountName,
-            type: "investment_position",
-            amount: position.averageValueMinor,
-            currency: position.currency,
-            categoryName: position.typeName,
-            rawDescription: description,
-            date: new Date(position.createdAt),
-            instrumentId: position.instrumentId,
-            symbol: position.symbol,
-            isin: position.isin,
-            name: position.name,
-            typeName: position.typeName,
-            quantityText: position.quantityText,
-            averagePriceText: position.averagePriceText,
-            hasQuote: position.hasQuote,
-            priceText: position.priceText
-        };
+        return Object.assign({}, position, {
+            instrumentType: position.type, type: "investment_position", amount: position.marketValueMinor,
+            rawDescription: description, categoryName: position.typeName, date: new Date(position.createdAt)
+        });
     }
 
     function visibleInvestmentOperations() {
@@ -653,6 +638,13 @@ ApplicationWindow {
                 continue;
             result.push(row);
         }
+        const operations = financeController.investmentOperations;
+        for (let j = 0; j < operations.length; ++j) {
+            const row = Object.assign({}, operations[j], {date: new Date(operations[j].date)});
+            const text = (row.rawDescription + " " + row.categoryName + " " + row.accountName).toLowerCase();
+            if (!query || text.indexOf(query) >= 0) result.push(row);
+        }
+        result.sort(function(a, b) { return b.date.getTime() - a.date.getTime(); });
         return result;
     }
 
@@ -684,7 +676,8 @@ ApplicationWindow {
     }
 
     function modalDialogVisible() {
-        return cryptoWalletDialog.visible
+        return investmentOperationDialog.visible
+            || cryptoWalletDialog.visible
             || accountDialog.visible
             || deleteAccountDialog.visible
             || deleteCategoryDialog.visible
@@ -1623,7 +1616,11 @@ ApplicationWindow {
                                     anchors.margins: root.panelPadding
                                     spacing: 16
                                     Text {
-                                        text: qsTr("Все активы")
+                                        text: financeController.investmentValuationIncomplete ? qsTr("Все активы · оценка неполная") : qsTr("Все активы")
+                                        width: parent.width; elide: Text.ElideRight
+                                        ToolTip.visible: capitalHint.hovered && financeController.investmentValuationIncomplete
+                                        ToolTip.text: qsTr("Для части инвестиций нужна котировка, курс или ручная оценка.")
+                                        HoverHandler { id: capitalHint }
                                         color: root.muted
                                         font.pixelSize: 16
                                         font.weight: Font.Bold
@@ -3805,6 +3802,7 @@ ApplicationWindow {
                         y
                     );
                 }
+                onOperationRequested: function(position) { investmentOperationDialog.openFor(position); }
                 onDeleteRequested: function(position) {
                     deleteTransactionDialog.openFor(
                         root.investmentOperationRow(position)
@@ -5111,6 +5109,14 @@ ApplicationWindow {
         }
     }
 
+    InvestmentOperationDialog {
+        id: investmentOperationDialog
+        controller: financeController
+        panelColor: root.panel; softColor: root.soft; textColor: root.accent
+        mutedColor: root.muted; lineColor: root.line; accentColor: root.accent
+        errorColor: root.red
+    }
+
     InvestmentPositionDialog {
         id: investmentPositionDialog
         controller: financeController
@@ -5589,7 +5595,7 @@ ApplicationWindow {
                       ? qsTr("Задолженность на момент добавления")
                       : accountDialog.depositSelected
                         ? qsTr("Сумма вклада")
-                      : qsTr("Начальный баланс")
+                      : accountTypeBox.currentValue === "brokerage" ? qsTr("Деньги на счёте, включая обеспечение") : qsTr("Начальный баланс")
                 color: root.muted
                 font.pixelSize: 14
             }
@@ -5602,7 +5608,7 @@ ApplicationWindow {
                                  ? qsTr("Задолженность на момент добавления")
                                  : accountDialog.depositSelected
                                    ? qsTr("Сумма вклада")
-                                 : qsTr("Начальный баланс")
+                                 : accountTypeBox.currentValue === "brokerage" ? qsTr("Деньги на счёте, включая обеспечение") : qsTr("Начальный баланс")
                 validator: DoubleValidator {
                     bottom: accountDialog.creditCardSelected
                             || accountDialog.depositSelected ? 0 : -999999999
@@ -6251,6 +6257,7 @@ ApplicationWindow {
             text: qsTr("Редактировать")
             enabled: transactionContextMenu.transactionData !== null
                   && !transactionContextMenu.transactionData.transactionId
+                  && transactionContextMenu.transactionData.type !== "investment_cash"
             onTriggered: {
                 const row = transactionContextMenu.transactionData;
                 if (!row)
@@ -6277,6 +6284,7 @@ ApplicationWindow {
             text: qsTr("Удалить")
             destructive: true
             enabled: transactionContextMenu.transactionData !== null
+                     && transactionContextMenu.transactionData.type !== "investment_cash"
             onTriggered: {
                 const row = transactionContextMenu.transactionData;
                 if (!row) return;
@@ -6369,7 +6377,7 @@ ApplicationWindow {
                       : deleteTransactionDialog.transactionData
                         && deleteTransactionDialog.transactionData.type
                            === "investment_position"
-                        ? qsTr("Позиция будет удалена из списка и базы данных. Общая стоимость активов будет пересчитана.")
+                        ? qsTr("Позиция будет удалена. Записанные движения денег сохранятся. Для продажи или исполнения используйте кнопку «Операция».")
                       : qsTr("Это действие нельзя отменить. Баланс и статистика будут пересчитаны.")
                 color: root.muted
                 font.pixelSize: 14

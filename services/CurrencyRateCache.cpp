@@ -212,6 +212,11 @@ bool CurrencyRateCache::load(
         return false;
     }
 
+    const auto extra = object.value(QStringLiteral("extraRatesToRubMicros")).toObject();
+    for (auto i=extra.begin(); i!=extra.end(); ++i) {
+        bool ok=false; const auto rate=i.value().toVariant().toLongLong(&ok);
+        if(ok && rate>0) candidate.extraRatesToRubMicros.insert(i.key(),rate);
+    }
     snapshot = candidate;
     return true;
 }
@@ -253,6 +258,10 @@ bool CurrencyRateCache::replace(
         QStringLiteral("fetchedAtUtc"),
         snapshot.fetchedAtUtc.toUTC().toString(Qt::ISODateWithMs));
     object.insert(QStringLiteral("ratesToUsd"), rates);
+    QJsonObject extra;
+    for(auto i=snapshot.extraRatesToRubMicros.begin();i!=snapshot.extraRatesToRubMicros.end();++i)
+        extra.insert(i.key(),QString::number(i.value()));
+    object.insert(QStringLiteral("extraRatesToRubMicros"),extra);
 
     const QByteArray data = QJsonDocument(object).toJson(QJsonDocument::Compact);
 
@@ -318,6 +327,7 @@ bool parseCbrCurrencyRates(
     double rublesPerEur = 0.0;
     bool usdFound = false;
     bool eurFound = false;
+    QHash<QString,qint64> extraRates;
 
     while (xml.readNextStartElement()) {
         if (xml.name() != QStringLiteral("Valute")) {
@@ -326,8 +336,11 @@ bool parseCbrCurrencyRates(
         }
 
         const CbrQuote quote = readQuote(xml);
-        if (quote.code != QStringLiteral("USD") &&
-            quote.code != QStringLiteral("EUR")) {
+        if (quote.code != QStringLiteral("USD") && quote.code != QStringLiteral("EUR")) {
+            if (quote.nominalValid && quote.valueValid) {
+                const auto rate=scaledRate(quote.valueInRubles/quote.nominal*1'000'000.0);
+                if(rate>0) extraRates.insert(quote.code,rate);
+            }
             continue;
         }
         if (!quote.nominalValid || !quote.valueValid) {
@@ -369,6 +382,7 @@ bool parseCbrCurrencyRates(
     }
 
     CurrencyRateSnapshot candidate;
+    candidate.extraRatesToRubMicros = extraRates;
     candidate.sourceDate = sourceDate;
     candidate.fetchedAtUtc = fetchedAtUtc.toUTC();
     candidate.ratesToUsd[currencyIndex(Currency::USD)] = kCurrencyRateScale;

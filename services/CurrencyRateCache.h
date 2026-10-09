@@ -3,6 +3,7 @@
 #include "../core/Currency.h"
 
 #include <QByteArray>
+#include <QHash>
 #include <QDate>
 #include <QDateTime>
 #include <QString>
@@ -12,6 +13,7 @@
 struct CurrencyRateSnapshot
 {
     std::array<qint64, 3> ratesToUsd{};
+    QHash<QString, qint64> extraRatesToRubMicros;
     QDate sourceDate;
     QDateTime fetchedAtUtc;
 };

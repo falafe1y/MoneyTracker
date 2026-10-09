@@ -1,5 +1,6 @@
 #include "FinanceController.h"
 #include "../services/ExchangeCredentials.h"
+#include "../services/MoexInvestmentParser.h"
 #include <QtConcurrent>
 #include <QFutureWatcher>
 
@@ -38,6 +39,7 @@
 
 namespace
 {
+QVariantMap investmentTermsToVariant(const InvestmentTerms& terms);
 bool isTransfer(const Transaction& transaction)
 {
     return transaction.categoryId() == QStringLiteral("transfer-in") ||
@@ -388,20 +390,13 @@ bool parsePositiveMicros(const QString& text, qint64& result)
 
 QString formatMicros(const qint64 value, const int maximumFractionDigits = 6)
 {
-    const qint64 whole = value / InvestmentPosition::Scale;
-    const qint64 fraction = value % InvestmentPosition::Scale;
-    if (fraction == 0 || maximumFractionDigits <= 0) {
-        return QString::number(whole);
-    }
-    QString fractionText = QStringLiteral("%1").arg(
-        fraction, 6, 10, QLatin1Char('0'));
-    fractionText.truncate(maximumFractionDigits);
-    while (fractionText.endsWith(QLatin1Char('0'))) {
-        fractionText.chop(1);
-    }
-    return fractionText.isEmpty()
-        ? QString::number(whole)
-        : QString::number(whole) + QLatin1Char(',') + fractionText;
+    const quint64 magnitude=value<0?static_cast<quint64>(-(value+1))+1:static_cast<quint64>(value);
+    const auto whole=magnitude/InvestmentPosition::Scale, fraction=magnitude%InvestmentPosition::Scale;
+    const auto sign=value<0?QStringLiteral("-"):QString();
+    if(fraction==0 || maximumFractionDigits<=0)return sign+QString::number(whole);
+    auto decimals=QStringLiteral("%1").arg(fraction,6,10,QLatin1Char('0'));
+    decimals.truncate(maximumFractionDigits);while(decimals.endsWith(QLatin1Char('0')))decimals.chop(1);
+    return sign+QString::number(whole)+(decimals.isEmpty()?QString():QStringLiteral(",")+decimals);
 }
 
 QString investmentTypeName(const InvestmentInstrumentType type)
@@ -414,15 +409,21 @@ QString investmentTypeName(const InvestmentInstrumentType type)
         return QCoreApplication::translate("FinanceController", "Фонд");
     case InvestmentInstrumentType::Bond:
         return QCoreApplication::translate("FinanceController", "Облигация");
-    case InvestmentInstrumentType::Other:
-        return QCoreApplication::translate("FinanceController", "Другой инструмент");
+    case InvestmentInstrumentType::PreferredStock: return QCoreApplication::translate("FinanceController", "Привилегированная акция");
+    case InvestmentInstrumentType::DepositaryReceipt: return QCoreApplication::translate("FinanceController", "Депозитарная расписка");
+    case InvestmentInstrumentType::Metal: return QCoreApplication::translate("FinanceController", "Драгоценный металл");
+    case InvestmentInstrumentType::Currency: return QCoreApplication::translate("FinanceController", "Валюта");
+    case InvestmentInstrumentType::Future: return QCoreApplication::translate("FinanceController", "Фьючерс");
+    case InvestmentInstrumentType::Option: return QCoreApplication::translate("FinanceController", "Опцион");
+    case InvestmentInstrumentType::Other: return QCoreApplication::translate("FinanceController", "Другой инструмент");
     }
     return {};
 }
 }
 
-FinanceController::FinanceController(QObject* parent)
+FinanceController::FinanceController(QObject* parent, const QString& databasePath)
     : QObject(parent)
+    , repository_(databasePath)
     , currencyConverter_(rateProvider_)
     , balanceCalculator_(currencyConverter_)
 {
@@ -634,7 +635,7 @@ FinanceController::FinanceController(QObject* parent)
             selectedInvestmentSearchIndex_ = -1;
             requestedSearchQuoteId_.clear();
             investmentLastError_ = instruments.isEmpty()
-                ? tr("По запросу не найдено акций или фондов")
+                ? tr("По запросу не найдено инвестиционных инструментов")
                 : QString();
             emit investmentSearchResultsChanged();
             emit investmentSearchStateChanged();
@@ -649,48 +650,27 @@ FinanceController::FinanceController(QObject* parent)
             setInvestmentLastError(message);
             emit investmentSearchStateChanged();
         });
+    QObject::connect(&investmentProvider_, &MoexInvestmentProvider::instrumentResolved, this,
+        [this](const InvestmentMarketInstrument& instrument) {
+            for(auto& result:investmentSearchResults_)if(result.id()==instrument.id()){result=instrument;break;}
+            emit investmentSearchResultsChanged();
+        });
     QObject::connect(
         &investmentProvider_,
         &MoexInvestmentProvider::quoteSucceeded,
         this,
-        [this](
-            const QString& instrumentId,
-            const qint64 priceMicros,
-            const QString& currencyCode,
-            const QDateTime& quotedAtUtc
-            )
+        [this](const InvestmentMarketInstrument& quoted)
         {
-            for (InvestmentMarketInstrument& result : investmentSearchResults_) {
-                if (result.id() == instrumentId) {
-                    result.setQuote(priceMicros, currencyCode, quotedAtUtc);
-                    break;
-                }
-            }
-
-            for (const InvestmentInstrument& instrument : investmentInstruments_) {
-                if (instrument.id() != instrumentId) {
-                    continue;
-                }
-                if (!repository_.saveInvestmentQuote(InvestmentQuote(
-                        instrumentId, priceMicros, quotedAtUtc))) {
-                    qWarning() << "Failed to save investment quote:"
-                               << repository_.lastError();
-                } else {
-                    investmentQuotes_ = repository_.loadInvestmentQuotes();
-                    emit investmentPositionsChanged();
-                    emit accountsChanged();
-                    emit balanceChanged();
-                }
+            const auto& instrumentId=quoted.id();
+            for(auto& found:investmentSearchResults_)if(found.id()==instrumentId){found=quoted;break;}
+            for(const auto& instrument:investmentInstruments_)if(instrument.id()==instrumentId){
+                if(!repository_.saveInvestmentQuote(InvestmentQuote(instrumentId,quoted.priceMicros(),quoted.quotedAtUtc(),quoted.terms())))
+                    qWarning()<<"Failed to save investment quote:"<<repository_.lastError();
+                else {investmentQuotes_=repository_.loadInvestmentQuotes();emit investmentPositionsChanged();emit accountsChanged();emit balanceChanged();}
                 break;
             }
-
-            if (requestedSearchQuoteId_ == instrumentId) {
-                requestedSearchQuoteId_.clear();
-                investmentQuoteBusy_ = false;
-                investmentLastError_.clear();
-                emit investmentSearchResultsChanged();
-                emit investmentSearchStateChanged();
-            }
+            if(requestedSearchQuoteId_==instrumentId){requestedSearchQuoteId_.clear();investmentQuoteBusy_=false;investmentLastError_.clear();
+                emit investmentSearchResultsChanged();emit investmentSearchStateChanged();}
             finishInvestmentQuoteRequest(instrumentId);
         });
     QObject::connect(
@@ -766,6 +746,7 @@ FinanceController::FinanceController(QObject* parent)
     investmentInstruments_ = repository_.loadInvestmentInstruments();
     investmentPositions_ = repository_.loadInvestmentPositions();
     investmentQuotes_ = repository_.loadInvestmentQuotes();
+    investmentOperations_ = repository_.loadInvestmentOperations();
     if (!projects_.isEmpty()) {
         selectedProjectId_ = projects_.constFirst().id();
     }
@@ -1231,6 +1212,7 @@ QVariantMap FinanceController::restoreDatabase(const QUrl& fileUrl)
     investmentInstruments_ = repository_.loadInvestmentInstruments();
     investmentPositions_ = repository_.loadInvestmentPositions();
     investmentQuotes_ = repository_.loadInvestmentQuotes();
+    investmentOperations_ = repository_.loadInvestmentOperations();
     for (const QString& symbol : {QStringLiteral("USDT"), QStringLiteral("BTC"), QStringLiteral("ETH")}) {
         const auto price = repository_.loadCryptoPrice(symbol);
         if (price.priceUsdMicros > 0) cryptoPricesUsdMicros_[symbol] = price.priceUsdMicros;
@@ -1318,6 +1300,7 @@ QVariantMap FinanceController::clearAllData()
     cryptoTransactions_.clear();
     investmentInstruments_.clear();
     investmentPositions_.clear();
+    investmentOperations_.clear();
     investmentQuotes_.clear();
     investmentSearchResults_.clear();
     selectedInvestmentSearchIndex_ = -1;
@@ -2992,6 +2975,10 @@ QVariantList FinanceController::investmentAccounts() const
         item[QStringLiteral("id")] = account.id();
         item[QStringLiteral("name")] = accountDisplayName(account);
         item[QStringLiteral("currency")] = currencyCode(account.currency());
+        const auto positions=investmentAccountValueMinor(account.id());
+        const auto cash=saturatedCapitalSubtract(accountBalanceMinor(account),positions);
+        qint64 blocked=0;for(const auto& p:investmentPositions_)if(p.accountId()==account.id())blocked=saturatedCapitalAdd(blocked,p.settings().blockedMarginMinor);
+        item["cashMinor"]=cash;item["blockedMarginMinor"]=blocked;item["freeCashMinor"]=saturatedCapitalSubtract(cash,blocked);
         result.append(item);
     }
     return result;
@@ -3000,88 +2987,54 @@ QVariantList FinanceController::investmentAccounts() const
 QVariantList FinanceController::investmentPositions() const
 {
     QVariantList result;
-    for (const InvestmentPosition& position : investmentPositions_) {
-        if (!selectedAccountId_.isEmpty() &&
-            position.accountId() != selectedAccountId_) {
-            continue;
-        }
-        const auto instrument = std::find_if(
-            investmentInstruments_.cbegin(), investmentInstruments_.cend(),
-            [&position](const InvestmentInstrument& candidate) {
-                return candidate.id() == position.instrumentId();
-            });
-        const auto account = std::find_if(
-            accounts_.cbegin(), accounts_.cend(),
-            [&position](const Account& candidate) {
-                return candidate.id() == position.accountId();
-            });
-        if (instrument == investmentInstruments_.cend() ||
-            account == accounts_.cend()) {
-            continue;
-        }
-        const auto quote = std::find_if(
-            investmentQuotes_.cbegin(), investmentQuotes_.cend(),
-            [&position](const InvestmentQuote& candidate) {
-                return candidate.instrumentId() == position.instrumentId();
-            });
-
-        const bool hasQuote = quote != investmentQuotes_.cend();
-        const long double value = hasQuote
-            ? static_cast<long double>(position.quantityMicros()) *
-                static_cast<long double>(quote->priceMicros()) /
-                1'000'000'000'000.0L
-            : 0.0L;
-        QVariantMap item;
-        item[QStringLiteral("id")] = position.id();
-        item[QStringLiteral("accountId")] = account->id();
-        item[QStringLiteral("accountName")] = accountDisplayName(*account);
-        item[QStringLiteral("instrumentId")] = instrument->id();
-        item[QStringLiteral("symbol")] = instrument->symbol();
-        item[QStringLiteral("isin")] = instrument->isin();
-        item[QStringLiteral("name")] = instrument->name();
-        item[QStringLiteral("typeName")] = investmentTypeName(instrument->type());
-        item[QStringLiteral("currency")] = currencyCode(instrument->currency());
-        item[QStringLiteral("quantityText")] = formatMicros(position.quantityMicros());
-        item[QStringLiteral("averagePriceText")] =
-            formatMicros(position.averagePriceMicros(), 2);
-        item[QStringLiteral("averageValueMinor")] = scaledInvestmentValueMinor(
-            position.quantityMicros(), position.averagePriceMicros());
-        item[QStringLiteral("createdAt")] = position.createdAtUtc();
-        item[QStringLiteral("hasQuote")] = hasQuote;
-        item[QStringLiteral("priceText")] = hasQuote
-            ? formatMicros(quote->priceMicros(), 2) : QString();
-        item[QStringLiteral("marketValueText")] = hasQuote
-            ? QLocale().toString(static_cast<double>(value), 'f', 2) : QString();
-        item[QStringLiteral("quotedAt")] = hasQuote
-            ? quote->quotedAtUtc() : QDateTime();
+    for(const auto& position:investmentPositions_){
+        if(!selectedAccountId_.isEmpty() && selectedAccountId_!=position.accountId())continue;
+        const auto i=std::find_if(investmentInstruments_.cbegin(),investmentInstruments_.cend(),[&](const auto& i){return i.id()==position.instrumentId();});
+        const auto a=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==position.accountId();});
+        const auto q=std::find_if(investmentQuotes_.cbegin(),investmentQuotes_.cend(),[&](const auto& q){return q.instrumentId()==position.instrumentId();});
+        if(i==investmentInstruments_.cend() || a==accounts_.cend())continue;
+        auto terms=q!=investmentQuotes_.cend() && !q->terms().engine.isEmpty()?q->terms():i->terms();
+        if(terms.engine.isEmpty() && i->marketCode()=="MOEX")terms=moexDefaultTerms(i->type());
+        if(terms.currencyCode.isEmpty())terms.currencyCode=currencyCode(i->currency());
+        auto item=investmentTermsToVariant(terms);const auto value=investmentPositionValue(position);const auto& settings=position.settings();
+        item["id"]=position.id();item["accountId"]=a->id();item["accountName"]=accountDisplayName(*a);
+        item["instrumentId"]=i->id();item["symbol"]=i->symbol();item["isin"]=i->isin();item["name"]=i->name();
+        item["type"]=static_cast<int>(i->type());item["typeName"]=investmentTypeName(i->type());
+        item["currency"]=currencyCode(a->currency());item["quantityText"]=formatMicros(position.quantityMicros());
+        item["averagePriceText"]=formatMicros(position.averagePriceMicros());
+        item["averageValueMinor"]=scaledInvestmentValueMinor(position.quantityMicros(),position.averagePriceMicros());
+        item["createdAt"]=position.createdAtUtc();item["hasQuote"]=value.available;item["hasMarketQuote"]=q!=investmentQuotes_.cend();
+        item["marketValueMinor"]=value.valueMinor;item["valuationError"]=value.error;
+        item["marketValueText"]=value.available?QLocale().toString(value.valueMinor/100.0,'f',2):QString();
+        item["priceText"]=q==investmentQuotes_.cend()?QString():formatMicros(q->priceMicros());
+        item["quotedAt"]=q==investmentQuotes_.cend()?QDateTime():q->quotedAtUtc();
+        item["quotedAtText"]=q==investmentQuotes_.cend()?QString():q->quotedAtUtc().toLocalTime().toString("dd.MM.yyyy HH:mm");
+        item["manualValuation"]=settings.manualValuation;item["manualValueText"]=QString::number(settings.manualValueMinor/100.0,'f',2);
+        item["valuedAtText"]=settings.valuedAtUtc.toLocalTime().toString("dd.MM.yyyy HH:mm");
+        item["direction"]=settings.direction;item["referencePriceText"]=formatMicros(settings.referencePriceMicros);
+        item["referenceDate"]=settings.referenceAtUtc.toLocalTime().toString(Qt::ISODate);
+        item["blockedMarginText"]=QString::number(settings.blockedMarginMinor/100.0,'f',2);
+        item["adjustmentText"]=QString::number(settings.unsettledAdjustmentMinor/100.0,'f',2);
+        item["fxRateText"]=settings.manualFxRateMicros>0?formatMicros(settings.manualFxRateMicros):QString();
+        item["hasOperations"]=std::any_of(investmentOperations_.cbegin(),investmentOperations_.cend(),[&](const auto& op){return op.positionId==position.id();});
+        item["valuationLabel"]=settings.manualValuation?tr("Ручная оценка"):
+            (terms.pricing=="future" || terms.pricing=="margined_option")?tr("Ещё не учтённый результат"):
+            settings.direction==-1?tr("Обязательство"):tr("Стоимость позиции");
         result.append(item);
-    }
-    return result;
+    }return result;
 }
 
 QVariantList FinanceController::investmentSearchResults() const
 {
     QVariantList result;
-    for (int index = 0; index < investmentSearchResults_.size(); ++index) {
-        const InvestmentMarketInstrument& instrument =
-            investmentSearchResults_.at(index);
-        QVariantMap item;
-        item[QStringLiteral("index")] = index;
-        item[QStringLiteral("id")] = instrument.id();
-        item[QStringLiteral("symbol")] = instrument.symbol();
-        item[QStringLiteral("isin")] = instrument.isin();
-        item[QStringLiteral("name")] = instrument.name();
-        item[QStringLiteral("typeName")] = investmentTypeName(instrument.type());
-        item[QStringLiteral("boardId")] = instrument.primaryBoardId();
-        item[QStringLiteral("hasPrice")] = instrument.priceMicros() > 0;
-        item[QStringLiteral("priceText")] = instrument.priceMicros() > 0
-            ? formatMicros(instrument.priceMicros(), 2) : QString();
-        item[QStringLiteral("currency")] = instrument.currencyCode();
-        item[QStringLiteral("selected")] =
-            index == selectedInvestmentSearchIndex_;
-        result.append(item);
-    }
-    return result;
+    for(int index=0;index<investmentSearchResults_.size();++index){const auto& instrument=investmentSearchResults_.at(index);
+        auto item=investmentTermsToVariant(instrument.terms());item["index"]=index;item["id"]=instrument.id();
+        item["symbol"]=instrument.symbol();item["isin"]=instrument.isin();item["name"]=instrument.name();
+        item["type"]=static_cast<int>(instrument.type());item["typeName"]=investmentTypeName(instrument.type());
+        item["boardId"]=instrument.primaryBoardId();item["hasPrice"]=instrument.hasQuote();
+        item["priceText"]=instrument.hasQuote()?formatMicros(instrument.priceMicros()):QString();
+        item["currency"]=instrument.currencyCode();item["selected"]=index==selectedInvestmentSearchIndex_;result.append(item);
+    }return result;
 }
 
 bool FinanceController::investmentSearchBusy() const
@@ -4238,7 +4191,7 @@ void FinanceController::selectInvestmentSearchResult(const int index)
 
     const InvestmentMarketInstrument& instrument =
         investmentSearchResults_.at(index);
-    if (instrument.priceMicros() > 0) {
+    if (instrument.hasQuote()) {
         return;
     }
     investmentQuoteBusy_ = true;
@@ -4247,282 +4200,15 @@ void FinanceController::selectInvestmentSearchResult(const int index)
     investmentProvider_.requestQuote(instrument);
 }
 
-QVariantMap FinanceController::addInvestmentPosition(
-    const QString& accountId,
-    const int searchResultIndex,
-    const QString& quantity,
-    const QString& averagePrice
-    )
+QVariantMap FinanceController::addInvestmentPosition(const QString& accountId, int index,
+    const QString& quantity, const QString& averagePrice)
 {
-    QVariantMap result{{QStringLiteral("ok"), false}};
-    if (selectedAsset_ != AssetType::Investment) {
-        result[QStringLiteral("error")] = tr(
-            "Сначала выберите актив «Инвестиции»");
-        return result;
-    }
-    if (searchResultIndex < 0 ||
-        searchResultIndex >= investmentSearchResults_.size()) {
-        result[QStringLiteral("error")] = tr("Выберите акцию или фонд");
-        return result;
-    }
-    const auto account = std::find_if(
-        accounts_.cbegin(), accounts_.cend(),
-        [&accountId](const Account& candidate) {
-            return candidate.id() == accountId &&
-                candidate.assetType() == AssetType::Investment &&
-                candidate.type() == AccountType::Brokerage;
-        });
-    if (account == accounts_.cend()) {
-        result[QStringLiteral("error")] = tr("Выберите инвестиционный счёт");
-        return result;
-    }
-
-    const InvestmentMarketInstrument& marketInstrument =
-        investmentSearchResults_.at(searchResultIndex);
-    if (marketInstrument.priceMicros() <= 0 ||
-        marketInstrument.currencyCode().isEmpty()) {
-        result[QStringLiteral("error")] = tr(
-            "Сначала получите рыночную цену инструмента");
-        return result;
-    }
-    const Currency instrumentCurrency = currencyFromString(
-        marketInstrument.currencyCode());
-    if (account->currency() != instrumentCurrency) {
-        result[QStringLiteral("error")] = tr(
-            "Валюта счёта должна совпадать с валютой инструмента (%1)")
-                .arg(marketInstrument.currencyCode());
-        return result;
-    }
-
-    qint64 quantityMicros = 0;
-    if (!parsePositiveMicros(quantity, quantityMicros)) {
-        result[QStringLiteral("error")] = tr(
-            "Введите количество больше нуля (до 6 знаков после запятой)");
-        return result;
-    }
-    qint64 averagePriceMicros = marketInstrument.priceMicros();
-    if (!averagePrice.trimmed().isEmpty() &&
-        !parsePositiveMicros(averagePrice, averagePriceMicros)) {
-        result[QStringLiteral("error")] = tr(
-            "Введите корректную среднюю цену");
-        return result;
-    }
-    const bool duplicate = std::any_of(
-        investmentPositions_.cbegin(), investmentPositions_.cend(),
-        [&accountId, &marketInstrument](const InvestmentPosition& position) {
-            return position.accountId() == accountId &&
-                position.instrumentId() == marketInstrument.id();
-        });
-    if (duplicate) {
-        result[QStringLiteral("error")] = tr(
-            "Этот инструмент уже добавлен на выбранный счёт");
-        return result;
-    }
-
-    const InvestmentInstrument instrument(
-        marketInstrument.id(), marketInstrument.symbol(), marketInstrument.isin(),
-        marketInstrument.name(), marketInstrument.type(), instrumentCurrency,
-        QStringLiteral("MOEX"), marketInstrument.primaryBoardId());
-    const auto existing = std::find_if(
-        investmentInstruments_.cbegin(), investmentInstruments_.cend(),
-        [&instrument](const InvestmentInstrument& candidate) {
-            return candidate.id() == instrument.id();
-        });
-    const bool insertedInstrument = existing == investmentInstruments_.cend();
-    if ((insertedInstrument && !repository_.insertInvestmentInstrument(instrument)) ||
-        (!insertedInstrument && !repository_.updateInvestmentInstrument(instrument))) {
-        qWarning() << "Failed to save investment instrument:"
-                   << repository_.lastError();
-        result[QStringLiteral("error")] = tr("Не удалось сохранить инструмент");
-        return result;
-    }
-
-    const InvestmentPosition position(
-        QUuid::createUuid().toString(QUuid::WithoutBraces), accountId,
-        instrument.id(), quantityMicros, averagePriceMicros);
-    if (!repository_.insertInvestmentPosition(position)) {
-        if (insertedInstrument &&
-            !repository_.archiveInvestmentInstrument(instrument.id())) {
-            qWarning() << "Failed to roll back investment instrument:"
-                       << repository_.lastError();
-        }
-        result[QStringLiteral("error")] = tr("Не удалось сохранить позицию");
-        return result;
-    }
-    if (!repository_.saveInvestmentQuote(InvestmentQuote(
-            instrument.id(), marketInstrument.priceMicros(),
-            marketInstrument.quotedAtUtc()))) {
-        qWarning() << "Failed to save initial investment quote:"
-                   << repository_.lastError();
-    }
-    investmentInstruments_ = repository_.loadInvestmentInstruments();
-    investmentPositions_ = repository_.loadInvestmentPositions();
-    investmentQuotes_ = repository_.loadInvestmentQuotes();
-    emit investmentPositionsChanged();
-    emit accountsChanged();
-    emit balanceChanged();
-    result[QStringLiteral("ok")] = true;
-    return result;
+    return saveInvestmentPosition({{"accountId",accountId},{"searchIndex",index},{"quantity",quantity},{"averagePrice",averagePrice}});
 }
-
-QVariantMap FinanceController::updateInvestmentPosition(
-    const QString& positionId,
-    const QString& accountId,
-    const int searchResultIndex,
-    const QString& quantity,
-    const QString& averagePrice
-    )
+QVariantMap FinanceController::updateInvestmentPosition(const QString& id, const QString& accountId,
+    int index, const QString& quantity, const QString& averagePrice)
 {
-    QVariantMap result{{QStringLiteral("ok"), false}};
-    const auto current = std::find_if(
-        investmentPositions_.cbegin(), investmentPositions_.cend(),
-        [&positionId](const InvestmentPosition& position) {
-            return position.id() == positionId;
-        });
-    if (current == investmentPositions_.cend()) {
-        result[QStringLiteral("error")] = tr("Инвестиционная позиция не найдена");
-        return result;
-    }
-
-    const auto account = std::find_if(
-        accounts_.cbegin(), accounts_.cend(),
-        [&accountId](const Account& candidate) {
-            return candidate.id() == accountId &&
-                candidate.assetType() == AssetType::Investment &&
-                candidate.type() == AccountType::Brokerage;
-        });
-    if (account == accounts_.cend()) {
-        result[QStringLiteral("error")] = tr("Выберите инвестиционный счёт");
-        return result;
-    }
-
-    const auto currentInstrument = std::find_if(
-        investmentInstruments_.cbegin(), investmentInstruments_.cend(),
-        [&current](const InvestmentInstrument& candidate) {
-            return candidate.id() == current->instrumentId();
-        });
-    if (currentInstrument == investmentInstruments_.cend()) {
-        result[QStringLiteral("error")] = tr("Инвестиционный инструмент не найден");
-        return result;
-    }
-
-    const InvestmentMarketInstrument* selectedMarketInstrument = nullptr;
-    QString targetInstrumentId = currentInstrument->id();
-    Currency targetCurrency = currentInstrument->currency();
-    if (searchResultIndex >= 0) {
-        if (searchResultIndex >= investmentSearchResults_.size()) {
-            result[QStringLiteral("error")] = tr("Выберите акцию или фонд");
-            return result;
-        }
-        selectedMarketInstrument = &investmentSearchResults_.at(searchResultIndex);
-        if (selectedMarketInstrument->priceMicros() <= 0 ||
-            selectedMarketInstrument->currencyCode().isEmpty()) {
-            result[QStringLiteral("error")] = tr(
-                "Сначала получите рыночную цену инструмента");
-            return result;
-        }
-        targetInstrumentId = selectedMarketInstrument->id();
-        targetCurrency = currencyFromString(
-            selectedMarketInstrument->currencyCode());
-    } else if (searchResultIndex != -1) {
-        result[QStringLiteral("error")] = tr("Выберите акцию или фонд");
-        return result;
-    }
-
-    if (account->currency() != targetCurrency) {
-        result[QStringLiteral("error")] = tr(
-            "Валюта счёта должна совпадать с валютой инструмента (%1)")
-                .arg(currencyCode(targetCurrency));
-        return result;
-    }
-
-    qint64 quantityMicros = 0;
-    if (!parsePositiveMicros(quantity, quantityMicros)) {
-        result[QStringLiteral("error")] = tr(
-            "Введите количество больше нуля (до 6 знаков после запятой)");
-        return result;
-    }
-
-    qint64 averagePriceMicros = selectedMarketInstrument
-        ? selectedMarketInstrument->priceMicros()
-        : current->averagePriceMicros();
-    if (!averagePrice.trimmed().isEmpty() &&
-        !parsePositiveMicros(averagePrice, averagePriceMicros)) {
-        result[QStringLiteral("error")] = tr("Введите корректную среднюю цену");
-        return result;
-    }
-
-    const bool duplicate = std::any_of(
-        investmentPositions_.cbegin(), investmentPositions_.cend(),
-        [&positionId, &accountId,
-         &targetInstrumentId](const InvestmentPosition& position) {
-            return position.id() != positionId &&
-                position.accountId() == accountId &&
-                position.instrumentId() == targetInstrumentId;
-        });
-    if (duplicate) {
-        result[QStringLiteral("error")] = tr(
-            "Этот инструмент уже добавлен на выбранный счёт");
-        return result;
-    }
-
-    bool insertedInstrument = false;
-    if (selectedMarketInstrument) {
-        const InvestmentInstrument selectedInstrument(
-            selectedMarketInstrument->id(), selectedMarketInstrument->symbol(),
-            selectedMarketInstrument->isin(), selectedMarketInstrument->name(),
-            selectedMarketInstrument->type(), targetCurrency,
-            QStringLiteral("MOEX"),
-            selectedMarketInstrument->primaryBoardId());
-        const auto existing = std::find_if(
-            investmentInstruments_.cbegin(), investmentInstruments_.cend(),
-            [&selectedInstrument](const InvestmentInstrument& candidate) {
-                return candidate.id() == selectedInstrument.id();
-            });
-        insertedInstrument = existing == investmentInstruments_.cend();
-        if ((insertedInstrument &&
-             !repository_.insertInvestmentInstrument(selectedInstrument)) ||
-            (!insertedInstrument &&
-             !repository_.updateInvestmentInstrument(selectedInstrument))) {
-            qWarning() << "Failed to save edited investment instrument:"
-                       << repository_.lastError();
-            result[QStringLiteral("error")] = tr(
-                "Не удалось сохранить инструмент");
-            return result;
-        }
-    }
-
-    const InvestmentPosition updated(
-        current->id(), accountId, targetInstrumentId, quantityMicros,
-        averagePriceMicros, current->createdAtUtc(),
-        QDateTime::currentDateTimeUtc());
-    if (!repository_.updateInvestmentPosition(updated)) {
-        if (insertedInstrument &&
-            !repository_.archiveInvestmentInstrument(targetInstrumentId)) {
-            qWarning() << "Failed to roll back edited investment instrument:"
-                       << repository_.lastError();
-        }
-        qWarning() << "Failed to update investment position:"
-                   << repository_.lastError();
-        result[QStringLiteral("error")] = tr("Не удалось обновить позицию");
-        return result;
-    }
-
-    if (selectedMarketInstrument &&
-        !repository_.saveInvestmentQuote(InvestmentQuote(
-            targetInstrumentId, selectedMarketInstrument->priceMicros(),
-            selectedMarketInstrument->quotedAtUtc()))) {
-        qWarning() << "Failed to save edited investment quote:"
-                   << repository_.lastError();
-    }
-    investmentInstruments_ = repository_.loadInvestmentInstruments();
-    investmentPositions_ = repository_.loadInvestmentPositions();
-    investmentQuotes_ = repository_.loadInvestmentQuotes();
-    emit investmentPositionsChanged();
-    emit accountsChanged();
-    emit balanceChanged();
-    result[QStringLiteral("ok")] = true;
-    return result;
+    return saveInvestmentPosition({{"id",id},{"accountId",accountId},{"searchIndex",index},{"quantity",quantity},{"averagePrice",averagePrice}});
 }
 
 bool FinanceController::deleteInvestmentPosition(const QString& id)
@@ -4563,14 +4249,14 @@ void FinanceController::refreshInvestmentQuotes()
             });
         if (quote != investmentQuotes_.cend()) {
             const qint64 age = quote->quotedAtUtc().msecsTo(now);
-            if (age >= 0 && age < 6 * 60 * 60 * 1000) {
+            if (age >= 0 && age < 30 * 1000) {
                 continue;
             }
         }
         refreshingInvestmentIds_.insert(instrument.id());
         investmentProvider_.requestQuote(InvestmentMarketInstrument(
             instrument.id(), instrument.symbol(), instrument.isin(),
-            instrument.name(), instrument.type(), instrument.primaryBoardId()));
+            instrument.name(), instrument.type(), instrument.primaryBoardId(), instrument.terms()));
     }
     const bool refreshing = !refreshingInvestmentIds_.isEmpty();
     if (investmentRefreshing_ != refreshing) {
@@ -5245,56 +4931,56 @@ const DepositSettings* FinanceController::depositSettingsForAccount(
 
 qint64 FinanceController::accountBalanceMinor(const Account& account) const
 {
-    qint64 balance = account.initialBalanceMinor();
-    for (const Transaction& transaction : transactions_) {
-        if (transaction.accountId() != account.id()) {
-            continue;
-        }
-        if (dateFilterActive() &&
-            !TransactionDateFilter::isOnOrBefore(
-                transaction, dateFilterTo_)) {
-            continue;
-        }
-        balance += transaction.type() == TransactionType::Income
-            ? transaction.money().minorUnits()
-            : -transaction.money().minorUnits();
+    qint64 balance=account.initialBalanceMinor();
+    for(const auto& transaction:transactions_){
+        if(transaction.accountId()!=account.id())continue;
+        if(dateFilterActive() && !TransactionDateFilter::isOnOrBefore(transaction,dateFilterTo_))continue;
+        balance=saturatedCapitalAdd(balance,transaction.type()==TransactionType::Income?transaction.money().minorUnits():-transaction.money().minorUnits());
     }
-    if (account.assetType() == AssetType::Investment) {
-        const qint64 positionValue = investmentAccountValueMinor(account.id());
-        if (positionValue > 0 &&
-            balance > std::numeric_limits<qint64>::max() - positionValue) {
-            return std::numeric_limits<qint64>::max();
+    if(account.assetType()==AssetType::Investment){
+        for(const auto& op:investmentOperations_){if(op.accountId!=account.id())continue;
+            if(dateFilterActive() && op.occurredAtUtc.toLocalTime().date()>dateFilterTo_)continue;
+            balance=saturatedCapitalAdd(balance,op.cashDeltaMinor);
         }
-        balance += positionValue;
+        balance=saturatedCapitalAdd(balance,investmentAccountValueMinor(account.id()));
     }
     return balance;
 }
 
-qint64 FinanceController::investmentAccountValueMinor(
-    const QString& accountId
-    ) const
+qint64 FinanceController::investmentAccountValueMinor(const QString& id) const
 {
-    using Int128 = __int128_t;
-    Int128 totalMinor = 0;
-    for (const InvestmentPosition& position : investmentPositions_) {
-        if (position.accountId() != accountId) {
-            continue;
-        }
-        const auto quote = std::find_if(
-            investmentQuotes_.cbegin(), investmentQuotes_.cend(),
-            [&position](const InvestmentQuote& candidate) {
-                return candidate.instrumentId() == position.instrumentId();
-            });
-        if (quote == investmentQuotes_.cend() || quote->priceMicros() <= 0) {
-            continue;
-        }
-        totalMinor += scaledInvestmentValueMinor(
-            position.quantityMicros(), quote->priceMicros());
-        if (totalMinor >= std::numeric_limits<qint64>::max()) {
-            return std::numeric_limits<qint64>::max();
-        }
-    }
-    return static_cast<qint64>(totalMinor);
+    qint64 total=0;for(const auto& p:investmentPositions_)if(p.accountId()==id){
+        const auto value=investmentPositionValue(p);if(value.available)total=saturatedCapitalAdd(total,value.valueMinor);
+    }return total;
+}
+
+InvestmentValuation FinanceController::investmentPositionValue(const InvestmentPosition& p) const
+{
+    const auto i=std::find_if(investmentInstruments_.cbegin(),investmentInstruments_.cend(),[&](const auto& i){return i.id()==p.instrumentId();});
+    const auto a=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==p.accountId();});
+    const auto q=std::find_if(investmentQuotes_.cbegin(),investmentQuotes_.cend(),[&](const auto& q){return q.instrumentId()==p.instrumentId();});
+    if(i==investmentInstruments_.cend() || a==accounts_.cend())return {false,0,tr("Не найден счёт или инструмент")};
+    auto t=q!=investmentQuotes_.cend() && !q->terms().engine.isEmpty()?q->terms():i->terms();
+    if(t.engine.isEmpty() && i->marketCode()=="MOEX")t=moexDefaultTerms(i->type());
+    if(t.currencyCode.isEmpty())t.currencyCode=currencyCode(i->currency());
+    const long double source=rateProvider_.rateToRubMicros(t.currencyCode),target=rateProvider_.rateToRubMicros(currencyCode(a->currency()));
+    qint64 fx=p.settings().manualFxRateMicros;
+    if(fx<=0 && source>0 && target>0){const long double rate=source/target*1'000'000.0L;
+        if(rate<std::numeric_limits<qint64>::max())fx=static_cast<qint64>(std::round(rate));}
+    return valueInvestmentPosition(p,q==investmentQuotes_.cend()?nullptr:&*q,t,fx);
+}
+
+bool FinanceController::investmentValuationIncomplete() const
+{
+    for(const auto& p:investmentPositions_)if(!investmentPositionValue(p).available)return true;
+    return false;
+}
+
+void FinanceController::reloadInvestments()
+{
+    investmentInstruments_=repository_.loadInvestmentInstruments();investmentPositions_=repository_.loadInvestmentPositions();
+    investmentQuotes_=repository_.loadInvestmentQuotes();investmentOperations_=repository_.loadInvestmentOperations();
+    emit investmentPositionsChanged();emit accountsChanged();emit transactionsChanged();emit balanceChanged();
 }
 
 int FinanceController::accountTransactionCount(const QString& accountId) const
@@ -5317,9 +5003,9 @@ qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
         if (account.assetType() != asset) {
             continue;
         }
-        total += currencyConverter_.convert(
+        total = saturatedCapitalAdd(total, currencyConverter_.convert(
             Money(accountBalanceMinor(account), account.currency()),
-            appCurrency_).minorUnits();
+            appCurrency_).minorUnits());
     }
     if (asset == AssetType::Crypto) {
         const qint64 trackedWallets = cryptoWalletsTotalMinor();
@@ -5638,40 +5324,18 @@ CapitalHistorySeries FinanceController::calculateCapitalHistory(
         openingMinor = saturatedCapitalAdd(openingMinor, initialMinor);
     }
 
-    for (const InvestmentPosition& position :
-         std::as_const(investmentPositions_)) {
-        const auto account = std::find_if(
-            accounts_.cbegin(), accounts_.cend(),
-            [&position](const Account& candidate)
-            {
-                return candidate.id() == position.accountId();
-            });
-        const auto quote = std::find_if(
-            investmentQuotes_.cbegin(), investmentQuotes_.cend(),
-            [&position](const InvestmentQuote& candidate)
-            {
-                return candidate.instrumentId() == position.instrumentId();
-            });
-        if (account == accounts_.cend() ||
-            quote == investmentQuotes_.cend()) {
-            continue;
-        }
-
-        const qint64 positionMinor = currencyConverter_.convert(
-            Money(
-                scaledInvestmentValueMinor(
-                    position.quantityMicros(), quote->priceMicros()),
-                account->currency()),
-            currency).minorUnits();
-        const QDate createdDate = position.createdAtUtc().isValid()
-            ? position.createdAtUtc().toLocalTime().date()
-            : QDate();
-        if (createdDate.isValid()) {
-            events.append({createdDate, positionMinor});
-        } else {
-            openingMinor = saturatedCapitalAdd(
-                openingMinor, positionMinor);
-        }
+    for(const auto& position:investmentPositions_){
+        const auto account=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==position.accountId();});
+        const auto value=investmentPositionValue(position);
+        if(account==accounts_.cend() || !value.available)continue;
+        const auto minor=currencyConverter_.convert(Money(value.valueMinor,account->currency()),currency).minorUnits();
+        const auto date=position.createdAtUtc().toLocalTime().date();
+        if(date.isValid())events.append({date,minor});else openingMinor=saturatedCapitalAdd(openingMinor,minor);
+    }
+    for(const auto& op:investmentOperations_){
+        const auto account=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==op.accountId;});
+        if(account!=accounts_.cend())events.append({op.occurredAtUtc.toLocalTime().date(),
+            currencyConverter_.convert(Money(op.cashDeltaMinor,account->currency()),currency).minorUnits()});
     }
 
     for (const CryptoWallet& wallet : std::as_const(cryptoWallets_)) {
@@ -6256,6 +5920,7 @@ QVector<GoalAssetValue> FinanceController::goalAssetValues() const
                 balance += transaction.type() == TransactionType::Income ? amount : -amount;
             }
         }
+        for(const auto& op:investmentOperations_)if(op.accountId==account.id() && op.occurredAtUtc<=now)balance+=op.cashDeltaMinor;
         values.append({source, Money(static_cast<qint64>(std::clamp(balance, minimum, maximum)),
                                      account.currency()), balance >= minimum && balance <= maximum});
         if (account.assetType() != AssetType::Investment) continue;
@@ -6265,11 +5930,8 @@ QVector<GoalAssetValue> FinanceController::goalAssetValues() const
                 [&position](const auto& item) { return item.id() == position.instrumentId(); });
             const auto quote = std::find_if(investmentQuotes_.cbegin(), investmentQuotes_.cend(),
                 [&position](const auto& item) { return item.instrumentId() == position.instrumentId(); });
-            const bool available = instrument != investmentInstruments_.cend() &&
-                quote != investmentQuotes_.cend() && quote->priceMicros() > 0;
-            values.append({source, Money(available ? scaledInvestmentValueMinor(
-                position.quantityMicros(), quote->priceMicros()) : 0,
-                instrument == investmentInstruments_.cend() ? account.currency() : instrument->currency()), available});
+            const auto value=investmentPositionValue(position);
+            values.append({source,Money(value.valueMinor,account.currency()),value.available});
         }
     }
     for (const auto& wallet : cryptoWallets_) {
@@ -6515,4 +6177,278 @@ QVariantMap FinanceController::saveFinancialTrajectorySettings(const QVariantMap
     trajectorySettings_ = next;
     emit financialTrajectoryChanged();
     return {{QStringLiteral("ok"), true}};
+}
+
+namespace {
+QVariantMap investmentTermsToVariant(const InvestmentTerms& t)
+{
+    return {{"pricing",t.pricing},{"quoteCurrency",t.currencyCode},{"quoteSource",t.quoteSource},{"quoteSourceLabel",
+            t.quoteSource=="user_trade" ? QCoreApplication::translate("FinanceController","Цена вашей сделки") :
+            t.quoteSource=="user_clearing" ? QCoreApplication::translate("FinanceController","Ваш расчёт") :
+            t.quoteSource=="prevprice" ? QCoreApplication::translate("FinanceController","Предыдущее закрытие") :
+            (t.quoteSource=="settleprice_clr" || t.quoteSource=="prevsettleprice") ? QCoreApplication::translate("FinanceController","Расчётная цена") :
+            t.quoteSource=="last" ? QCoreApplication::translate("FinanceController","Последняя сделка") :
+            QCoreApplication::translate("FinanceController","Цена биржи")},{"quantityUnit",t.quantityUnit},
+        {"faceValueText",formatMicros(t.faceValueMicros)},{"accruedInterestText",t.accruedInterestMicros<0?QString():formatMicros(t.accruedInterestMicros)},
+        {"priceStepText",formatMicros(t.priceStepMicros)},{"stepValueText",formatMicros(t.stepValueMicros)},
+        {"multiplierText",formatMicros(t.multiplierMicros)},{"lotSizeText",formatMicros(t.lotSizeMicros)},
+        {"settlementPriceText",formatMicros(t.settlementPriceMicros)},{"strikeText",formatMicros(t.strikeMicros)},
+        {"maturity",t.maturity.toString(Qt::ISODate)},{"optionRight",t.optionRight},{"underlying",t.underlying},{"perpetual",t.perpetual}};
+}
+
+bool parseSignedInvestmentNumber(QString text, qint64& result, bool minor = false)
+{
+    text=text.trimmed();text.remove(QLatin1Char(' '));text.remove(QChar(0x00A0));text.replace(QChar(0x2212),QLatin1Char('-'));
+    const bool negative=text.startsWith('-');if(negative || text.startsWith('+'))text.remove(0,1);
+    static const QRegularExpression zero(QStringLiteral("^0+(?:[.,]0{1,6})?$"));
+    if(zero.match(text).hasMatch()){result=0;return true;}
+    qint64 n=0;if(!parsePositiveMicros(text,n))return false;
+    if(minor){if(n%10'000!=0)return false;n/=10'000;}
+    result=negative?-n:n;return true;
+}
+QDateTime parseInvestmentDate(const QString& text)
+{
+    auto date=QDateTime::fromString(text,QStringLiteral("dd.MM.yyyy HH:mm:ss"));
+    if(!date.isValid())date=QDateTime::fromString(text,QStringLiteral("dd.MM.yyyy HH:mm"));
+    if(!date.isValid())date=QDateTime::fromString(text,Qt::ISODate);
+    return date;
+}
+QString investmentOperationName(const QString& kind)
+{
+    if(kind=="buy")return QCoreApplication::translate("FinanceController","Покупка / увеличение позиции");
+    if(kind=="sell")return QCoreApplication::translate("FinanceController","Продажа / уменьшение позиции");
+    if(kind=="coupon")return QCoreApplication::translate("FinanceController","Купон");
+    if(kind=="dividend")return QCoreApplication::translate("FinanceController","Дивиденды / выплата фонда");
+    if(kind=="amortization")return QCoreApplication::translate("FinanceController","Частичное погашение номинала");
+    if(kind=="fee")return QCoreApplication::translate("FinanceController","Комиссия");
+    if(kind=="margin")return QCoreApplication::translate("FinanceController","Расчёт вариационной маржи");
+    return QCoreApplication::translate("FinanceController","Погашение / исполнение контракта");
+}
+}
+
+QVariantMap FinanceController::saveInvestmentPosition(const QVariantMap& v)
+{
+    const auto fail=[](const QString& e){return QVariantMap{{"ok",false},{"error",e}};};
+    if(selectedAsset_!=AssetType::Investment)return fail(tr("Сначала выберите актив «Инвестиции»"));
+    const auto id=v.value("id").toString(),accountId=v.value("accountId").toString();
+    const bool editing=!id.isEmpty();const int index=v.value("searchIndex",-2).toInt();
+    const auto account=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==accountId && a.type()==AccountType::Brokerage;});
+    if(account==accounts_.cend())return fail(tr("Выберите брокерский счёт"));
+    const auto current=std::find_if(investmentPositions_.cbegin(),investmentPositions_.cend(),[&](const auto& p){return p.id()==id;});
+    if(editing && current==investmentPositions_.cend())return fail(tr("Позиция не найдена"));
+    const InvestmentMarketInstrument* selected=nullptr;const InvestmentInstrument* previous=nullptr;
+    if(editing){const auto i=std::find_if(investmentInstruments_.cbegin(),investmentInstruments_.cend(),[&](const auto& i){return i.id()==current->instrumentId();});
+        if(i==investmentInstruments_.cend())return fail(tr("Инструмент не найден"));previous=&*i;}
+    if(index>=0){if(index>=investmentSearchResults_.size())return fail(tr("Выберите инструмент"));selected=&investmentSearchResults_[index];}
+    else if(index==-1 && !previous)return fail(tr("Выберите инструмент"));
+    else if(index < -2)return fail(tr("Выберите инструмент"));
+    QString instrumentId,symbol,isin,name,market,board;InvestmentInstrumentType type;
+    InvestmentTerms terms;Currency valuationCurrency=Currency::RUB;std::optional<InvestmentQuote> quote;
+    if(selected){instrumentId=selected->id();symbol=selected->symbol();isin=selected->isin();name=selected->name();type=selected->type();
+        market="MOEX";board=selected->primaryBoardId();terms=selected->terms();
+        valuationCurrency=currencyFromString(selected->currencyCode());
+        if(selected->hasQuote())quote=InvestmentQuote(instrumentId,selected->priceMicros(),selected->quotedAtUtc(),terms);
+    }else if(index==-1){instrumentId=previous->id();symbol=previous->symbol();isin=previous->isin();name=previous->name();type=previous->type();
+        market=previous->marketCode();board=previous->primaryBoardId();terms=previous->terms();valuationCurrency=previous->currency();
+        const auto q=std::find_if(investmentQuotes_.cbegin(),investmentQuotes_.cend(),[&](const auto& q){return q.instrumentId()==instrumentId;});
+        if(q!=investmentQuotes_.cend()){quote=*q;if(!q->terms().engine.isEmpty())terms=q->terms();}
+        if(terms.engine.isEmpty() && market=="MOEX")terms=moexDefaultTerms(type);
+    }else{const int value=v.value("instrumentType",4).toInt();if(value<0 || value>10)return fail(tr("Неизвестный вид инструмента"));
+        type=static_cast<InvestmentInstrumentType>(value);instrumentId="manual:"+QUuid::createUuid().toString(QUuid::WithoutBraces);
+        symbol=v.value("symbol").toString().trimmed();name=v.value("name").toString().trimmed();isin=v.value("isin").toString().trimmed();
+        if(symbol.isEmpty() || name.isEmpty())return fail(tr("Укажите название и обозначение инструмента"));
+        terms=moexDefaultTerms(type);terms.engine.clear();terms.market.clear();terms.pricing=type==InvestmentInstrumentType::Future?QStringLiteral("future"):QStringLiteral("manual");
+        terms.currencyCode=v.value("quoteCurrency",currencyCode(account->currency())).toString().trimmed().toUpper();
+        valuationCurrency=account->currency();
+        if(type==InvestmentInstrumentType::Option){
+            const auto scheme=v.value("optionPricing",QStringLiteral("premium_option")).toString();
+            if(scheme!="premium_option" && scheme!="margined_option")return fail(tr("Выберите схему расчётов опциона"));
+            terms.pricing=scheme;terms.optionRight=v.value("optionRight",QStringLiteral("C")).toString();
+            if(terms.optionRight!="C" && terms.optionRight!="P")return fail(tr("Выберите право покупки или продажи"));
+            if(!v.value("strike").toString().isEmpty() && !parsePositiveMicros(v.value("strike").toString(),terms.strikeMicros))return fail(tr("Некорректная цена исполнения"));
+        }
+        terms.underlying=v.value("underlying").toString().trimmed();
+        if(!v.value("maturity").toString().trimmed().isEmpty()){
+            terms.maturity=QDate::fromString(v.value("maturity").toString(),QStringLiteral("dd.MM.yyyy"));
+            if(!terms.maturity.isValid())return fail(tr("Укажите дату исполнения в формате дд.мм.гггг"));
+        }
+        for(const auto& existing:investmentInstruments_)if(existing.marketCode().isEmpty() && existing.type()==type &&
+            existing.symbol().compare(symbol,Qt::CaseInsensitive)==0 && existing.currency()==valuationCurrency){instrumentId=existing.id();break;}
+    }
+    // A shared instrument's accounting currency is stable even across accounts.
+    const auto existing=std::find_if(investmentInstruments_.cbegin(),investmentInstruments_.cend(),[&](const auto& i){return i.id()==instrumentId;});
+    if(existing!=investmentInstruments_.cend())valuationCurrency=existing->currency();
+    if(terms.currencyCode.isEmpty())terms.currencyCode=currencyCode(valuationCurrency);
+    if(editing && repository_.hasInvestmentOperations(id) && (current->accountId()!=accountId || current->instrumentId()!=instrumentId))
+        return fail(tr("У позиции есть операции: счёт и инструмент менять нельзя"));
+    for(const auto& p:investmentPositions_)if(p.id()!=id && p.accountId()==accountId && p.instrumentId()==instrumentId)
+        return fail(tr("Этот инструмент уже добавлен на выбранный счёт"));
+    qint64 quantity=0,average=editing?current->averagePriceMicros():0;
+    if(!parsePositiveMicros(v.value("quantity").toString(),quantity))return fail(tr("Введите количество больше нуля, до 6 знаков после запятой"));
+    if((type==InvestmentInstrumentType::Future || type==InvestmentInstrumentType::Option || type==InvestmentInstrumentType::Bond ||
+        type==InvestmentInstrumentType::Stock || type==InvestmentInstrumentType::PreferredStock || type==InvestmentInstrumentType::DepositaryReceipt)
+        && quantity%1'000'000!=0)return fail(tr("Для этого инструмента количество должно быть целым"));
+    const auto avg=v.value("averagePrice").toString().trimmed();
+    if(!avg.isEmpty() && (!parseSignedInvestmentNumber(avg,average) || average<0))return fail(tr("Введите корректную среднюю цену"));
+    if(avg.isEmpty() && !editing && quote)average=qMax<qint64>(0,quote->priceMicros());
+    auto settings=editing?current->settings():InvestmentPositionSettings{};
+    if(v.contains("direction"))settings.direction=v.value("direction").toInt();
+    if(settings.direction!=1 && settings.direction!=-1)return fail(tr("Выберите направление позиции"));
+    if(settings.direction==-1 && type!=InvestmentInstrumentType::Future && type!=InvestmentInstrumentType::Option)
+        return fail(tr("Проданная позиция поддерживается для фьючерсов и опционов"));
+    if(v.contains("manualValuation"))settings.manualValuation=v.value("manualValuation").toBool();
+    if(index==-2)settings.manualValuation=true;
+    if(settings.manualValuation){qint64 value=0;
+        if(!parseSignedInvestmentNumber(v.value("manualValue",QString::number(settings.manualValueMinor/100.0,'f',2)).toString(),value,true))return fail(tr("Укажите стоимость всей позиции в валюте счёта, до 2 знаков после запятой"));
+        if(value<0 && type!=InvestmentInstrumentType::Future && type!=InvestmentInstrumentType::Option)return fail(tr("Стоимость этого актива не может быть отрицательной"));
+        settings.manualValueMinor=value;settings.valuedAtUtc=QDateTime::currentDateTimeUtc();
+    }
+    const auto parseSetting=[&](const char* key,qint64& target,bool minor,bool positive) {
+        if(!v.contains(key) || v.value(key).toString().trimmed().isEmpty())return true;
+        qint64 n=0;if(!parseSignedInvestmentNumber(v.value(key).toString(),n,minor) || (positive && n<0))return false;target=n;return true;
+    };
+    if(v.contains("fxRate") && v.value("fxRate").toString().trimmed().isEmpty())settings.manualFxRateMicros=0;
+    if(!parseSetting("blockedMargin",settings.blockedMarginMinor,true,true) || !parseSetting("adjustment",settings.unsettledAdjustmentMinor,true,false)
+        || !parseSetting("fxRate",settings.manualFxRateMicros,false,true))return fail(tr("Некорректное обеспечение, поправка или курс валюты"));
+    const bool margined=terms.pricing=="future" || terms.pricing=="margined_option";
+    if(margined && !settings.manualValuation){
+        if(!parseSetting("referencePrice",settings.referencePriceMicros,false,false))return fail(tr("Некорректная цена последнего расчёта"));
+        if(v.contains("referenceDate")){
+            const auto date=parseInvestmentDate(v.value("referenceDate").toString());
+            if(!date.isValid() || date>QDateTime::currentDateTime())return fail(tr("Укажите дату и время последнего расчёта"));
+            settings.referenceAtUtc=date.toUTC();
+        }
+        if(!settings.referenceAtUtc.isValid())return fail(tr("Укажите цену, дату и время последнего расчёта или открытия позиции"));
+    }
+    // Ensure the result can be valued before saving an automatic position.
+    const long double source=rateProvider_.rateToRubMicros(terms.currencyCode),target=rateProvider_.rateToRubMicros(currencyCode(account->currency()));
+    qint64 fx=settings.manualFxRateMicros;if(fx<=0 && source>0 && target>0){const auto n=source/target*1'000'000.0L;
+        if(n<std::numeric_limits<qint64>::max())fx=static_cast<qint64>(std::round(n));}
+    const auto now=QDateTime::currentDateTimeUtc();
+    InvestmentPosition position(editing?id:QUuid::createUuid().toString(QUuid::WithoutBraces),accountId,instrumentId,quantity,average,
+        editing?current->createdAtUtc():now,now,settings);
+    const auto value=valueInvestmentPosition(position,quote?&*quote:nullptr,terms,fx);
+    if(!value.available)return fail(value.error);
+    std::optional<InvestmentOperation> operation;
+    if(!editing && v.value("purchase").toBool()){
+        qint64 cash=0;if(!parseSignedInvestmentNumber(v.value("cashAmount").toString(),cash,true))return fail(tr("Укажите фактическое изменение денег, со знаком"));
+        if((type!=InvestmentInstrumentType::Future && terms.pricing!="margined_option") &&
+            ((settings.direction==1 && cash>=0) || (settings.direction==-1 && cash<=0)))return fail(tr("Покупка уменьшает деньги, продажа опциона увеличивает; укажите соответствующий знак"));
+        operation=InvestmentOperation{QUuid::createUuid().toString(QUuid::WithoutBraces),accountId,position.id(),instrumentId,"buy",cash,quantity,now,
+            tr("Открытие позиции: %1").arg(symbol)};
+    }
+    const InvestmentInstrument instrument(instrumentId,symbol,isin,name,type,valuationCurrency,market,board,terms);
+    if(!repository_.saveInvestmentBundle(instrument,position,quote,editing,operation))return fail(tr("Не удалось сохранить позицию: %1").arg(repository_.lastError()));
+    reloadInvestments();return {{"ok",true}};
+}
+
+QVariantMap FinanceController::recordInvestmentOperation(const QVariantMap& v)
+{
+    const auto fail=[](const QString& e){return QVariantMap{{"ok",false},{"error",e}};};
+    const auto id=v.value("positionId").toString(),kind=v.value("kind").toString();
+    const auto p=std::find_if(investmentPositions_.cbegin(),investmentPositions_.cend(),[&](const auto& p){return p.id()==id;});
+    if(p==investmentPositions_.cend())return fail(tr("Позиция не найдена"));
+    const auto i=std::find_if(investmentInstruments_.cbegin(),investmentInstruments_.cend(),[&](const auto& i){return i.id()==p->instrumentId();});
+    if(i==investmentInstruments_.cend())return fail(tr("Инструмент не найден"));
+    const QStringList kinds{"buy","sell","coupon","dividend","amortization","fee","margin","expiry"};
+    if(!kinds.contains(kind))return fail(tr("Неизвестный вид операции"));
+    auto date=parseInvestmentDate(v.value("date").toString());
+    if(!date.isValid() || date>QDateTime::currentDateTime())return fail(tr("Укажите дату и время фактической операции"));date=date.toUTC();
+    // Quantity/clearing mutations must follow the last recorded mutation.
+    if(kind=="buy" || kind=="sell" || kind=="margin" || kind=="expiry")for(const auto& op:investmentOperations_)
+        if(op.positionId==id && op.occurredAtUtc.toSecsSinceEpoch()>date.toSecsSinceEpoch() && (op.kind=="buy" || op.kind=="sell" || op.kind=="margin" || op.kind=="expiry"))
+            return fail(tr("Изменение позиции нужно записывать после её последней операции"));
+    qint64 cash=0;if(!parseSignedInvestmentNumber(v.value("cashAmount").toString(),cash,true))return fail(tr("Укажите фактическое изменение денег со знаком, до 2 знаков после запятой"));
+    if((kind=="coupon" || kind=="dividend" || kind=="amortization") && cash<=0)return fail(tr("Выплата должна увеличивать денежный остаток"));
+    if(kind=="fee" && cash>=0)return fail(tr("Комиссия должна уменьшать денежный остаток"));
+    if((kind=="coupon" || kind=="amortization") && i->type()!=InvestmentInstrumentType::Bond)return fail(tr("Эта операция доступна для облигаций"));
+    if(kind=="dividend" && i->type()!=InvestmentInstrumentType::Stock && i->type()!=InvestmentInstrumentType::PreferredStock &&
+        i->type()!=InvestmentInstrumentType::DepositaryReceipt && i->type()!=InvestmentInstrumentType::Etf && i->type()!=InvestmentInstrumentType::Fund)
+        return fail(tr("Эта выплата доступна для акций, расписок и фондов"));
+    const auto q=std::find_if(investmentQuotes_.cbegin(),investmentQuotes_.cend(),[&](const auto& q){return q.instrumentId()==i->id();});
+    auto terms=q!=investmentQuotes_.cend() && !q->terms().engine.isEmpty()?q->terms():i->terms();
+    const bool margined=terms.pricing=="future" || terms.pricing=="margined_option" ||
+        (i->type()==InvestmentInstrumentType::Future && p->settings().manualValuation);
+    if(kind=="margin" && !margined)return fail(tr("Расчёт вариационной маржи доступен для маржируемых контрактов"));
+    qint64 quantity=p->quantityMicros(),average=p->averagePriceMicros(),delta=0;auto settings=p->settings();bool close=false;
+    std::optional<InvestmentQuote> adjustedQuote;
+    if(kind=="coupon" || kind=="amortization"){
+        if(settings.manualValuation){qint64 value=0;
+            if(!parseSignedInvestmentNumber(v.value("remainingValue").toString(),value,true) || value<0)return fail(tr("Укажите стоимость облигаций после выплаты"));
+            settings.manualValueMinor=value;settings.valuedAtUtc=date;
+        }else{
+            qint64 accrued=0;if(!parseSignedInvestmentNumber(v.value("accruedAfter").toString(),accrued) || accrued<0)
+                return fail(tr("Укажите НКД после выплаты"));
+            if(q==investmentQuotes_.cend())return fail(tr("Нужна котировка или ручная оценка облигаций"));
+            terms.accruedInterestMicros=accrued;
+            if(kind=="amortization"){
+                qint64 face=0;if(!parsePositiveMicros(v.value("faceAfter").toString(),face) || face>=terms.faceValueMicros)
+                    return fail(tr("Оставшийся номинал должен быть положительным и меньше прежнего; для полного погашения выберите исполнение"));
+                terms.faceValueMicros=face;
+            }
+            adjustedQuote=InvestmentQuote(i->id(),q->priceMicros(),qMax(q->quotedAtUtc(),date),terms);
+        }
+    }
+    if(kind=="buy" || kind=="sell"){
+        qint64 n=0;if(!parsePositiveMicros(v.value("quantity").toString(),n))return fail(tr("Укажите количество операции"));
+        if(i->type()!=InvestmentInstrumentType::Metal && i->type()!=InvestmentInstrumentType::Currency
+            && i->type()!=InvestmentInstrumentType::Etf && i->type()!=InvestmentInstrumentType::Fund && n%1'000'000!=0)
+            return fail(tr("Количество должно быть целым"));
+        if(kind=="sell" && n>quantity)return fail(tr("Нельзя уменьшить позицию больше её количества"));
+        delta=kind=="buy"?n:-n;
+        if(delta>0 && quantity>std::numeric_limits<qint64>::max()-delta)return fail(tr("Количество слишком велико"));
+        quantity+=delta;close=quantity==0;
+        if(!margined && !settings.manualValuation){const int sign=(kind=="buy"?-1:1)*settings.direction;
+            if(cash==0 || (cash>0?1:-1)!=sign)return fail(tr("Знак денег не соответствует направлению сделки"));}
+        qint64 price=0;
+        if(kind=="buy" || !v.value("price").toString().trimmed().isEmpty()){
+            if(!parseSignedInvestmentNumber(v.value("price").toString(),price) || price<0)return fail(tr("Укажите цену сделки"));
+            if(!settings.manualValuation && q!=investmentQuotes_.cend() && q->quotedAtUtc()<date){
+                auto observed=terms;observed.quoteSource="user_trade";adjustedQuote=InvestmentQuote(i->id(),price,date,observed);
+            }
+        }
+        if(kind=="buy"){
+            const long double avg=(static_cast<long double>(p->quantityMicros())*average+static_cast<long double>(n)*price)/quantity;
+            if(avg>=std::numeric_limits<qint64>::max())return fail(tr("Средняя цена вне диапазона"));average=static_cast<qint64>(std::round(avg));
+            if(margined){
+                // The unbooked result for existing contracts must survive an increase.
+                const long double ref=(static_cast<long double>(p->quantityMicros())*settings.referencePriceMicros+static_cast<long double>(n)*price)/quantity;
+                if(std::abs(ref)>=std::numeric_limits<qint64>::max())return fail(tr("Расчётная цена вне диапазона"));settings.referencePriceMicros=static_cast<qint64>(std::round(ref));
+            }
+        }
+        if(kind=="sell" && !close){
+            settings.blockedMarginMinor=static_cast<qint64>(std::round(static_cast<long double>(settings.blockedMarginMinor)*quantity/p->quantityMicros()));
+            settings.unsettledAdjustmentMinor=static_cast<qint64>(std::round(static_cast<long double>(settings.unsettledAdjustmentMinor)*quantity/p->quantityMicros()));
+        }
+        if(settings.manualValuation && !close){qint64 value=0;if(!parseSignedInvestmentNumber(v.value("remainingValue").toString(),value,true))return fail(tr("Укажите новую ручную оценку оставшейся позиции"));settings.manualValueMinor=value;settings.valuedAtUtc=date;}
+    }
+    if(kind=="margin"){
+        qint64 reference=0;if(!parseSignedInvestmentNumber(v.value("price").toString(),reference))return fail(tr("Укажите цену проведённого расчёта"));
+        if(settings.referenceAtUtc.isValid() && date<=settings.referenceAtUtc)return fail(tr("Этот расчёт уже учтён; укажите следующий"));
+        settings.referencePriceMicros=reference;settings.referenceAtUtc=date;settings.unsettledAdjustmentMinor=0;
+        if(!settings.manualValuation && q!=investmentQuotes_.cend() && q->quotedAtUtc()<date){
+            auto observed=terms;observed.quoteSource="user_clearing";adjustedQuote=InvestmentQuote(i->id(),reference,date,observed);
+        }
+        if(settings.manualValuation){settings.manualValueMinor=0;settings.valuedAtUtc=date;}
+    }
+    if(kind=="expiry"){close=true;delta=-quantity;}
+    const InvestmentPosition updated(p->id(),p->accountId(),p->instrumentId(),close?p->quantityMicros():quantity,average,p->createdAtUtc(),QDateTime::currentDateTimeUtc(),settings);
+    const InvestmentOperation op{QUuid::createUuid().toString(QUuid::WithoutBraces),p->accountId(),id,p->instrumentId(),kind,cash,delta,date,
+        v.value("description").toString().trimmed().isEmpty()?investmentOperationName(kind)+QStringLiteral(" · ")+i->symbol():v.value("description").toString()};
+    if(!repository_.bookInvestmentOperation(op,*p,updated,close,adjustedQuote))return fail(tr("Не удалось сохранить операцию: %1").arg(repository_.lastError()));
+    reloadInvestments();if(kind=="coupon" || kind=="amortization")refreshInvestmentQuotes();return {{"ok",true}};
+}
+
+QVariantList FinanceController::investmentOperations() const
+{
+    QVariantList result;
+    for(const auto& op:investmentOperations_){
+        if(!selectedAccountId_.isEmpty() && selectedAccountId_!=op.accountId)continue;
+        if(dateFilterActive() && (op.occurredAtUtc.toLocalTime().date()<dateFilterFrom_ || op.occurredAtUtc.toLocalTime().date()>dateFilterTo_))continue;
+        const auto a=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==op.accountId;});
+        if(a==accounts_.cend())continue;
+        result.append(QVariantMap{{"id",op.id},{"accountId",op.accountId},{"positionId",op.positionId},{"accountName",accountDisplayName(*a)},
+            {"type","investment_cash"},{"kind",op.kind},{"amount",op.cashDeltaMinor},{"currency",currencyCode(a->currency())},
+            {"categoryName",investmentOperationName(op.kind)},{"rawDescription",op.description},{"date",op.occurredAtUtc}});
+    }return result;
 }

@@ -26,6 +26,7 @@ qt_add_qml_module(appMoneyTracker
         Desktop.qml
         Mobile.qml
         InvestmentPositionDialog.qml
+        InvestmentOperationDialog.qml
         InvestmentPositionsPanel.qml
         BankCsvImportDialog.qml
         RecurringTransactionsDialog.qml
@@ -63,6 +64,10 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/DepositSettings.h
         SOURCES core/CryptoWallet.h
         SOURCES core/CryptoTransaction.h
+        SOURCES core/InvestmentTerms.h
+        SOURCES core/InvestmentOperation.h
+        SOURCES services/InvestmentValuation.h
+        SOURCES services/InvestmentValuation.cpp
         SOURCES core/InvestmentInstrument.h
         SOURCES core/InvestmentPosition.h
         SOURCES core/InvestmentQuote.h
@@ -265,6 +270,24 @@ add_test(
     NAME FinanceRepositoryTest
     COMMAND FinanceRepositoryTest
 )
+
+file(GLOB investment_controller_test_sources CONFIGURE_DEPENDS
+    core/*.cpp services/*.cpp persistence/*.cpp interface/*.cpp)
+add_executable(InvestmentControllerTest tests/InvestmentControllerTest.cpp ${investment_controller_test_sources})
+target_link_libraries(InvestmentControllerTest PRIVATE Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(InvestmentControllerTest PRIVATE crypt32)
+endif()
+add_test(NAME InvestmentControllerTest COMMAND InvestmentControllerTest)
+
+add_executable(InvestmentAccountingRepositoryTest tests/InvestmentAccountingRepositoryTest.cpp
+    persistence/FinanceRepository.cpp core/Currency.cpp services/InvestmentValuation.cpp)
+target_link_libraries(InvestmentAccountingRepositoryTest PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME InvestmentAccountingRepositoryTest COMMAND InvestmentAccountingRepositoryTest)
+
+add_executable(InvestmentValuationTest tests/InvestmentValuationTest.cpp services/InvestmentValuation.cpp)
+target_link_libraries(InvestmentValuationTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME InvestmentValuationTest COMMAND InvestmentValuationTest)
 
 add_executable(InvestmentModelTest
     tests/InvestmentModelTest.cpp

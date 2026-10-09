@@ -1,5 +1,7 @@
 #pragma once
 
+#include "InvestmentTerms.h"
+
 #include <QDateTime>
 #include <QString>
 #include <QtGlobal>
@@ -18,7 +20,8 @@ public:
         qint64 quantityMicros,
         qint64 averagePriceMicros,
         QDateTime createdAtUtc = {},
-        QDateTime updatedAtUtc = {}
+        QDateTime updatedAtUtc = {},
+        InvestmentPositionSettings settings = {}
         )
         : id_(std::move(id))
         , accountId_(std::move(accountId))
@@ -27,6 +30,7 @@ public:
         , averagePriceMicros_(averagePriceMicros)
         , createdAtUtc_(std::move(createdAtUtc))
         , updatedAtUtc_(std::move(updatedAtUtc))
+        , settings_(std::move(settings))
     {
     }
 
@@ -38,7 +42,10 @@ public:
     const QDateTime& createdAtUtc() const noexcept { return createdAtUtc_; }
     const QDateTime& updatedAtUtc() const noexcept { return updatedAtUtc_; }
 
+    const InvestmentPositionSettings& settings() const noexcept { return settings_; }
+
 private:
+    InvestmentPositionSettings settings_;
     QString id_;
     QString accountId_;
     QString instrumentId_;

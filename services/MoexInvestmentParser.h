@@ -20,3 +20,9 @@ bool parseMoexInvestmentQuote(
     QString& currencyCode,
     QString* error = nullptr
     );
+
+InvestmentTerms moexDefaultTerms(InvestmentInstrumentType type);
+bool parseMoexInstrumentDetails(const QByteArray& payload, InvestmentMarketInstrument& instrument,
+    QString* error = nullptr);
+bool parseMoexInvestmentQuote(const QByteArray& payload, InvestmentMarketInstrument& instrument,
+    QString* error = nullptr);

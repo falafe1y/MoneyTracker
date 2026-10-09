@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Currency.h"
+#include "InvestmentTerms.h"
 
 #include <QString>
 
@@ -11,7 +12,13 @@ enum class InvestmentInstrumentType {
     Etf,
     Bond,
     Fund,
-    Other
+    Other,
+    PreferredStock,
+    DepositaryReceipt,
+    Metal,
+    Currency,
+    Future,
+    Option
 };
 
 class InvestmentInstrument
@@ -25,7 +32,8 @@ public:
         InvestmentInstrumentType type,
         Currency currency,
         QString marketCode = {},
-        QString primaryBoardId = {}
+        QString primaryBoardId = {},
+        InvestmentTerms terms = {}
         )
         : id_(std::move(id))
         , symbol_(std::move(symbol))
@@ -39,6 +47,7 @@ public:
         , primaryBoardId_(primaryBoardId.isNull()
               ? QStringLiteral("")
               : std::move(primaryBoardId))
+        , terms_(std::move(terms))
     {
     }
 
@@ -51,7 +60,10 @@ public:
     const QString& marketCode() const noexcept { return marketCode_; }
     const QString& primaryBoardId() const noexcept { return primaryBoardId_; }
 
+    const InvestmentTerms& terms() const noexcept { return terms_; }
+
 private:
+    InvestmentTerms terms_;
     QString id_;
     QString symbol_;
     QString isin_;

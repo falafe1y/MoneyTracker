@@ -17,7 +17,8 @@ public:
         QString isin,
         QString name,
         InvestmentInstrumentType type,
-        QString primaryBoardId
+        QString primaryBoardId,
+        InvestmentTerms terms = {}
         )
         : id_(std::move(id))
         , symbol_(std::move(symbol))
@@ -25,6 +26,7 @@ public:
         , name_(std::move(name))
         , type_(type)
         , primaryBoardId_(std::move(primaryBoardId))
+        , terms_(std::move(terms))
     {
     }
 
@@ -49,7 +51,12 @@ public:
         quotedAtUtc_ = std::move(quotedAtUtc);
     }
 
+    const InvestmentTerms& terms() const noexcept { return terms_; }
+    void setTerms(InvestmentTerms terms) { terms_ = std::move(terms); }
+    bool hasQuote() const noexcept { return quotedAtUtc_.isValid(); }
+
 private:
+    InvestmentTerms terms_;
     QString id_;
     QString symbol_;
     QString isin_;

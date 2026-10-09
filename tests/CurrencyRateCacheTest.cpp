@@ -70,6 +70,7 @@ class CurrencyRateCacheTest final : public QObject
 
 private slots:
     void parsesCompleteCbrResponse();
+    void cachesAdditionalCurrenciesWithTheirNominal();
     void loadsLegacyRateScaleWithoutRewritingCache();
     void rejectsResponseWithoutEverySupportedCurrency();
     void rejectsStaleResponse();
@@ -79,6 +80,24 @@ private slots:
     void manualRatesAreUsedWhenAutomaticUpdatesAreDisabled();
     void invalidManualRatesAreRejected();
 };
+
+
+void CurrencyRateCacheTest::cachesAdditionalCurrenciesWithTheirNominal()
+{
+    auto payload = completeResponse();
+    payload.replace("</ValCurs>", "<Valute><CharCode>JPY</CharCode><Nominal>100</Nominal><Value>61,2500</Value></Valute>"
+        "<Valute><CharCode>CNY</CharCode><Nominal>1</Nominal><Value>12,5000</Value></Valute></ValCurs>");
+    CurrencyRateSnapshot snapshot;
+    QVERIFY(parseCbrCurrencyRates(payload, QDateTime::fromString("2026-09-06T03:00:00Z", Qt::ISODate), snapshot));
+    QCOMPARE(snapshot.extraRatesToRubMicros.value("JPY"), qint64(612'500));
+    QCOMPARE(snapshot.extraRatesToRubMicros.value("CNY"), qint64(12'500'000));
+    QTemporaryDir directory;
+    const CurrencyRateCache cache(directory.filePath("rates.json"));
+    QVERIFY(cache.replace(snapshot));
+    CurrencyRateSnapshot restored;
+    QVERIFY(cache.load(restored));
+    QCOMPARE(restored.extraRatesToRubMicros, snapshot.extraRatesToRubMicros);
+}
 
 void CurrencyRateCacheTest::loadsLegacyRateScaleWithoutRewritingCache()
 {

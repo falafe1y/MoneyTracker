@@ -30,6 +30,7 @@ CbrCurrencyRateProvider::CbrCurrencyRateProvider(QObject* parent)
     CurrencyRateSnapshot cached;
     if (cache_.load(cached)) {
         automaticRatesToUsd_ = cached.ratesToUsd;
+        extraRatesToRubMicros_ = cached.extraRatesToRubMicros;
         lastSuccessfulFetchUtc_ = cached.fetchedAtUtc;
     }
 
@@ -177,6 +178,7 @@ void CbrCurrencyRateProvider::finishRefresh(QNetworkReply* reply)
                 updated,
                 &updateError)) {
             automaticRatesToUsd_ = updated.ratesToUsd;
+            extraRatesToRubMicros_ = updated.extraRatesToRubMicros;
             lastSuccessfulFetchUtc_ = updated.fetchedAtUtc;
             emit ratesUpdated();
         } else {
@@ -244,4 +246,16 @@ bool CbrCurrencyRateProvider::buildRatesToUsd(
         static_cast<qint64>(std::llround(eurRate))
     };
     return true;
+}
+
+qint64 CbrCurrencyRateProvider::rateToRubMicros(const QString& code) const
+{
+    if(code==QStringLiteral("RUB")) return 1'000'000;
+    if(code==QStringLiteral("USD") || code==QStringLiteral("EUR")) {
+        const auto source=rateToUsd(code==QStringLiteral("USD")?Currency::USD:Currency::EUR);
+        const auto rub=rateToUsd(Currency::RUB);
+        const long double rate=rub>0?static_cast<long double>(source)/rub*1'000'000.0L:0;
+        return rate>0 && rate<std::numeric_limits<qint64>::max()?static_cast<qint64>(std::round(rate)):0;
+    }
+    return automaticUpdatesEnabled_?extraRatesToRubMicros_.value(code,0):0;
 }

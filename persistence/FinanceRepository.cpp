@@ -133,7 +133,7 @@ bool insertTransactionRow(
     query.bindValue(3, transaction.type() == TransactionType::Income ? 0 : 1);
     query.bindValue(4, transaction.money().minorUnits());
     query.bindValue(5, transaction.date().toMSecsSinceEpoch());
-    query.bindValue(6, transaction.description());
+    query.bindValue(6, transaction.description().isNull() ? QStringLiteral("") : transaction.description());
     if (transaction.projectId().isEmpty()) {
         query.bindValue(7, QVariant());
     } else {
@@ -218,7 +218,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath)
         return;
     }
 
-    if (!initializeSchema() || !migrateLegacySchema() || !seedDefaults()) {
+    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !seedDefaults()) {
         database_.close();
     }
 }
@@ -350,6 +350,7 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                 QStringLiteral("crypto_transactions"), QStringLiteral("crypto_wallet_names"),
                 QStringLiteral("crypto_exchanges"), QStringLiteral("crypto_prices"),
                 QStringLiteral("investment_positions"), QStringLiteral("investment_quotes"),
+                QStringLiteral("investment_operations"),
                 QStringLiteral("capital_snapshots"), QStringLiteral("bank_csv_profiles"),
                 QStringLiteral("bank_category_rules"), QStringLiteral("settings")};
             QSet<QString> sourceTables;
@@ -448,6 +449,7 @@ bool FinanceRepository::clearAllUserData()
         QStringLiteral("DELETE FROM crypto_exchanges"),
         QStringLiteral("DELETE FROM crypto_wallet_names"),
         QStringLiteral("DELETE FROM crypto_transactions"),
+        QStringLiteral("DELETE FROM investment_operations"),
         QStringLiteral("DELETE FROM investment_quotes"),
         QStringLiteral("DELETE FROM investment_positions"),
         QStringLiteral("DELETE FROM budget_accounts"),
@@ -1052,7 +1054,7 @@ QVector<InvestmentInstrument> FinanceRepository::loadInvestmentInstruments()
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
             "SELECT id, symbol, isin, name, type, currency, "
-            "       market_code, primary_board_id "
+            "       market_code, primary_board_id, terms_json "
             "FROM investment_instruments WHERE is_archived = 0 "
             "ORDER BY name COLLATE NOCASE, symbol COLLATE NOCASE"))) {
         setLastError(query.lastError().text());
@@ -1068,7 +1070,7 @@ QVector<InvestmentInstrument> FinanceRepository::loadInvestmentInstruments()
             static_cast<InvestmentInstrumentType>(query.value(4).toInt()),
             currencyFromCode(query.value(5).toString()),
             query.value(6).toString(),
-            query.value(7).toString()));
+            query.value(7).toString(), InvestmentTerms::deserialize(query.value(8).toString())));
     }
     return result;
 }
@@ -1080,7 +1082,7 @@ QVector<InvestmentPosition> FinanceRepository::loadInvestmentPositions()
     if (!query.exec(QStringLiteral(
             "SELECT p.id, p.account_id, p.instrument_id, "
             "       p.quantity_micros, p.average_price_micros, "
-            "       p.created_at, p.updated_at "
+            "       p.created_at, p.updated_at, p.settings_json "
             "FROM investment_positions p "
             "JOIN accounts a ON a.id = p.account_id "
             "JOIN investment_instruments i ON i.id = p.instrument_id "
@@ -1101,7 +1103,8 @@ QVector<InvestmentPosition> FinanceRepository::loadInvestmentPositions()
             QDateTime::fromMSecsSinceEpoch(
                 query.value(5).toLongLong(), QTimeZone::UTC),
             QDateTime::fromMSecsSinceEpoch(
-                query.value(6).toLongLong(), QTimeZone::UTC)));
+                query.value(6).toLongLong(), QTimeZone::UTC),
+            InvestmentPositionSettings::deserialize(query.value(7).toString())));
     }
     return result;
 }
@@ -1111,7 +1114,7 @@ QVector<InvestmentQuote> FinanceRepository::loadInvestmentQuotes()
     QVector<InvestmentQuote> result;
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
-            "SELECT q.instrument_id, q.price_micros, q.quoted_at "
+            "SELECT q.instrument_id, q.price_micros, q.quoted_at, q.terms_json "
             "FROM investment_quotes q "
             "JOIN investment_instruments i ON i.id = q.instrument_id "
             "WHERE i.is_archived = 0 "
@@ -1125,7 +1128,8 @@ QVector<InvestmentQuote> FinanceRepository::loadInvestmentQuotes()
             query.value(0).toString(),
             query.value(1).toLongLong(),
             QDateTime::fromMSecsSinceEpoch(
-                query.value(2).toLongLong(), QTimeZone::UTC)));
+                query.value(2).toLongLong(), QTimeZone::UTC),
+            InvestmentTerms::deserialize(query.value(3).toString())));
     }
     return result;
 }
@@ -1387,7 +1391,7 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
     query.addBindValue(transaction.type() == TransactionType::Income ? 0 : 1);
     query.addBindValue(transaction.money().minorUnits());
     query.addBindValue(transaction.date().toMSecsSinceEpoch());
-    query.addBindValue(transaction.description());
+    query.addBindValue(transaction.description().isNull() ? QStringLiteral("") : transaction.description());
     if (transaction.projectId().isEmpty()) {
         query.addBindValue(QVariant());
     } else {
@@ -1554,6 +1558,8 @@ bool FinanceRepository::deleteHistoryRows(const QVariantList& rows)
             query.addBindValue(id);
             if (!query.exec() || query.numRowsAffected() != 1)
                 return fail(query.lastError().isValid() ? query.lastError().text() : QStringLiteral("Investment position not found"));
+        } else if (type == QStringLiteral("investment_cash")) {
+            return fail(QStringLiteral("Инвестиционная операция связана с количеством позиции; удаление отдельно от позиции не поддерживается"));
         } else {
             if (id.isEmpty()) return fail(QStringLiteral("Missing operation"));
             if (removedTransactions.contains(id)) continue;
@@ -1918,7 +1924,8 @@ bool FinanceRepository::updateAccount(const Account& account)
         "WHERE id = ? AND is_archived = 0 "
         "  AND (currency = ? OR NOT EXISTS ("
         "      SELECT 1 FROM transactions WHERE account_id = ?"
-        "  ))"));
+        "  )) AND (currency = ? OR NOT EXISTS (SELECT 1 FROM investment_operations WHERE account_id = ?)) "
+        "AND (account_type = ? OR NOT EXISTS (SELECT 1 FROM investment_operations WHERE account_id = ?))"));
     query.addBindValue(account.name());
     query.addBindValue(static_cast<int>(account.assetType()));
     query.addBindValue(static_cast<int>(account.type()));
@@ -1929,6 +1936,10 @@ bool FinanceRepository::updateAccount(const Account& account)
     query.addBindValue(currencyCode(account.currency()));
     query.addBindValue(account.id());
 
+    query.addBindValue(currencyCode(account.currency()));
+    query.addBindValue(account.id());
+    query.addBindValue(static_cast<int>(account.type()));
+    query.addBindValue(account.id());
     if (!query.exec() || query.numRowsAffected() != 1) {
         setLastError(query.lastError().isValid()
                          ? query.lastError().text()
@@ -2385,8 +2396,8 @@ bool FinanceRepository::insertInvestmentInstrument(
     )
 {
     const QString id = instrument.id().trimmed();
-    const QString symbol = instrument.symbol().trimmed().toUpper();
-    const QString isin = instrument.isin().trimmed().toUpper();
+    const QString symbol = instrument.symbol().trimmed();
+    const QString isin = instrument.isin().isNull()?QStringLiteral(""):instrument.isin().trimmed().toUpper();
     const QString name = instrument.name().trimmed();
     const QString marketCode = instrument.marketCode().trimmed().toUpper();
     const QString primaryBoardId =
@@ -2394,7 +2405,7 @@ bool FinanceRepository::insertInvestmentInstrument(
     const int type = static_cast<int>(instrument.type());
     if (id.isEmpty() || symbol.isEmpty() || name.isEmpty() ||
         type < static_cast<int>(InvestmentInstrumentType::Stock) ||
-        type > static_cast<int>(InvestmentInstrumentType::Other)) {
+        type > static_cast<int>(InvestmentInstrumentType::Option)) {
         setLastError(QStringLiteral("Invalid investment instrument"));
         return false;
     }
@@ -2403,8 +2414,8 @@ bool FinanceRepository::insertInvestmentInstrument(
     query.prepare(QStringLiteral(
         "INSERT INTO investment_instruments("
         "id, symbol, isin, name, type, currency, market_code, "
-        "primary_board_id, is_archived, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)"));
+        "primary_board_id, terms_json, is_archived, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)"));
     query.addBindValue(id);
     query.addBindValue(symbol);
     query.addBindValue(isin);
@@ -2413,6 +2424,7 @@ bool FinanceRepository::insertInvestmentInstrument(
     query.addBindValue(currencyCode(instrument.currency()));
     query.addBindValue(marketCode);
     query.addBindValue(primaryBoardId);
+    query.addBindValue(instrument.terms().serialize());
     query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
     if (!query.exec()) {
         setLastError(query.lastError().text());
@@ -2425,8 +2437,8 @@ bool FinanceRepository::updateInvestmentInstrument(
     const InvestmentInstrument& instrument
     )
 {
-    const QString symbol = instrument.symbol().trimmed().toUpper();
-    const QString isin = instrument.isin().trimmed().toUpper();
+    const QString symbol = instrument.symbol().trimmed();
+    const QString isin = instrument.isin().isNull()?QStringLiteral(""):instrument.isin().trimmed().toUpper();
     const QString name = instrument.name().trimmed();
     const QString marketCode = instrument.marketCode().trimmed().toUpper();
     const QString primaryBoardId =
@@ -2435,7 +2447,7 @@ bool FinanceRepository::updateInvestmentInstrument(
     if (instrument.id().trimmed().isEmpty() || symbol.isEmpty() ||
         name.isEmpty() ||
         type < static_cast<int>(InvestmentInstrumentType::Stock) ||
-        type > static_cast<int>(InvestmentInstrumentType::Other)) {
+        type > static_cast<int>(InvestmentInstrumentType::Option)) {
         setLastError(QStringLiteral("Invalid investment instrument"));
         return false;
     }
@@ -2444,7 +2456,7 @@ bool FinanceRepository::updateInvestmentInstrument(
     query.prepare(QStringLiteral(
         "UPDATE investment_instruments "
         "SET symbol = ?, isin = ?, name = ?, type = ?, currency = ?, "
-        "    market_code = ?, primary_board_id = ? "
+        "    market_code = ?, primary_board_id = ?, terms_json = ? "
         "WHERE id = ? AND is_archived = 0 "
         "  AND (currency = ? OR ("
         "      NOT EXISTS (SELECT 1 FROM investment_positions "
@@ -2458,6 +2470,7 @@ bool FinanceRepository::updateInvestmentInstrument(
     query.addBindValue(currencyCode(instrument.currency()));
     query.addBindValue(marketCode);
     query.addBindValue(primaryBoardId);
+    query.addBindValue(instrument.terms().serialize());
     query.addBindValue(instrument.id());
     query.addBindValue(currencyCode(instrument.currency()));
     query.addBindValue(instrument.id());
@@ -2501,7 +2514,9 @@ bool FinanceRepository::insertInvestmentPosition(
         position.accountId().trimmed().isEmpty() ||
         position.instrumentId().trimmed().isEmpty() ||
         position.quantityMicros() <= 0 ||
-        position.averagePriceMicros() < 0) {
+        position.averagePriceMicros() < 0 ||
+        (position.settings().direction != 1 && position.settings().direction != -1) ||
+        position.settings().blockedMarginMinor < 0 || position.settings().manualFxRateMicros < 0) {
         setLastError(QStringLiteral("Invalid investment position"));
         return false;
     }
@@ -2510,8 +2525,8 @@ bool FinanceRepository::insertInvestmentPosition(
     query.prepare(QStringLiteral(
         "INSERT INTO investment_positions("
         "id, account_id, instrument_id, quantity_micros, "
-        "average_price_micros, is_archived, created_at, updated_at) "
-        "SELECT ?, ?, ?, ?, ?, 0, ?, ? "
+        "average_price_micros, settings_json, is_archived, created_at, updated_at) "
+        "SELECT ?, ?, ?, ?, ?, ?, 0, ?, ? "
         "WHERE EXISTS ("
         "    SELECT 1 FROM accounts "
         "    WHERE id = ? AND asset_type = 2 AND is_archived = 0) "
@@ -2524,6 +2539,7 @@ bool FinanceRepository::insertInvestmentPosition(
     query.addBindValue(position.instrumentId());
     query.addBindValue(position.quantityMicros());
     query.addBindValue(position.averagePriceMicros());
+    query.addBindValue(position.settings().serialize());
     query.addBindValue(now);
     query.addBindValue(now);
     query.addBindValue(position.accountId());
@@ -2546,7 +2562,9 @@ bool FinanceRepository::updateInvestmentPosition(
         position.accountId().trimmed().isEmpty() ||
         position.instrumentId().trimmed().isEmpty() ||
         position.quantityMicros() <= 0 ||
-        position.averagePriceMicros() < 0) {
+        position.averagePriceMicros() < 0 ||
+        (position.settings().direction != 1 && position.settings().direction != -1) ||
+        position.settings().blockedMarginMinor < 0 || position.settings().manualFxRateMicros < 0) {
         setLastError(QStringLiteral("Invalid investment position"));
         return false;
     }
@@ -2555,7 +2573,7 @@ bool FinanceRepository::updateInvestmentPosition(
     query.prepare(QStringLiteral(
         "UPDATE investment_positions "
         "SET account_id = ?, instrument_id = ?, quantity_micros = ?, "
-        "    average_price_micros = ?, updated_at = ? "
+        "    average_price_micros = ?, settings_json = ?, updated_at = ? "
         "WHERE id = ? AND is_archived = 0 "
         "  AND EXISTS (SELECT 1 FROM accounts "
         "      WHERE id = ? AND asset_type = 2 AND is_archived = 0) "
@@ -2565,6 +2583,7 @@ bool FinanceRepository::updateInvestmentPosition(
     query.addBindValue(position.instrumentId());
     query.addBindValue(position.quantityMicros());
     query.addBindValue(position.averagePriceMicros());
+    query.addBindValue(position.settings().serialize());
     query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
     query.addBindValue(position.id());
     query.addBindValue(position.accountId());
@@ -2614,26 +2633,29 @@ bool FinanceRepository::archiveInvestmentPosition(const QString& id)
 bool FinanceRepository::saveInvestmentQuote(const InvestmentQuote& quote)
 {
     if (quote.instrumentId().trimmed().isEmpty() ||
-        quote.priceMicros() <= 0 || !quote.quotedAtUtc().isValid()) {
+        !quote.quotedAtUtc().isValid()) {
         setLastError(QStringLiteral("Invalid investment quote"));
         return false;
     }
 
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
-        "INSERT INTO investment_quotes(instrument_id, price_micros, quoted_at) "
-        "SELECT ?, ?, ? WHERE EXISTS ("
+        "INSERT INTO investment_quotes(instrument_id, price_micros, quoted_at, terms_json) "
+        "SELECT ?, ?, ?, ? WHERE EXISTS ("
         "    SELECT 1 FROM investment_instruments "
-        "    WHERE id = ? AND is_archived = 0) "
+        "    WHERE id = ? AND is_archived = 0 AND (? > 0 OR type = 9 OR (type = 10 AND ? = 0))) "
         "ON CONFLICT(instrument_id) DO UPDATE SET "
         "price_micros = excluded.price_micros, "
-        "quoted_at = excluded.quoted_at "
+        "quoted_at = excluded.quoted_at, terms_json = excluded.terms_json "
         "WHERE excluded.quoted_at >= investment_quotes.quoted_at"));
     query.addBindValue(quote.instrumentId());
     query.addBindValue(quote.priceMicros());
     query.addBindValue(
         quote.quotedAtUtc().toUTC().toMSecsSinceEpoch());
+    query.addBindValue(quote.terms().serialize());
     query.addBindValue(quote.instrumentId());
+    query.addBindValue(quote.priceMicros());
+    query.addBindValue(quote.priceMicros());
     if (!query.exec() || query.numRowsAffected() != 1) {
         setLastError(query.lastError().isValid()
                          ? query.lastError().text()
@@ -3180,10 +3202,11 @@ bool FinanceRepository::initializeSchema()
                        "symbol TEXT NOT NULL CHECK(length(trim(symbol)) > 0), "
                        "isin TEXT NOT NULL DEFAULT '', "
                        "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
-                       "type INTEGER NOT NULL CHECK(type IN (0,1,2,3,4)), "
+                       "type INTEGER NOT NULL CHECK(type BETWEEN 0 AND 10), "
                        "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
                        "market_code TEXT NOT NULL DEFAULT '', "
                        "primary_board_id TEXT NOT NULL DEFAULT '', "
+                       "terms_json TEXT NOT NULL DEFAULT '{}', "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
                        "created_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS investment_positions ("
@@ -3193,13 +3216,24 @@ bool FinanceRepository::initializeSchema()
                        "quantity_micros INTEGER NOT NULL CHECK(quantity_micros > 0), "
                        "average_price_micros INTEGER NOT NULL "
                        "CHECK(average_price_micros >= 0), "
+                       "settings_json TEXT NOT NULL DEFAULT '{}', "
                        "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), "
                        "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS investment_quotes ("
                        "instrument_id TEXT PRIMARY KEY "
                        "REFERENCES investment_instruments(id), "
-                       "price_micros INTEGER NOT NULL CHECK(price_micros > 0), "
+                       "price_micros INTEGER NOT NULL, "
+                       "terms_json TEXT NOT NULL DEFAULT '{}', "
                        "quoted_at INTEGER NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS investment_operations ("
+                       "id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id), "
+                       "position_id TEXT REFERENCES investment_positions(id) ON DELETE SET NULL, "
+                       "instrument_id TEXT NOT NULL REFERENCES investment_instruments(id), "
+                       "kind TEXT NOT NULL CHECK(kind IN ('buy','sell','coupon','dividend','amortization','fee','margin','expiry')), "
+                       "cash_delta_minor INTEGER NOT NULL, quantity_delta_micros INTEGER NOT NULL DEFAULT 0, "
+                       "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '')"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_investment_operations_account_date "
+                       "ON investment_operations(account_id, occurred_at DESC)"),
         QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
                        "idx_crypto_wallets_active_address "
                        "ON crypto_wallets(network, address) "
@@ -4015,4 +4049,129 @@ bool FinanceRepository::saveFinancialTrajectorySettings(
     }
     if (!database_.commit()) { setLastError(database_.lastError().text()); return false; }
     return true;
+}
+
+bool FinanceRepository::migrateInvestmentSchema()
+{
+    QSqlQuery query(database_);
+    const auto hasColumn = [&](const QString& table, const QString& name) {
+        QSqlQuery columns(database_); columns.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table));
+        while (columns.next()) if (columns.value(1).toString() == name) return true;
+        return false;
+    };
+    const bool instrumentTerms = hasColumn("investment_instruments", "terms_json");
+    const bool positionSettings = hasColumn("investment_positions", "settings_json");
+    const bool quoteTerms = hasColumn("investment_quotes", "terms_json");
+    if (instrumentTerms && positionSettings && quoteTerms) return true;
+    // Rebuild rather than editing sqlite_master. Foreign keys must be disabled
+    // before the transaction; child tables keep references to the original name.
+    if (!query.exec("PRAGMA foreign_keys = OFF") || !database_.transaction()) return false;
+    const auto fail = [&](const QString& error) {
+        database_.rollback(); query.exec("PRAGMA foreign_keys = ON"); setLastError(error); return false;
+    };
+    if (!instrumentTerms) {
+        const QStringList statements{
+            "CREATE TABLE investment_instruments_v2 (id TEXT PRIMARY KEY, symbol TEXT NOT NULL CHECK(length(trim(symbol)) > 0), "
+            "isin TEXT NOT NULL DEFAULT '', name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
+            "type INTEGER NOT NULL CHECK(type BETWEEN 0 AND 10), currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+            "market_code TEXT NOT NULL DEFAULT '', primary_board_id TEXT NOT NULL DEFAULT '', terms_json TEXT NOT NULL DEFAULT '{}', "
+            "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), created_at INTEGER NOT NULL)",
+            "INSERT INTO investment_instruments_v2(id,symbol,isin,name,type,currency,market_code,primary_board_id,is_archived,created_at) "
+            "SELECT id,symbol,isin,name,type,currency,market_code,primary_board_id,is_archived,created_at FROM investment_instruments",
+            "DROP TABLE investment_instruments",
+            "ALTER TABLE investment_instruments_v2 RENAME TO investment_instruments",
+            "CREATE UNIQUE INDEX idx_investment_instruments_active_isin ON investment_instruments(isin) WHERE is_archived=0 AND isin<>''"};
+        for (const auto& sql : statements) if (!query.exec(sql)) return fail(query.lastError().text());
+    }
+    if (!positionSettings && !query.exec("ALTER TABLE investment_positions ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'")) return fail(query.lastError().text());
+    if (!quoteTerms) {
+        const QStringList statements{
+            "CREATE TABLE investment_quotes_v2 (instrument_id TEXT PRIMARY KEY REFERENCES investment_instruments(id), "
+            "price_micros INTEGER NOT NULL, quoted_at INTEGER NOT NULL, terms_json TEXT NOT NULL DEFAULT '{}')",
+            "INSERT INTO investment_quotes_v2(instrument_id,price_micros,quoted_at) SELECT instrument_id,price_micros,quoted_at FROM investment_quotes",
+            "DROP TABLE investment_quotes", "ALTER TABLE investment_quotes_v2 RENAME TO investment_quotes"};
+        for (const auto& sql : statements) if (!query.exec(sql)) return fail(query.lastError().text());
+    }
+    if (!query.exec("PRAGMA foreign_key_check")) return fail(query.lastError().text());
+    if (query.next()) return fail(QStringLiteral("Нарушены связи после обновления инвестиций"));
+    query.finish();
+    if (!database_.commit()) return fail(database_.lastError().text());
+    if (!query.exec("PRAGMA foreign_keys = ON")) { setLastError(query.lastError().text()); return false; }
+    return true;
+}
+
+QVector<InvestmentOperation> FinanceRepository::loadInvestmentOperations()
+{
+    QVector<InvestmentOperation> result; QSqlQuery q(database_);
+    if (!q.exec("SELECT o.id,o.account_id,o.position_id,o.instrument_id,o.kind,o.cash_delta_minor,"
+                "o.quantity_delta_micros,o.occurred_at,o.description FROM investment_operations o "
+                "JOIN accounts a ON a.id=o.account_id WHERE a.is_archived=0 ORDER BY o.occurred_at DESC,o.id")) {
+        setLastError(q.lastError().text()); return result;
+    }
+    while(q.next()) result.append({q.value(0).toString(),q.value(1).toString(),q.value(2).toString(),q.value(3).toString(),
+        q.value(4).toString(),q.value(5).toLongLong(),q.value(6).toLongLong(),
+        QDateTime::fromMSecsSinceEpoch(q.value(7).toLongLong(),QTimeZone::UTC),q.value(8).toString()});
+    return result;
+}
+
+bool FinanceRepository::hasInvestmentOperations(const QString& id) const
+{
+    QSqlQuery q(database_);q.prepare("SELECT 1 FROM investment_operations WHERE position_id=? LIMIT 1");q.addBindValue(id);
+    return q.exec() && q.next();
+}
+
+namespace {
+bool insertInvestmentOperation(QSqlDatabase& database, const InvestmentOperation& op, QString& error)
+{
+    if(op.id.isEmpty() || op.accountId.isEmpty() || op.instrumentId.isEmpty() || !op.occurredAtUtc.isValid()) {
+        error=QStringLiteral("Некорректная инвестиционная операция");return false;
+    }
+    QSqlQuery q(database);q.prepare("INSERT INTO investment_operations(id,account_id,position_id,instrument_id,kind,"
+        "cash_delta_minor,quantity_delta_micros,occurred_at,description) SELECT ?,?,?,?,?,?,?,?,? "
+        "WHERE EXISTS (SELECT 1 FROM accounts WHERE id=? AND asset_type=2 AND account_type=6 AND is_archived=0)");
+    q.addBindValue(op.id);q.addBindValue(op.accountId);q.addBindValue(op.positionId.isEmpty()?QVariant():QVariant(op.positionId));
+    q.addBindValue(op.instrumentId);q.addBindValue(op.kind);q.addBindValue(op.cashDeltaMinor);q.addBindValue(op.quantityDeltaMicros);
+    q.addBindValue(op.occurredAtUtc.toMSecsSinceEpoch());q.addBindValue(op.description.isNull()?QStringLiteral(""):op.description);
+    q.addBindValue(op.accountId);
+    if(!q.exec() || q.numRowsAffected()!=1){error=q.lastError().isValid()?q.lastError().text():QStringLiteral("Счёт не найден");return false;}return true;
+}
+}
+
+bool FinanceRepository::saveInvestmentBundle(const InvestmentInstrument& instrument,
+    const InvestmentPosition& position, const std::optional<InvestmentQuote>& quote,
+    bool editing, const std::optional<InvestmentOperation>& operation)
+{
+    if(!database_.transaction()){setLastError(database_.lastError().text());return false;}
+    const auto fail=[&](){const auto error=lastError_;database_.rollback();setLastError(error);return false;};
+    QSqlQuery q(database_);q.prepare("SELECT is_archived FROM investment_instruments WHERE id=?");q.addBindValue(instrument.id());
+    if(!q.exec()){setLastError(q.lastError().text());return fail();}
+    const bool exists=q.next();const bool archived=exists && q.value(0).toBool();q.finish();
+    if(archived){q.prepare("UPDATE investment_instruments SET is_archived=0 WHERE id=?");q.addBindValue(instrument.id());
+        if(!q.exec()){setLastError(q.lastError().text());return fail();}}
+    if(!(exists?updateInvestmentInstrument(instrument):insertInvestmentInstrument(instrument)))return fail();
+    if(!(editing?updateInvestmentPosition(position):insertInvestmentPosition(position)))return fail();
+    if(quote && !saveInvestmentQuote(*quote))return fail();
+    if(operation){QString error;if(!insertInvestmentOperation(database_,*operation,error)){setLastError(error);return fail();}}
+    if(!database_.commit()){setLastError(database_.lastError().text());return fail();}return true;
+}
+
+bool FinanceRepository::bookInvestmentOperation(const InvestmentOperation& op,
+    const InvestmentPosition& expected, const InvestmentPosition& updated, bool close,
+    const std::optional<InvestmentQuote>& quote)
+{
+    if(op.positionId!=expected.id() || op.accountId!=expected.accountId() || op.instrumentId!=expected.instrumentId()
+        || updated.id()!=expected.id() || updated.accountId()!=expected.accountId() || updated.instrumentId()!=expected.instrumentId()) {
+        setLastError(QStringLiteral("Операция не соответствует позиции"));return false;
+    }
+    if(!database_.transaction()){setLastError(database_.lastError().text());return false;}
+    const auto fail=[&](const QString& error){database_.rollback();setLastError(error);return false;};
+    QSqlQuery q(database_);q.prepare("SELECT quantity_micros,settings_json,average_price_micros FROM investment_positions WHERE id=? AND is_archived=0");q.addBindValue(expected.id());
+    if(!q.exec() || !q.next())return fail(QStringLiteral("Позиция не найдена"));
+    if(q.value(0).toLongLong()!=expected.quantityMicros() || q.value(2).toLongLong()!=expected.averagePriceMicros()
+        || InvestmentPositionSettings::deserialize(q.value(1).toString()).serialize()!=expected.settings().serialize())return fail(QStringLiteral("Позиция уже изменилась; откройте операцию заново"));
+    q.finish();
+    if(!(close?archiveInvestmentPosition(expected.id()):updateInvestmentPosition(updated)))return fail(lastError_);
+    if(quote && !saveInvestmentQuote(*quote))return fail(lastError_);
+    QString error;if(!insertInvestmentOperation(database_,op,error))return fail(error);
+    if(!database_.commit())return fail(database_.lastError().text());return true;
 }

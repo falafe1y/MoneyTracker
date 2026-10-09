@@ -21,14 +21,14 @@ public:
 signals:
     void searchSucceeded(const QVector<InvestmentMarketInstrument>& instruments);
     void searchFailed(const QString& message);
-    void quoteSucceeded(
-        const QString& instrumentId,
-        qint64 priceMicros,
-        const QString& currencyCode,
-        const QDateTime& quotedAtUtc
-        );
+    void quoteSucceeded(const InvestmentMarketInstrument& instrument);
+    void instrumentResolved(const InvestmentMarketInstrument& instrument);
     void quoteFailed(const QString& instrumentId, const QString& message);
 
 private:
+    void searchPage(const QString& query, int start, quint64 generation,
+                    QVector<InvestmentMarketInstrument> collected);
+    void requestMarketQuote(const InvestmentMarketInstrument& instrument);
+    quint64 searchGeneration_ = 0;
     QNetworkAccessManager network_;
 };
