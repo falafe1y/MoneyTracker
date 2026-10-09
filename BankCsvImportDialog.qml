@@ -892,6 +892,8 @@ Dialog {
                         readonly property var items: dialog.categoryItems(modelData.type)
                         property bool expanded: false
                         property var ruleDrafts: ({})
+                        // A user's checkbox choice is independent of the selected rule source.
+                        property int rememberRecipientSelection: -1
 
                         function patternForField(field) {
                             if (Object.prototype.hasOwnProperty.call(ruleDrafts, field))
@@ -994,10 +996,14 @@ Dialog {
                                 FormCheckBox {
                                     id: rememberRecipientCheck
                                     text: qsTr("Запомнить имя по правилу")
-                                    checked: reviewGroup.modelData.rows.some(function(row) {
-                                        return dialog.choiceFor(row).rememberRecipient;
-                                    }) || (!!recipientNameField.text.trim() && !!recipientPatternField.text.trim()
-                                        && recipientNameField.text.trim() !== reviewGroup.modelData.merchant)
+                                    objectName: "rememberRecipientCheck"
+                                    checked: reviewGroup.rememberRecipientSelection >= 0
+                                        ? reviewGroup.rememberRecipientSelection === 1
+                                        : reviewGroup.modelData.rows.some(function(row) {
+                                            return dialog.choiceFor(row).rememberRecipient;
+                                        }) || (!!recipientNameField.text.trim()
+                                            && recipientNameField.text.trim() !== reviewGroup.modelData.merchant)
+                                    onClicked: reviewGroup.rememberRecipientSelection = checked ? 1 : 0
                                     enabled: !!recipientNameField.text.trim()
                                 }
                             }
