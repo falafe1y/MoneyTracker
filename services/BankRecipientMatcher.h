@@ -13,6 +13,8 @@ struct BankRecipientRule {
 
 struct BankRecipientMatch {
     TransactionRecipient recipient;
+    // Exact-name rules use the recognized name before personal renaming.
+    QString baseRecipientName;
     QString status = QStringLiteral("unknown");
     QString reason;
     QStringList categoryNames;
@@ -28,6 +30,7 @@ public:
                                       const QVector<BankRecipientRule>& rules = {});
     static bool ruleMatches(const BankCsvOperation& operation, const BankRecipientMatch& base,
                             const BankRecipientRule& rule);
+    static QString bankRecipientName(const BankCsvOperation& operation);
     static QString keyForName(const QString& name);
     static int dictionarySize();
 };

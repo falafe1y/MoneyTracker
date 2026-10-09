@@ -153,6 +153,8 @@ BankImportReviewResult BankImportReview::resolve(const QVariantList& input,
         const bool confirmed = choice.value("confirmed").toBool();
         const bool special = BankCategoryMatcher::isSpecialOperation(operation.description);
         const auto type = operation.signedMinor > 0 ? CategoryType::Income : CategoryType::Expense;
+        row["bankRecipient"] = BankRecipientMatcher::bankRecipientName(operation);
+        row["recognizedRecipient"] = recipient.baseRecipientName;
         row["merchant"] = recipient.recipient.name;
         row["recipientKey"] = recipient.recipient.key;
         row["recipientSource"] = recipient.recipient.source;

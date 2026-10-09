@@ -168,6 +168,11 @@ QString BankRecipientMatcher::normalize(const QString& text)
     return result.simplified();
 }
 
+QString BankRecipientMatcher::bankRecipientName(const BankCsvOperation& operation)
+{
+    return bankName(operation);
+}
+
 QString BankRecipientMatcher::keyForName(const QString& name)
 {
     const auto key = normalize(name);
@@ -200,6 +205,7 @@ BankRecipientMatch BankRecipientMatcher::identify(const BankCsvOperation& operat
     const QVector<BankRecipientRule>& rules)
 {
     auto result = baseMatch(operation);
+    result.baseRecipientName = result.status == "known" ? result.recipient.name : QString();
     QString chosen, pattern, field, mode;
     int best = -1;
     bool conflict = false;

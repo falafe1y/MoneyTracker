@@ -119,6 +119,26 @@ Dialog {
         return groups.filter(function(group) { return !showReviewOnly || group.needsReview; });
     }
 
+    function recipientRuleSource(group, field) {
+        const row = group.rows.length ? group.rows[0] : ({});
+        if (field === "description") return row.description || "";
+        if (field === "bank_recipient") return row.bankRecipient || "";
+        if (field === "recipient_id") return row.recipientId || "";
+        if (field === "recipient") return row.recognizedRecipient || "";
+        return "";
+    }
+
+    function initialRecipientRulePattern(group, field) {
+        const row = group.rows.length ? group.rows[0] : ({});
+        const choice = categoryChoices[row.rowKey];
+        // Keep a rule which the user has already edited and remembered.
+        if (choice && choice.rememberRecipient && choice.recipientField === field)
+            return choice.recipientPattern || "";
+        if (row.recipientSource === "rule" && group.recipientField === field)
+            return group.recipientPattern || "";
+        return recipientRuleSource(group, field);
+    }
+
     function applyGroup(group, name, categoryId, rememberCategory, rememberRecipient, pattern, field, mode) {
         if (!categoryId) return;
         const next = Object.assign({}, categoryChoices);
@@ -871,6 +891,22 @@ Dialog {
                         required property var modelData
                         readonly property var items: dialog.categoryItems(modelData.type)
                         property bool expanded: false
+                        property var ruleDrafts: ({})
+
+                        function patternForField(field) {
+                            if (Object.prototype.hasOwnProperty.call(ruleDrafts, field))
+                                return ruleDrafts[field];
+                            return dialog.initialRecipientRulePattern(modelData, field);
+                        }
+
+                        function fillRulePattern(field) {
+                            const pattern = patternForField(field);
+                            // Show the entire source before the user shortens it to a rule.
+                            recipientPatternField.maximumLength = Math.max(240,
+                                dialog.recipientRuleSource(modelData, field).length, pattern.length);
+                            recipientPatternField.text = pattern;
+                        }
+
                         width: categoryReviewList.width
                         height: reviewContent.implicitHeight + 32
                         radius: 8
@@ -973,6 +1009,7 @@ Dialog {
                                 columnSpacing: 12
                                 FormCombo {
                                     id: recipientRuleFieldBox
+                                    objectName: "recipientRuleFieldBox"
                                     Layout.preferredWidth: 240
                                     Layout.maximumWidth: 240
                                     model: [{label: qsTr("Описание содержит"), value: "description"},
@@ -980,24 +1017,39 @@ Dialog {
                                         {label: qsTr("ИНН / ID совпадает"), value: "recipient_id"},
                                         {label: qsTr("Распознанное имя"), value: "recipient"}]
                                     currentIndex: dialog.indexByValue(model, reviewGroup.modelData.recipientField)
+                                    onActivated: reviewGroup.fillRulePattern(currentValue)
                                 }
                                 FormField {
                                     id: recipientPatternField
                                     objectName: "recipientPatternField"
                                     Layout.fillWidth: true
                                     Layout.maximumWidth: 10000
-                                    text: reviewGroup.modelData.recipientPattern
-                                    maximumLength: 240
-                                    placeholderText: qsTr("Устойчивые слова из описания")
+                                    maximumLength: Math.max(240,
+                                        dialog.recipientRuleSource(reviewGroup.modelData, recipientRuleFieldBox.currentValue).length)
+                                    text: reviewGroup.patternForField(recipientRuleFieldBox.currentValue)
+                                    placeholderText: qsTr("Значение не найдено — введите правило")
+                                    onTextEdited: {
+                                        const drafts = Object.assign({}, reviewGroup.ruleDrafts);
+                                        drafts[recipientRuleFieldBox.currentValue] = text;
+                                        reviewGroup.ruleDrafts = drafts;
+                                    }
                                 }
                                 Text {
                                     Layout.columnSpan: 2
                                     Layout.fillWidth: true
-                                    text: qsTr("Для описания — целые слова без даты, суммы и номера карты. Остальные поля должны совпасть целиком. Правило сразу применяется к этой выписке и сохраняется после импорта.")
+                                    text: qsTr("Значение подставляется из операции. Отредактируйте его: для описания оставьте целые слова без даты, суммы и номера карты. Остальные поля должны совпасть целиком. Правило сразу применяется к этой выписке и сохраняется после импорта.")
                                     color: dialog.mutedColor
                                     font.pixelSize: 13
                                     wrapMode: Text.WordWrap
                                 }
+                            }
+                            Text {
+                                visible: rememberRecipientCheck.checked && recipientPatternField.text.length > 240
+                                Layout.fillWidth: true
+                                text: qsTr("Сократите правило до 240 символов: оставьте слова, по которым узнаётся получатель.")
+                                color: dialog.errorColor
+                                font.pixelSize: 14
+                                wrapMode: Text.WordWrap
                             }
                             RowLayout {
                                 Layout.fillWidth: true
