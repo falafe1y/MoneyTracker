@@ -53,7 +53,7 @@ QString currency(QString text)
 struct Header { double date = -1, description = -1, amount = -1, income = -1, expense = -1, id = -1; };
 struct Record { QString date, description, id, amount, currency; int amountCount = 0; bool pending = false; };
 const QRegularExpression dateRe(QStringLiteral("^(\\d{2}\\.\\d{2}\\.(?:\\d{4}|\\d{2}))(?:\\s|$)"));
-const QRegularExpression moneyRe(QStringLiteral("(?<![\\d.,])([+\\-−]?\\s*(?:\\d{1,3}(?:[ \\x{00a0}\\x{202f}]\\d{3})+|\\d+)[.,]\\d{2})(?!\\d)"));
+const QRegularExpression moneyRe(QStringLiteral("(?<![\\d.,])([+\\-−]?\\s*(?:\\d{1,3}(?:[ \\x{00a0}\\x{202f}]\\d{3})+|\\d+)[.,]\\d{2})(?![\\d.,])"));
 }
 
 CsvCodec::ReadResult PdfStatementReader::read(const QString& path)
@@ -156,10 +156,24 @@ CsvCodec::ReadResult PdfStatementReader::parsePages(const QVector<Page>& pages)
                         QStringLiteral("Описание"), QStringLiteral("Идентификатор операции"),
                         QStringLiteral("Валюта счета")});
     QString documentText;
-    for (const auto& page : pages)
-        for (const auto& line : lines(page)) documentText += text(line) + QLatin1Char('\n');
-    const bool alfa = documentText.contains(QRegularExpression(QStringLiteral("альфа[ -]?банк"), QRegularExpression::CaseInsensitiveOption));
-    const bool sber = documentText.contains(QStringLiteral("сбер"), Qt::CaseInsensitive);
+    QString issuerText;
+    // Bank names in transfers and multiline descriptions identify counterparties,
+    // not the statement issuer. Read the first-page preamble and signature captions.
+    const QRegularExpression signatureRe(QStringLiteral(
+        "^\\(?\\s*(?:(?:подпись|ф\\.?\\s*и\\.?\\s*о\\.?)\\s+сотрудника|уполномоченн(?:ое|ый)\\s+лицо)"),
+        QRegularExpression::CaseInsensitiveOption);
+    for (qsizetype pageIndex = 0; pageIndex < pages.size(); ++pageIndex) {
+        bool preamble = pageIndex == 0;
+        for (const auto& line : lines(pages[pageIndex])) {
+            const QString full = text(line);
+            documentText += full + QLatin1Char('\n');
+            if (dateRe.match(full).hasMatch()) preamble = false;
+            if (preamble || signatureRe.match(full).hasMatch())
+                issuerText += full + QLatin1Char('\n');
+        }
+    }
+    const bool alfa = issuerText.contains(QRegularExpression(QStringLiteral("альфа[ -]?банк"), QRegularExpression::CaseInsensitiveOption));
+    const bool sber = issuerText.contains(QStringLiteral("сбер"), Qt::CaseInsensitive);
     if (alfa == sber) {
         result.error = QStringLiteral("Банк не определён однозначно. Поддерживаются выписки Альфа-Банка и Сбера.");
         return result;

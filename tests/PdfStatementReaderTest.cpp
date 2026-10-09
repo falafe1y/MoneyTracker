@@ -79,6 +79,77 @@ private slots:
         QCOMPARE(result.rows[1][1], QStringLiteral("+700,00"));
         QCOMPARE(result.rows[2][1], QStringLiteral("-350,00"));
     }
+    void alfaIgnoresOtherBankInMultilineDescription() {
+        auto page = alfaHeader();
+        add(page, "01.10.2026", 20, 100);
+        add(page, QStringLiteral("Перевод из ПАО Сбербанк"), 200, 100);
+        add(page, "700,00 RUR", 460, 100);
+        Reader::Page second;
+        add(second, QStringLiteral("через Сбербанк Онлайн"), 200, 10);
+        add(second, "02.10.2026", 20, 40);
+        add(second, QStringLiteral("Оплата"), 200, 40);
+        add(second, "-100,00 RUR", 460, 40);
+        const auto result = Reader::parsePages({page, second});
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.encoding, QStringLiteral("PDF · Альфа-Банк"));
+        QCOMPARE(result.rows.size(), 3);
+        QCOMPARE(result.rows[1][1], QStringLiteral("+700,00"));
+        QVERIFY(result.rows[1][2].contains(QStringLiteral("Сбербанк Онлайн")));
+    }
+    void sberIgnoresAlfaInDescription() {
+        auto page = alfaHeader();
+        page[1].text = QStringLiteral("Сбербанк");
+        add(page, "01.10.2026", 20, 100);
+        add(page, QStringLiteral("Перевод в АО Альфа-Банк"), 200, 100);
+        add(page, "-700,00 RUB", 460, 100);
+        const auto result = Reader::parsePages({page});
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.encoding, QStringLiteral("PDF · Сбер"));
+        QCOMPARE(result.rows[1][1], QStringLiteral("-700,00"));
+    }
+    void issuerOnlyInSignature() {
+        auto page = alfaHeader();
+        page.remove(0, 2); // The actual Alfa statement has no bank name in its preamble.
+        add(page, "01.10.2026", 20, 100);
+        add(page, QStringLiteral("Перевод из ПАО Сбербанк"), 200, 100);
+        add(page, "700,00 RUR", 460, 100);
+        add(page, QStringLiteral("(подпись сотрудника АО «АЛЬФА-БАНК»)"), 20, 750);
+        const auto result = Reader::parsePages({page});
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.encoding, QStringLiteral("PDF · Альфа-Банк"));
+        QCOMPARE(result.rows.size(), 2);
+        QCOMPARE(result.rows[1][1], QStringLiteral("+700,00"));
+    }
+    void counterpartyDoesNotIdentifyUnknownIssuer() {
+        auto page = alfaHeader();
+        page[1].text = QStringLiteral("Другой-Банк");
+        add(page, "01.10.2026", 20, 100);
+        add(page, QStringLiteral("Перевод из ПАО Сбербанк"), 200, 100);
+        add(page, "700,00 RUB", 460, 100);
+        const auto result = Reader::parsePages({page});
+        QVERIFY(result.error.contains(QStringLiteral("Банк не определён")));
+        QCOMPARE(result.rows.size(), 1);
+    }
+    void conflictingIssuersStillFail() {
+        auto page = alfaHeader();
+        add(page, QStringLiteral("ПАО Сбербанк"), 250, 10);
+        add(page, "01.10.2026", 20, 100);
+        add(page, "700,00 RUB", 460, 100);
+        QVERIFY(Reader::parsePages({page}).error.contains(QStringLiteral("Банк не определён")));
+    }
+    void datesAtEndOfDescriptionAreNotAmounts() {
+        for (const auto &date : {QStringLiteral("22.02.26"), QStringLiteral("22.02.2026")}) {
+            auto page = alfaHeader();
+            add(page, "22.01.2026", 20, 100);
+            add(page, QStringLiteral("Комиссия за период до"), 200, 100);
+            add(page, date, 440, 100); // A long description reaches the amount search region.
+            add(page, "-99,00 RUR", 520, 100);
+            const auto result = Reader::parsePages({page});
+            QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+            QCOMPARE(result.rows.size(), 2);
+            QCOMPARE(result.rows[1][1], QStringLiteral("-99,00"));
+        }
+    }
     void unrecognizedBankFails() {
         auto page = alfaHeader();
         page[1].text = QStringLiteral("Другой-Банк");
@@ -127,7 +198,7 @@ private slots:
             painter.drawText(500, 80, QStringLiteral("Сумма"));
             painter.drawText(20, 110, "01.10.2026");
             painter.drawText(100, 110, "CRD_123");
-            painter.drawText(200, 110, QStringLiteral("Оплата магазина"));
+            painter.drawText(200, 110, QStringLiteral("Перевод из Сбербанка"));
             painter.drawText(460, 110, "-1 250,45 RUB");
             painter.end();
         }
