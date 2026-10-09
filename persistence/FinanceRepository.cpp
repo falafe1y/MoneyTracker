@@ -3,6 +3,7 @@
 #include "../core/Currency.h"
 
 #include <QDir>
+#include <QMap>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QFileInfo>
@@ -296,6 +297,143 @@ bool FinanceRepository::backupDatabase(const QString& destinationPath)
     source.close();
     QFile::remove(temporaryPath);
     return true;
+}
+
+bool FinanceRepository::restoreDatabase(const QString& sourcePath,
+                                        qint64* added, qint64* skipped)
+{
+    if (added) *added = 0;
+    if (skipped) *skipped = 0;
+    const QFileInfo file(sourcePath);
+    if (!isOpen() || sourcePath.trimmed().isEmpty() || !file.isFile()) {
+        setLastError(QStringLiteral("Выберите существующий файл резервной копии"));
+        return false;
+    }
+    if (file.canonicalFilePath() == QFileInfo(database_.databaseName()).canonicalFilePath()) {
+        setLastError(QStringLiteral("Выберите резервную копию, а не рабочую базу"));
+        return false;
+    }
+
+    const QString connection = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    bool restored = false;
+    qint64 inserted = 0, ignored = 0;
+    {
+        QSqlDatabase source = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        source.setDatabaseName(file.absoluteFilePath());
+        source.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+        // All source queries and database handles are destroyed before removing the connection.
+        restored = [&]() -> bool {
+            const auto fail = [this](const QString& message) {
+                setLastError(message);
+                return false;
+            };
+            if (!source.open()) return fail(QStringLiteral("Не удалось открыть копию: ") + source.lastError().text());
+            if (!source.transaction()) return fail(source.lastError().text());
+            QSqlQuery check(source);
+            if (!check.exec(QStringLiteral("PRAGMA quick_check")) || !check.next()
+                || check.value(0).toString() != QStringLiteral("ok")) {
+                return fail(QStringLiteral("Файл повреждён или не является базой SQLite"));
+            }
+            check.finish();
+            if (!check.exec(QStringLiteral("PRAGMA foreign_key_check")) || check.next()) {
+                return fail(QStringLiteral("В копии нарушены связи между записями"));
+            }
+            check.finish();
+            const QStringList tables{
+                QStringLiteral("accounts"), QStringLiteral("categories"), QStringLiteral("projects"),
+                QStringLiteral("budgets"), QStringLiteral("financial_goals"),
+                QStringLiteral("investment_instruments"), QStringLiteral("crypto_wallets"),
+                QStringLiteral("transactions"), QStringLiteral("deposit_settings"),
+                QStringLiteral("recurring_transactions"), QStringLiteral("budget_accounts"),
+                QStringLiteral("budget_category_limits"), QStringLiteral("budget_months"),
+                QStringLiteral("deposit_interest_occurrences"), QStringLiteral("recurring_transaction_occurrences"),
+                QStringLiteral("crypto_transactions"), QStringLiteral("crypto_wallet_names"),
+                QStringLiteral("crypto_exchanges"), QStringLiteral("crypto_prices"),
+                QStringLiteral("investment_positions"), QStringLiteral("investment_quotes"),
+                QStringLiteral("capital_snapshots"), QStringLiteral("bank_csv_profiles"),
+                QStringLiteral("bank_category_rules"), QStringLiteral("settings")};
+            QSet<QString> sourceTables;
+            if (!check.exec(QStringLiteral("SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','view')"))) {
+                return fail(check.lastError().text());
+            }
+            while (check.next()) {
+                const QString table = check.value(0).toString();
+                if (check.value(1).toString() != QStringLiteral("table") || !tables.contains(table)) {
+                    return fail(QStringLiteral("Структура копии не поддерживается этой версией программы"));
+                }
+                sourceTables.insert(table);
+            }
+            check.finish();
+            for (const auto& required : {QStringLiteral("accounts"), QStringLiteral("categories"), QStringLiteral("transactions"), QStringLiteral("settings")}) {
+                if (!sourceTables.contains(required)) return fail(QStringLiteral("Файл не является резервной копией Ledgera"));
+            }
+            if (!database_.transaction()) return fail(database_.lastError().text());
+            const auto rollback = [&](const QString& error) {
+                database_.rollback();
+                return fail(QStringLiteral("Восстановление отменено, текущие данные сохранены: ") + error);
+            };
+            QSqlQuery pragma(database_);
+            if (!pragma.exec(QStringLiteral("PRAGMA defer_foreign_keys = ON"))) return rollback(pragma.lastError().text());
+            for (const QString& table : tables) {
+                if (!sourceTables.contains(table)) continue; // Older copies may lack newer features.
+                QSqlQuery targetInfo(database_), sourceInfo(source);
+                const QString infoSql = QStringLiteral("PRAGMA table_info(\"%1\")").arg(table);
+                if (!targetInfo.exec(infoSql) || !sourceInfo.exec(infoSql)) return rollback(QStringLiteral("Не удалось прочитать структуру копии"));
+                QSet<QString> targetColumns;
+                QMap<int, QString> targetKeys, sourceKeys;
+                QSet<QString> requiredColumns;
+                while (targetInfo.next()) {
+                    const QString column = targetInfo.value(1).toString();
+                    targetColumns.insert(column);
+                    if (targetInfo.value(5).toInt() > 0) targetKeys.insert(targetInfo.value(5).toInt(), column);
+                    if (targetInfo.value(3).toBool() && targetInfo.value(4).isNull()) requiredColumns.insert(column);
+                }
+                QStringList columns, placeholders;
+                while (sourceInfo.next()) {
+                    const QString column = sourceInfo.value(1).toString();
+                    if (!targetColumns.contains(column)) return rollback(QStringLiteral("Несовместимая структура таблицы %1").arg(table));
+                    if (sourceInfo.value(5).toInt() > 0) sourceKeys.insert(sourceInfo.value(5).toInt(), column);
+                    requiredColumns.remove(column);
+                    QString quoted = column;
+                    quoted.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+                    columns.append(QLatin1Char('"') + quoted + QLatin1Char('"'));
+                    placeholders.append(QStringLiteral("?"));
+                }
+                if (!requiredColumns.isEmpty() || targetKeys.isEmpty() || targetKeys != sourceKeys) {
+                    return rollback(QStringLiteral("Несовместимая структура таблицы %1").arg(table));
+                }
+                targetInfo.finish(); sourceInfo.finish();
+                QStringList keys;
+                for (const QString& key : targetKeys) keys.append(QStringLiteral("\"%1\"").arg(key));
+                QSqlQuery rows(source), insert(database_);
+                rows.setForwardOnly(true);
+                if (!rows.exec(QStringLiteral("SELECT %1 FROM \"%2\"").arg(columns.join(','), table))
+                    || !insert.prepare(QStringLiteral("INSERT INTO \"%1\" (%2) VALUES (%3) ON CONFLICT (%4) DO NOTHING")
+                        .arg(table, columns.join(','), placeholders.join(','), keys.join(',')))) {
+                    return rollback(QStringLiteral("Не удалось прочитать таблицу %1").arg(table));
+                }
+                while (rows.next()) {
+                    for (qsizetype i = 0; i < columns.size(); ++i) insert.bindValue(i, rows.value(i));
+                    for (const QString& key : keys) {
+                        if (rows.value(columns.indexOf(key)).isNull()) return rollback(QStringLiteral("Пустой идентификатор в таблице %1").arg(table));
+                    }
+                    if (!insert.exec()) return rollback(QStringLiteral("Конфликт данных в таблице %1: %2").arg(table, insert.lastError().text()));
+                    if (insert.numRowsAffected() > 0) ++inserted; else ++ignored;
+                }
+                if (rows.lastError().isValid()) return rollback(rows.lastError().text());
+            }
+            if (!database_.commit()) return rollback(database_.lastError().text());
+            return true;
+        }();
+        source.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+    if (restored) {
+        if (added) *added = inserted;
+        if (skipped) *skipped = ignored;
+        setLastError({});
+    }
+    return restored;
 }
 
 bool FinanceRepository::clearAllUserData()

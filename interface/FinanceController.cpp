@@ -1208,6 +1208,75 @@ QVariantMap FinanceController::backupDatabase(const QUrl& fileUrl)
     return {{QStringLiteral("ok"), true}, {QStringLiteral("path"), path}};
 }
 
+QVariantMap FinanceController::restoreDatabase(const QUrl& fileUrl)
+{
+    qint64 added = 0, skipped = 0;
+    if (!repository_.restoreDatabase(fileUrl.toLocalFile(), &added, &skipped)) {
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), repository_.lastError()}};
+    }
+    transactions_ = repository_.loadTransactions();
+    projects_ = repository_.loadProjects();
+    recurringTransactions_ = repository_.loadRecurringTransactions();
+    categories_ = repository_.loadCategories();
+    archivedCategoryIds_ = repository_.loadArchivedCategoryIds();
+    accounts_ = repository_.loadAccounts();
+    depositSettings_ = repository_.loadDepositSettings();
+    budgets_ = repository_.loadBudgets();
+    financialGoals_ = repository_.loadFinancialGoals();
+    trajectorySettings_ = repository_.loadFinancialTrajectorySettings();
+    cryptoWallets_ = repository_.loadCryptoWallets();
+    for (const auto& wallet : cryptoWallets_) cryptoWalletNames_[wallet.id()] = repository_.cryptoWalletName(wallet.id());
+    cryptoExchanges_ = repository_.loadCryptoExchanges();
+    cryptoTransactions_ = repository_.loadCryptoTransactions();
+    investmentInstruments_ = repository_.loadInvestmentInstruments();
+    investmentPositions_ = repository_.loadInvestmentPositions();
+    investmentQuotes_ = repository_.loadInvestmentQuotes();
+    for (const QString& symbol : {QStringLiteral("USDT"), QStringLiteral("BTC"), QStringLiteral("ETH")}) {
+        const auto price = repository_.loadCryptoPrice(symbol);
+        if (price.priceUsdMicros > 0) cryptoPricesUsdMicros_[symbol] = price.priceUsdMicros;
+        if (price.fetchedAtUtc.isValid()) cryptoPricesFetchedAtUtc_[symbol] = price.fetchedAtUtc;
+    }
+    bankCsvProfiles_.clear();
+    for (const auto& record : repository_.loadBankCsvProfiles()) {
+        const auto document = QJsonDocument::fromJson(record.configurationJson.toUtf8());
+        if (!document.isObject()) continue;
+        auto profile = BankCsvProfile::fromJson(document.object());
+        profile.id = record.id;
+        profile.name = record.name;
+        bankCsvProfiles_.append(profile);
+    }
+    summary_ = repository_.loadSummary();
+    if (selectedProjectId_.isEmpty() && !projects_.isEmpty()) {
+        selectedProjectId_ = projects_.constFirst().id();
+        emit selectedProjectIdChanged();
+    }
+    if (selectedBudgetId_.isEmpty() && !budgets_.isEmpty()) {
+        selectedBudgetId_ = budgets_.constFirst().id();
+        emit selectedBudgetIdChanged();
+    }
+    if (selectedCryptoWalletId_.isEmpty()) {
+        if (!cryptoWallets_.isEmpty()) selectedCryptoWalletId_ = cryptoWallets_.constFirst().id();
+        else if (!cryptoExchanges_.isEmpty()) selectedCryptoWalletId_ = cryptoExchanges_.constFirst().toMap().value("id").toString();
+        emit selectedCryptoWalletIdChanged();
+    }
+    refreshBudgetMonthLimits();
+    emit accountsChanged();
+    emit categoriesChanged();
+    emit transactionsChanged();
+    emit projectsChanged();
+    emit scheduledTransactionsChanged();
+    emit budgetsChanged();
+    emit financialGoalsChanged();
+    emit bankCsvProfilesChanged();
+    emit cryptoWalletsChanged();
+    emit cryptoTransactionsChanged();
+    emit investmentPositionsChanged();
+    emit balanceChanged(); // Rebuilds history, analytics, goals and the current capital snapshot.
+    scheduleRecurringMaterialization();
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("added"), added},
+            {QStringLiteral("skipped"), skipped}};
+}
+
 QVariantMap FinanceController::clearAllData()
 {
     if (!repository_.clearAllUserData()) {

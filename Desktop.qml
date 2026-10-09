@@ -4861,12 +4861,27 @@ ApplicationWindow {
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
-                SoftButton {
-                    neo: true
-                    text: qsTr("Создать резервную копию")
-                    highlighted: true
-                    implicitWidth: 230
-                    onClicked: databaseBackupDialog.open()
+                RowLayout {
+                    spacing: 16
+                    SoftButton {
+                        neo: true
+                        text: qsTr("Создать резервную копию")
+                        highlighted: true
+                        implicitWidth: 230
+                        onClicked: databaseBackupDialog.open()
+                    }
+                    SoftButton {
+                        neo: true
+                        text: qsTr("Восстановить")
+                        implicitWidth: 160
+                        onClicked: databaseRestoreDialog.open()
+                    }
+                }
+                Text {
+                    Layout.preferredWidth: 520
+                    text: qsTr("Восстановление добавляет отсутствующие записи из выбранной копии. Уже существующие данные сохраняются без изменений.")
+                    color: root.muted
+                    wrapMode: Text.WordWrap
                 }
                 Rectangle {
                     Layout.topMargin: 12
@@ -4895,6 +4910,20 @@ ApplicationWindow {
                 }
                 }
             }
+        }
+    }
+
+    FileDialog {
+        id: databaseRestoreDialog
+        title: qsTr("Выберите резервную копию для восстановления")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("База данных SQLite (*.sqlite3 *.db)"), qsTr("Все файлы (*)")]
+        onAccepted: {
+            const result = financeController.restoreDatabase(selectedFile);
+            root.csvStatusOk = result.ok;
+            root.csvStatus = result.ok
+                ? qsTr("Восстановление завершено. Добавлено записей: %1. Уже существовали: %2. Текущие данные сохранены.").arg(result.added).arg(result.skipped)
+                : qsTr("Не удалось восстановить копию: %1").arg(result.error);
         }
     }
 

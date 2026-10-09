@@ -95,6 +95,9 @@ public:
     bool isOpen() const;
     QString lastError() const;
     bool backupDatabase(const QString& destinationPath);
+    // Existing primary keys keep their current values. The merge is atomic.
+    bool restoreDatabase(const QString& sourcePath, qint64* added = nullptr,
+                         qint64* skipped = nullptr);
     bool clearAllUserData();
     QVector<Transaction> loadTransactions();
     QVector<Project> loadProjects();

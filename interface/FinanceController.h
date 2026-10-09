@@ -567,6 +567,7 @@ public:
 
     Q_INVOKABLE QVariantMap exportTransactionsCsv(const QUrl& fileUrl) const;
     Q_INVOKABLE QVariantMap backupDatabase(const QUrl& fileUrl);
+    Q_INVOKABLE QVariantMap restoreDatabase(const QUrl& fileUrl);
     Q_INVOKABLE QVariantMap clearAllData();
     Q_INVOKABLE QVariantMap importTransactionsCsv(const QUrl& fileUrl);
     Q_INVOKABLE QVariantMap inspectBankCsv(
