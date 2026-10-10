@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QIcon>
 #include <QFont>
 #include <QFontDatabase>
 #include <QDebug>
@@ -14,6 +15,10 @@
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/app/vexa.png")));
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+    app.setDesktopFileName(QStringLiteral("vexa"));
+#endif
 
     const int interfaceFontId = QFontDatabase::addApplicationFont(
         QStringLiteral(":/fonts/Commissioner.ttf"));

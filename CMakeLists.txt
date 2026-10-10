@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTORCC ON)
 
@@ -159,6 +161,10 @@ target_link_libraries(appMoneyTracker
 )
 
 if(WIN32)
+    enable_language(RC)
+    configure_file(packaging/windows/vexa.rc.in
+        "${CMAKE_CURRENT_BINARY_DIR}/vexa.rc" @ONLY)
+    target_sources(appMoneyTracker PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/vexa.rc")
     target_link_libraries(appMoneyTracker PRIVATE crypt32)
 endif()
 
@@ -167,6 +173,15 @@ install(TARGETS appMoneyTracker
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+if(UNIX AND NOT APPLE AND NOT ANDROID)
+    install(FILES packaging/linux/vexa.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES assets/icons/app/vexa.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+    install(FILES assets/icons/app/vexa.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps)
+endif()
 
 enable_testing()
 

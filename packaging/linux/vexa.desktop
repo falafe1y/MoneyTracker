@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Vexa
+Comment=Personal finance tracker
+Comment[ru]=Учёт личных финансов
+Exec=appMoneyTracker
+Icon=vexa
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true

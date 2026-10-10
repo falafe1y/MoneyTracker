@@ -1,4 +1,7 @@
 <RCC>
+    <qresource prefix="/icons/app">
+        <file alias="vexa.png">assets/icons/app/vexa.png</file>
+    </qresource>
     <qresource prefix="/fonts">
         <file alias="Commissioner.ttf">assets/fonts/Commissioner.ttf</file>
         <file alias="BBHBartle-Regular.ttf">assets/fonts/BBHBartle-Regular.ttf</file>
