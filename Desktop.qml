@@ -4073,8 +4073,6 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
-                                HardShadow { depth: 3; shadowColor: root.accent }
-
                                 required property var modelData
 
                                 width: ListView.view.width
@@ -4082,7 +4080,7 @@ ApplicationWindow {
                                 radius: 12
                                 color: root.panel
                                 border.width: root.outlineWidth
-                                border.color: root.accent
+                                border.color: root.line
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -4179,8 +4177,6 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
-                                HardShadow { depth: 3; shadowColor: root.accent }
-
                                 required property var modelData
 
                                 width: ListView.view.width
@@ -4188,7 +4184,7 @@ ApplicationWindow {
                                 radius: 12
                                 color: root.panel
                                 border.width: root.outlineWidth
-                                border.color: root.accent
+                                border.color: root.line
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -4280,59 +4276,78 @@ ApplicationWindow {
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 18
-                        RowLayout {
+                        Item {
+                            id: expenseChartHeader
                             Layout.fillWidth: true
+                            Layout.preferredHeight: 44
+
                             Text {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.min(implicitWidth,
+                                    Math.max(0, expenseAverageLabel.x - 16))
                                 text: qsTr("История расходов по месяцам")
                                 color: root.accent
                                 font.pixelSize: 17
                                 font.weight: Font.DemiBold
+                                elide: Text.ElideRight
                             }
-                            Item { Layout.fillWidth: true }
-                            SoftButton {
-                                neo: true
-                                text: "‹"
-                                controlHeight: 40
-                                dimWhenDisabled: false
-                                Layout.preferredWidth: 40
-                                Layout.minimumWidth: 40
-                                Layout.maximumWidth: 40
-                                enabled: analyticsScroll.expenseYear
-                                    > root.expenseHistoryFirstYear()
-                                onClicked: analyticsScroll.expenseYear -= 1
-                            }
+
                             Text {
-                                text: analyticsScroll.expenseYear
-                                color: root.accent
+                                id: expenseAverageLabel
+                                anchors.centerIn: parent
+                                width: Math.min(implicitWidth, Math.max(0,
+                                    parent.width - 2 * (expenseYearSelector.implicitWidth + 16)))
+                                text: qsTr("В среднем %1")
+                                    .arg(root.money(
+                                        root.averageCompletedMonthExpense(
+                                            root.expenseRowsForYear(
+                                                analyticsScroll.expenseYear)),
+                                        "RUB", false))
+                                color: root.muted
                                 font.pixelSize: 14
-                                font.weight: Font.DemiBold
-                                Layout.minimumWidth: 42
                                 horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
                             }
-                            SoftButton {
-                                neo: true
-                                text: "›"
-                                controlHeight: 40
-                                dimWhenDisabled: false
-                                Layout.preferredWidth: 40
-                                Layout.minimumWidth: 40
-                                Layout.maximumWidth: 40
-                                enabled: analyticsScroll.expenseYear
-                                    < root.expenseHistoryLastYear()
-                                onClicked: analyticsScroll.expenseYear += 1
+
+                            RowLayout {
+                                id: expenseYearSelector
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                SoftButton {
+                                    neo: true
+                                    text: "‹"
+                                    controlHeight: 40
+                                    dimWhenDisabled: false
+                                    Layout.preferredWidth: 40
+                                    Layout.minimumWidth: 40
+                                    Layout.maximumWidth: 40
+                                    enabled: analyticsScroll.expenseYear
+                                        > root.expenseHistoryFirstYear()
+                                    onClicked: analyticsScroll.expenseYear -= 1
+                                }
+                                Text {
+                                    text: analyticsScroll.expenseYear
+                                    color: root.accent
+                                    font.pixelSize: 14
+                                    font.weight: Font.DemiBold
+                                    Layout.minimumWidth: 42
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+                                SoftButton {
+                                    neo: true
+                                    text: "›"
+                                    controlHeight: 40
+                                    dimWhenDisabled: false
+                                    Layout.preferredWidth: 40
+                                    Layout.minimumWidth: 40
+                                    Layout.maximumWidth: 40
+                                    enabled: analyticsScroll.expenseYear
+                                        < root.expenseHistoryLastYear()
+                                    onClicked: analyticsScroll.expenseYear += 1
+                                }
                             }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("В среднем %1")
-                                .arg(root.money(
-                                    root.averageCompletedMonthExpense(
-                                        root.expenseRowsForYear(
-                                            analyticsScroll.expenseYear)),
-                                    "RUB", false))
-                            color: root.muted
-                            font.pixelSize: 14
-                            wrapMode: Text.WordWrap
                         }
                         AnalyticsBarChart {
                             Layout.fillWidth: true
@@ -4340,13 +4355,6 @@ ApplicationWindow {
                             points: root.expenseRowsForYear(analyticsScroll.expenseYear)
                             currency: "RUB"
                             averageMinor: root.averageCompletedMonthExpense(points)
-                        }
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            visible: financeController.expenseHistoryByMonthRub.length === 0
-                            text: qsTr("Добавьте расходы — здесь появится история по месяцам")
-                            color: root.muted
-                            font.pixelSize: 14
                         }
                     }
                 }
@@ -4442,44 +4450,8 @@ ApplicationWindow {
             neo: true
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 22
+                anchors.margins: root.panelPadding
                 spacing: 14
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 16
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("Один документ. Изменения сохраняются автоматически.")
-                        color: root.muted
-                        font.pixelSize: 14
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        text: financeController.notesError.length > 0
-                              ? qsTr("Ошибка заметок")
-                              : financeController.notesDirty
-                                ? qsTr("Есть несохранённые изменения")
-                                : qsTr("Сохранено")
-                        color: financeController.notesError.length > 0
-                               ? root.red : root.muted
-                        font.pixelSize: 14
-                        elide: Text.ElideRight
-                        Layout.maximumWidth: 310
-                    }
-
-                    SoftButton {
-                        neo: true
-                        font.weight: Font.DemiBold
-                        text: qsTr("Сохранить")
-                        highlighted: true
-                        enabled: financeController.notesAvailable
-                                 && financeController.notesDirty
-                        onClicked: financeController.saveNotes()
-                    }
-                }
 
                 Text {
                     Layout.fillWidth: true
@@ -4497,14 +4469,7 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     clip: false
                     contentItem.clip: true
-                    background: Rectangle {
-                        HardShadow { depth: 3; shadowColor: root.accent }
-
-                        color: root.soft
-                        radius: 12
-                        border.width: root.outlineWidth
-                        border.color: root.accent
-                    }
+                    background: null
                     ScrollBar.horizontal: ScrollBar {
                         policy: ScrollBar.AlwaysOff
                     }
@@ -4530,10 +4495,7 @@ ApplicationWindow {
                         selectionColor: root.accent
                         selectedTextColor: root.white
                         font.pixelSize: 15
-                        leftPadding: 18
-                        rightPadding: 18
-                        topPadding: 16
-                        bottomPadding: 16
+                        padding: 0
                         background: null
 
                         Component.onCompleted: {
