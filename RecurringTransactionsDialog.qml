@@ -448,7 +448,8 @@ Dialog {
                                 model: [
                                     { label: "RUB", value: "RUB" },
                                     { label: "USD", value: "USD" },
-                                    { label: "EUR", value: "EUR" }
+                                    { label: "EUR", value: "EUR" },
+                                    { label: "CNY", value: "CNY" }
                                 ]
                             }
                         }

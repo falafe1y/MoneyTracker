@@ -57,6 +57,8 @@ QString normalizedCurrency(QString value)
         value == QStringLiteral("840")) return QStringLiteral("USD");
     if (value == QStringLiteral("€") || value == QStringLiteral("EUR") ||
         value == QStringLiteral("978")) return QStringLiteral("EUR");
+    if (value == QStringLiteral("CNY") || value == QStringLiteral("RMB") || value == QStringLiteral("156") ||
+        value == QStringLiteral("¥") || value.startsWith(QStringLiteral("ЮАН"))) return QStringLiteral("CNY");
     return value;
 }
 

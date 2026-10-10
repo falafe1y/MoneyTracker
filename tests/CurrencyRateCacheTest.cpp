@@ -34,6 +34,7 @@ QByteArray completeResponse(
         "<Nominal>1</Nominal><Value>") + eurValue + QByteArrayLiteral(
         "</Value><VunitRate>120,0000</VunitRate>"
         "</Valute>"
+        "<Valute><CharCode>CNY</CharCode><Nominal>10</Nominal><Value>125,0000</Value></Valute>"
         "</ValCurs>");
 }
 
@@ -51,6 +52,7 @@ void compareRates(
     QCOMPARE(
         actual.ratesToUsd[currencyIndex(Currency::EUR)],
         expected.ratesToUsd[currencyIndex(Currency::EUR)]);
+    QCOMPARE(actual.ratesToUsd[currencyIndex(Currency::CNY)], expected.ratesToUsd[currencyIndex(Currency::CNY)]);
 }
 
 QByteArray readFile(const QString& path)
@@ -79,6 +81,8 @@ private slots:
     void olderResponseDoesNotReplaceNewerCache();
     void manualRatesAreUsedWhenAutomaticUpdatesAreDisabled();
     void invalidManualRatesAreRejected();
+    void cnyRatesConvertAndPersist();
+    void missingOrInvalidCnyDoesNotReplaceCache();
 };
 
 
@@ -86,7 +90,7 @@ void CurrencyRateCacheTest::cachesAdditionalCurrenciesWithTheirNominal()
 {
     auto payload = completeResponse();
     payload.replace("</ValCurs>", "<Valute><CharCode>JPY</CharCode><Nominal>100</Nominal><Value>61,2500</Value></Valute>"
-        "<Valute><CharCode>CNY</CharCode><Nominal>1</Nominal><Value>12,5000</Value></Valute></ValCurs>");
+        "</ValCurs>");
     CurrencyRateSnapshot snapshot;
     QVERIFY(parseCbrCurrencyRates(payload, QDateTime::fromString("2026-09-06T03:00:00Z", Qt::ISODate), snapshot));
     QCOMPARE(snapshot.extraRatesToRubMicros.value("JPY"), qint64(612'500));
@@ -192,7 +196,7 @@ void CurrencyRateCacheTest::completeResponseReplacesCache()
     original.sourceDate = QDate(2026, 9, 5);
     original.fetchedAtUtc = QDateTime::fromString(
         QStringLiteral("2026-09-05T03:00:00Z"), Qt::ISODate);
-    original.ratesToUsd = {11'111, kCurrencyRateScale, 1'222'222};
+    original.ratesToUsd = {11'111, kCurrencyRateScale, 1'222'222, 125'000'000};
     QVERIFY(cache.replace(original));
     const QByteArray cacheBeforeUpdate = readFile(cachePath);
     QVERIFY(!cacheBeforeUpdate.isEmpty());
@@ -236,7 +240,7 @@ void CurrencyRateCacheTest::invalidResponseDoesNotReplaceCache()
     original.sourceDate = QDate(2026, 9, 5);
     original.fetchedAtUtc = QDateTime::fromString(
         QStringLiteral("2026-09-05T03:00:00Z"), Qt::ISODate);
-    original.ratesToUsd = {11'111, kCurrencyRateScale, 1'222'222};
+    original.ratesToUsd = {11'111, kCurrencyRateScale, 1'222'222, 125'000'000};
     QVERIFY(cache.replace(original));
     const QByteArray cacheBeforeFailure = readFile(cachePath);
     QVERIFY(!cacheBeforeFailure.isEmpty());
@@ -268,7 +272,7 @@ void CurrencyRateCacheTest::olderResponseDoesNotReplaceNewerCache()
     original.sourceDate = QDate(2026, 9, 6);
     original.fetchedAtUtc = QDateTime::fromString(
         QStringLiteral("2026-09-06T03:00:00Z"), Qt::ISODate);
-    original.ratesToUsd = {11'111, kCurrencyRateScale, 1'222'222};
+    original.ratesToUsd = {11'111, kCurrencyRateScale, 1'222'222, 125'000'000};
     QVERIFY(cache.replace(original));
     const QByteArray cacheBeforeFailure = readFile(cachePath);
     QVERIFY(!cacheBeforeFailure.isEmpty());
@@ -317,6 +321,49 @@ void CurrencyRateCacheTest::invalidManualRatesAreRejected()
     QVERIFY(!provider.setManualRates(1.0, 0.0, 100.0));
     QVERIFY(!provider.setManualRates(1.0, 86.54, -1.0));
     QCOMPARE(provider.rateToUsd(Currency::RUB), previousRubRate);
+}
+
+void CurrencyRateCacheTest::cnyRatesConvertAndPersist()
+{
+    CurrencyRateSnapshot snapshot;
+    const auto now=QDateTime::fromString("2026-09-06T03:00:00Z",Qt::ISODate);
+    QVERIFY(parseCbrCurrencyRates(completeResponse(),now,snapshot));
+    QCOMPARE(snapshot.ratesToUsd[currencyIndex(Currency::CNY)],qint64(125'000'000));
+    QTemporaryDir directory;
+    const CurrencyRateCache cache(directory.filePath("rates.json"));
+    QVERIFY(cache.replace(snapshot));
+    CurrencyRateSnapshot loaded;
+    QVERIFY(cache.load(loaded));
+    compareRates(loaded,snapshot);
+    CbrCurrencyRateProvider provider;
+    provider.setAutomaticUpdatesEnabled(false);
+    QVERIFY(provider.setManualRates(1,100,120,12.5));
+    QCOMPARE(provider.rateToRubMicros("CNY"),qint64(12'500'000));
+    CurrencyConverter converter(provider);
+    QCOMPARE(converter.convert(Money(10000,Currency::CNY),Currency::RUB).minorUnits(),qint64(125000));
+    QCOMPARE(converter.convert(Money(125000,Currency::RUB),Currency::CNY).minorUnits(),qint64(10000));
+    QCOMPARE(converter.convert(Money(10000,Currency::CNY),Currency::USD).minorUnits(),qint64(1250));
+    QVERIFY(!provider.setManualRates(1,100,120,0));
+    QVERIFY(!provider.setManualRates(1,100,120,-1));
+    QCOMPARE(provider.rateToRubMicros("CNY"),qint64(12'500'000));
+}
+
+void CurrencyRateCacheTest::missingOrInvalidCnyDoesNotReplaceCache()
+{
+    QTemporaryDir directory;
+    const QString path=directory.filePath("rates.json");
+    const CurrencyRateCache cache(path);
+    const auto now=QDateTime::fromString("2026-09-06T03:00:00Z",Qt::ISODate);
+    CurrencyRateSnapshot snapshot;
+    QVERIFY(updateCurrencyRateCacheFromCbrResponse(cache,completeResponse(),now,snapshot));
+    const auto before=readFile(path);
+    for (const QByteArray& quote:{QByteArray(),QByteArray("<Valute><CharCode>CNY</CharCode><Nominal>0</Nominal><Value>125,0000</Value></Valute>"),
+            QByteArray("<Valute><CharCode>CNY</CharCode><Nominal>10</Nominal><Value>-125,0000</Value></Valute>")}) {
+        auto payload=completeResponse();
+        payload.replace("<Valute><CharCode>CNY</CharCode><Nominal>10</Nominal><Value>125,0000</Value></Valute>",quote);
+        QVERIFY(!updateCurrencyRateCacheFromCbrResponse(cache,payload,now,snapshot));
+        QCOMPARE(readFile(path),before);
+    }
 }
 
 QTEST_MAIN(CurrencyRateCacheTest)

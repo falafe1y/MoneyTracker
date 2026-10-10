@@ -158,7 +158,7 @@ Dialog {
                     Field { id: amountField; implicitWidth: 160; Layout.minimumWidth: 0; Layout.fillWidth: true; maximumLength: 15
                         placeholderText: "200000,00"; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                     Choice {
-                        id: currencyBox; model: ["RUB", "USD", "EUR"]
+                        id: currencyBox; model: ["RUB", "USD", "EUR", "CNY"]
                         implicitHeight: 44; Layout.preferredWidth: 110
                     }
                 }

@@ -23,6 +23,8 @@ class FinanceRepositoryTest : public QObject
 
 private slots:
     void financialGoalsCrudPersistsWithoutContributions();
+    void cnyMigrationPreservesData_data();
+    void cnyMigrationPreservesData();
     void storesCapitalSnapshotsAndTrajectorySettings();
     void preservesSelectedAccountAfterReopen();
     void storesUiLanguage();
@@ -56,6 +58,119 @@ private slots:
     void createsConsistentDatabaseBackup();
     void clearsAllUserDataAndResetsSettings();
 };
+
+void FinanceRepositoryTest::cnyMigrationPreservesData_data()
+{
+    QTest::addColumn<bool>("forceFailure");
+    QTest::newRow("migration") << false;
+    QTest::newRow("rollback-and-retry") << true;
+}
+
+void FinanceRepositoryTest::cnyMigrationPreservesData()
+{
+    QFETCH(bool, forceFailure);
+    QTemporaryDir directory;
+    const auto path=directory.filePath("old.sqlite3");
+    const auto date=QDateTime::currentDateTimeUtc();
+    {
+        FinanceRepository repository(path);
+        QVERIFY(repository.isOpen());
+        QVERIFY(repository.insertAccount({"original","Существующий счёт",AssetType::Fiat,AccountType::DebitCard,Currency::RUB,10000}));
+        QVERIFY2(repository.insertTransactions({Transaction("original-tx","original","transfer-out",Money(100,Currency::RUB),
+            TransactionType::Expense,date,"Исходное описание")},{},{},{{"statement-row","original-tx"}}),qPrintable(repository.lastError()));
+    }
+    const auto connection=QUuid::createUuid().toString();
+    {
+        auto db=QSqlDatabase::addDatabase("QSQLITE",connection);
+        db.setDatabaseName(path); QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("CREATE INDEX test_cny_account_name ON accounts(name)"));
+        QVERIFY(query.exec("CREATE TRIGGER test_cny_insert AFTER INSERT ON accounts WHEN NEW.id='cny' "
+            "BEGIN INSERT INTO settings(key,value) VALUES('test_cny_trigger','preserved'); END"));
+        // Turn this isolated fixture into the previous release's three-currency schema.
+        QVERIFY(query.exec("PRAGMA writable_schema=ON"));
+        query.prepare("UPDATE sqlite_master SET sql=replace(sql,?,?) WHERE type='table'");
+        query.addBindValue("'RUB','USD','EUR','CNY'");
+        query.addBindValue("'RUB','USD','EUR'");
+        QVERIFY(query.exec());
+        QVERIFY(query.exec("PRAGMA writable_schema=OFF"));
+        QVERIFY(query.exec("PRAGMA schema_version=100"));
+        if (forceFailure) QVERIFY(query.exec("CREATE TABLE accounts_cny_v1(id TEXT PRIMARY KEY)"));
+        db.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+    if (forceFailure) {
+        {
+            FinanceRepository failed(path);
+            QVERIFY(!failed.isOpen());
+            QVERIFY(!failed.lastError().isEmpty());
+        }
+        {
+            auto db=QSqlDatabase::addDatabase("QSQLITE",connection);
+            db.setDatabaseName(path); QVERIFY(db.open());
+            QSqlQuery query(db);
+            query.prepare("SELECT count(*) FROM sqlite_master WHERE type='table' AND instr(sql,?)>0");
+            query.addBindValue("'CNY'"); QVERIFY(query.exec());
+            QVERIFY(query.next()); QCOMPARE(query.value(0).toInt(),0); query.finish();
+            QVERIFY(query.exec("SELECT description FROM transactions WHERE id='original-tx'"));
+            QVERIFY(query.next()); QCOMPARE(query.value(0).toString(),QString("Исходное описание")); query.finish();
+            QVERIFY(query.exec("DROP TABLE accounts_cny_v1"));
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(connection);
+    }
+    FinanceRepository migrated(path);
+    QVERIFY2(migrated.isOpen(),qPrintable(migrated.lastError()));
+    QCOMPARE(migrated.loadTransactions().size(),1);
+    const auto original=migrated.loadTransactions().first();
+    QCOMPARE(original.id(),QString("original-tx"));
+    QCOMPARE(original.description(),QString("Исходное описание"));
+    QCOMPARE(original.money().currency(),Currency::RUB);
+    QCOMPARE(migrated.loadBankImportLinks().value("statement-row"),QString("original-tx"));
+    QVERIFY(migrated.insertAccount({"cny","Юани",AssetType::Fiat,AccountType::DebitCard,Currency::CNY,10000}));
+    QVERIFY(migrated.insertTransaction(Transaction("cny-tx","cny","groceries",Money(500,Currency::CNY),
+        TransactionType::Expense,date,"Расход в юанях")));
+    QCOMPARE(migrated.loadSummary().balance[static_cast<int>(Currency::CNY)],qint64(9500));
+    FinancialGoal goal;goal.id="cny-goal";goal.name="Цель";goal.currency=Currency::CNY;goal.targetMinor=100000;
+    QVERIFY(migrated.saveFinancialGoal(goal,false));
+    QVERIFY(migrated.insertBudget({"cny-budget","Бюджет",Currency::CNY,10000,true,true,{},{},QDate(2026,10,1)},QDate(2026,10,1)));
+    QVERIFY(migrated.insertRecurringTransaction({"cny-recurring","Повторение","cny","groceries",TransactionType::Expense,
+        100,Currency::CNY,RecurrenceType::MonthlyDay,1,1,1,QDate(2026,11,1),QDate(2026,10,1)}));
+    QVERIFY(migrated.saveCapitalSnapshot({QDate(2026,10,1),Currency::CNY,9500}));
+    QVERIFY(migrated.insertAccount({"cny-broker","Брокер",AssetType::Investment,AccountType::Brokerage,Currency::CNY}));
+    QVERIFY(migrated.saveInvestmentBundle({"cny-instrument","TEST-CNY","","Инструмент",InvestmentInstrumentType::Stock,Currency::CNY},
+        {"cny-position","cny-broker","cny-instrument",1'000'000,10'000'000},std::nullopt,false));
+    QVERIFY(migrated.saveManualCurrencyRates(1,100,120,13.25));
+    QCOMPARE(migrated.loadFinancialGoals().first().currency,Currency::CNY);
+    QCOMPARE(migrated.loadBudgets().first().currency(),Currency::CNY);
+    QCOMPARE(migrated.loadRecurringTransactions().first().currency(),Currency::CNY);
+    QCOMPARE(migrated.loadCapitalSnapshots().first().currency,Currency::CNY);
+    QCOMPARE(migrated.loadInvestmentInstruments().first().currency(),Currency::CNY);
+    {
+        auto db=QSqlDatabase::addDatabase("QSQLITE",connection);
+        db.setDatabaseName(path); QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("PRAGMA foreign_key_check")); QVERIFY(!query.next()); query.finish();
+        QVERIFY(query.exec("SELECT value FROM settings WHERE key='test_cny_trigger'"));
+        QVERIFY(query.next()); QCOMPARE(query.value(0).toString(),QString("preserved")); query.finish();
+        QVERIFY(query.exec("SELECT count(*) FROM sqlite_master WHERE name='test_cny_account_name'"));
+        QVERIFY(query.next()); QCOMPARE(query.value(0).toInt(),1);
+        db.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+    const auto backup=directory.filePath("backup.sqlite3");
+    QVERIFY(migrated.backupDatabase(backup));
+    FinanceRepository restored(directory.filePath("restored.sqlite3"));
+    QVERIFY2(restored.restoreDatabase(backup),qPrintable(restored.lastError()));
+    QCOMPARE(restored.loadManualCnyToRubRate(),13.25);
+    QCOMPARE(restored.loadSummary().balance[static_cast<int>(Currency::CNY)],qint64(9500));
+    QCOMPARE(restored.loadFinancialGoals().first().currency,Currency::CNY);
+    QVERIFY(restored.restoreDatabase(backup));
+    QCOMPARE(restored.loadTransactions().size(),2);
+    FinanceRepository reopened(path);
+    QVERIFY(reopened.isOpen());
+    QCOMPARE(reopened.loadSummary().balance[static_cast<int>(Currency::CNY)],qint64(9500));
+}
 
 void FinanceRepositoryTest::restoresMissingRowsWithoutOverwritingAndIsIdempotent()
 {

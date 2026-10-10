@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QMap>
+#include <QRegularExpression>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QFileInfo>
@@ -33,6 +34,7 @@ Currency currencyFromCode(const QString& code)
     if (code == QStringLiteral("EUR")) {
         return Currency::EUR;
     }
+    if (code == QStringLiteral("CNY")) return Currency::CNY;
     return Currency::RUB;
 }
 
@@ -257,7 +259,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath)
         return;
     }
 
-    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !seedDefaults()) {
+    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !migrateCurrencySchema() || !seedDefaults()) {
         database_.close();
     }
 }
@@ -2987,6 +2989,17 @@ double FinanceRepository::loadManualEurToRubRate() const
     return 106.363636364;
 }
 
+double FinanceRepository::loadManualCnyToRubRate() const
+{
+    QSqlQuery query(database_);
+    if (query.exec(QStringLiteral("SELECT value FROM settings WHERE key = 'manual_cny_to_rub_rate'")) && query.next()) {
+        bool valid = false;
+        const double value = query.value(0).toString().toDouble(&valid);
+        if (valid && std::isfinite(value) && value > 0.0) return value;
+    }
+    return kDefaultCnyToRubRate;
+}
+
 bool FinanceRepository::saveAutomaticCurrencyRates(const bool enabled)
 {
     QSqlQuery query(database_);
@@ -3005,12 +3018,14 @@ bool FinanceRepository::saveAutomaticCurrencyRates(const bool enabled)
 bool FinanceRepository::saveManualCurrencyRates(
     const double rublesPerRub,
     const double rublesPerUsd,
-    const double rublesPerEur
+    const double rublesPerEur,
+    const double rublesPerCny
     )
 {
     if (!std::isfinite(rublesPerRub) || rublesPerRub <= 0.0 ||
         !std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
-        !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0) {
+        !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0 ||
+        !std::isfinite(rublesPerCny) || rublesPerCny <= 0.0) {
         setLastError(QStringLiteral("Currency rates must be positive numbers"));
         return false;
     }
@@ -3031,7 +3046,8 @@ bool FinanceRepository::saveManualCurrencyRates(
     };
     if (!saveRate(QStringLiteral("manual_rub_to_rub_rate"), rublesPerRub) ||
         !saveRate(QStringLiteral("manual_usd_to_rub_rate"), rublesPerUsd) ||
-        !saveRate(QStringLiteral("manual_eur_to_rub_rate"), rublesPerEur)) {
+        !saveRate(QStringLiteral("manual_eur_to_rub_rate"), rublesPerEur) ||
+        !saveRate(QStringLiteral("manual_cny_to_rub_rate"), rublesPerCny)) {
         setLastError(query.lastError().text());
         database_.rollback();
         return false;
@@ -3158,11 +3174,11 @@ bool FinanceRepository::initializeSchema()
                        "PRIMARY KEY(pattern,match_field,match_mode,type))"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS capital_snapshots ("
                        "snapshot_date TEXT PRIMARY KEY CHECK(length(snapshot_date) = 10), "
-                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR','CNY')), "
                        "total_minor INTEGER NOT NULL, updated_at INTEGER NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS financial_goals ("
                        "id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name)) BETWEEN 1 AND 80), "
-                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR','CNY')), "
                        "target_minor INTEGER NOT NULL CHECK(target_minor > 0), "
                        "deadline TEXT, all_sources INTEGER NOT NULL CHECK(all_sources IN (0,1)), "
                        "source_ids TEXT NOT NULL)"),
@@ -3170,7 +3186,7 @@ bool FinanceRepository::initializeSchema()
                        "id TEXT PRIMARY KEY, name TEXT NOT NULL, "
                        "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
                        "account_type INTEGER NOT NULL CHECK(account_type IN (0,1,2,4,5,6,7)), "
-                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR','CNY')), "
                        "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
                        "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
                        "CHECK(credit_limit_minor >= 0), "
@@ -3192,7 +3208,7 @@ bool FinanceRepository::initializeSchema()
         QStringLiteral("CREATE TABLE IF NOT EXISTS budgets ("
                        "id TEXT PRIMARY KEY, "
                        "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
-                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR','CNY')), "
                        "default_limit_minor INTEGER NOT NULL CHECK(default_limit_minor > 0), "
                        "all_accounts INTEGER NOT NULL CHECK(all_accounts IN (0,1)), "
                        "all_categories INTEGER NOT NULL CHECK(all_categories IN (0,1)), "
@@ -3260,7 +3276,7 @@ bool FinanceRepository::initializeSchema()
                        "type INTEGER NOT NULL CHECK(type IN (0,1)), "
                        "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
                        "amount_currency TEXT NOT NULL "
-                       "CHECK(amount_currency IN ('RUB','USD','EUR')), "
+                       "CHECK(amount_currency IN ('RUB','USD','EUR','CNY')), "
                        "recurrence_type INTEGER NOT NULL "
                        "CHECK(recurrence_type IN (0,1,2,3)), "
                        "weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7), "
@@ -3316,7 +3332,7 @@ bool FinanceRepository::initializeSchema()
                        "isin TEXT NOT NULL DEFAULT '', "
                        "name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
                        "type INTEGER NOT NULL CHECK(type BETWEEN 0 AND 10), "
-                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                       "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR','CNY')), "
                        "market_code TEXT NOT NULL DEFAULT '', "
                        "primary_board_id TEXT NOT NULL DEFAULT '', "
                        "terms_json TEXT NOT NULL DEFAULT '{}', "
@@ -3728,7 +3744,7 @@ bool FinanceRepository::migrateLegacySchema()
                 "asset_type INTEGER NOT NULL CHECK(asset_type IN (0,1,2)), "
                 "account_type INTEGER NOT NULL "
                 "CHECK(account_type IN (0,1,2,4,5,6,7)), "
-                "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+                "currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR','CNY')), "
                 "initial_balance_minor INTEGER NOT NULL DEFAULT 0, "
                 "credit_limit_minor INTEGER NOT NULL DEFAULT 0 "
                 "CHECK(credit_limit_minor >= 0), "
@@ -3866,7 +3882,7 @@ bool FinanceRepository::migrateLegacySchema()
             QStringLiteral(
                 "ALTER TABLE recurring_transactions ADD COLUMN "
                 "amount_currency TEXT NOT NULL DEFAULT 'RUB' "
-                "CHECK(amount_currency IN ('RUB','USD','EUR'))"),
+                "CHECK(amount_currency IN ('RUB','USD','EUR','CNY'))"),
             QStringLiteral(
                 "UPDATE recurring_transactions "
                 "SET amount_currency = COALESCE(("
@@ -4164,6 +4180,81 @@ bool FinanceRepository::saveFinancialTrajectorySettings(
     return true;
 }
 
+bool FinanceRepository::migrateCurrencySchema()
+{
+    struct Migration { QString name, definition; };
+    QVector<Migration> migrations;
+    const QRegularExpression oldCurrencies(QStringLiteral(
+        "(\\b(?:amount_)?currency\\s+IN\\s*\\(\\s*)'RUB'\\s*,\\s*'USD'\\s*,\\s*'EUR'(\\s*\\))"),
+        QRegularExpression::CaseInsensitiveOption);
+    QSqlQuery tables(database_);
+    if (!tables.exec(QStringLiteral("SELECT name,sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL"))) {
+        setLastError(tables.lastError().text());
+        return false;
+    }
+    while (tables.next()) {
+        QString sql = tables.value(1).toString();
+        if (!oldCurrencies.match(sql).hasMatch()) continue;
+        sql.replace(oldCurrencies, QStringLiteral("\\1'RUB','USD','EUR','CNY'\\2"));
+        migrations.append({tables.value(0).toString(), sql.mid(sql.indexOf(QLatin1Char('(')))});
+    }
+    tables.finish();
+    if (migrations.isEmpty()) return true;
+
+    const auto quoted = [](QString name) {
+        name.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+        return QLatin1Char('"') + name + QLatin1Char('"');
+    };
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral("PRAGMA foreign_keys = OFF"))) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    const auto fail = [&](const QString& error) {
+        database_.rollback();
+        query.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+        setLastError(error);
+        return false;
+    };
+    if (!database_.transaction()) return fail(database_.lastError().text());
+    for (const auto& table : migrations) {
+        QStringList objects, columns;
+        QSqlQuery schema(database_);
+        schema.prepare(QStringLiteral("SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger') AND sql IS NOT NULL"));
+        schema.addBindValue(table.name);
+        if (!schema.exec()) return fail(schema.lastError().text());
+        while (schema.next()) objects.append(schema.value(0).toString());
+        schema.finish();
+        if (!schema.exec(QStringLiteral("PRAGMA table_info(%1)").arg(quoted(table.name))))
+            return fail(schema.lastError().text());
+        while (schema.next()) columns.append(quoted(schema.value(1).toString()));
+        schema.finish();
+        const QString temporary = quoted(table.name + QStringLiteral("_cny_v1"));
+        const QString original = quoted(table.name);
+        const QString fields = columns.join(QLatin1Char(','));
+        // Keep the original table names in foreign-key references and preserve
+        // every column, index and trigger. All rebuilt tables commit together.
+        const QStringList statements{
+            QStringLiteral("CREATE TABLE %1 %2").arg(temporary, table.definition),
+            QStringLiteral("INSERT INTO %1(%2) SELECT %2 FROM %3").arg(temporary, fields, original),
+            QStringLiteral("DROP TABLE %1").arg(original),
+            QStringLiteral("ALTER TABLE %1 RENAME TO %2").arg(temporary, original)};
+        for (const auto& sql : statements)
+            if (!query.exec(sql)) return fail(query.lastError().text());
+        for (const auto& sql : objects)
+            if (!query.exec(sql)) return fail(query.lastError().text());
+    }
+    if (!query.exec(QStringLiteral("PRAGMA foreign_key_check"))) return fail(query.lastError().text());
+    if (query.next()) return fail(QStringLiteral("Нарушены связи после добавления валюты CNY"));
+    query.finish();
+    if (!database_.commit()) return fail(database_.lastError().text());
+    if (!query.exec(QStringLiteral("PRAGMA foreign_keys = ON"))) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
 bool FinanceRepository::migrateInvestmentSchema()
 {
     QSqlQuery query(database_);
@@ -4186,7 +4277,7 @@ bool FinanceRepository::migrateInvestmentSchema()
         const QStringList statements{
             "CREATE TABLE investment_instruments_v2 (id TEXT PRIMARY KEY, symbol TEXT NOT NULL CHECK(length(trim(symbol)) > 0), "
             "isin TEXT NOT NULL DEFAULT '', name TEXT NOT NULL CHECK(length(trim(name)) > 0), "
-            "type INTEGER NOT NULL CHECK(type BETWEEN 0 AND 10), currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR')), "
+            "type INTEGER NOT NULL CHECK(type BETWEEN 0 AND 10), currency TEXT NOT NULL CHECK(currency IN ('RUB','USD','EUR','CNY')), "
             "market_code TEXT NOT NULL DEFAULT '', primary_board_id TEXT NOT NULL DEFAULT '', terms_json TEXT NOT NULL DEFAULT '{}', "
             "is_archived INTEGER NOT NULL DEFAULT 0 CHECK(is_archived IN (0,1)), created_at INTEGER NOT NULL)",
             "INSERT INTO investment_instruments_v2(id,symbol,isin,name,type,currency,market_code,primary_board_id,is_archived,created_at) "

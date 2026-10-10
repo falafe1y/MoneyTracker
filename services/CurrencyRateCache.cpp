@@ -120,7 +120,8 @@ bool validSnapshot(const CurrencyRateSnapshot& snapshot)
            snapshot.ratesToUsd[currencyIndex(Currency::RUB)] > 0 &&
            snapshot.ratesToUsd[currencyIndex(Currency::USD)] ==
                kCurrencyRateScale &&
-           snapshot.ratesToUsd[currencyIndex(Currency::EUR)] > 0;
+           snapshot.ratesToUsd[currencyIndex(Currency::EUR)] > 0 &&
+           snapshot.ratesToUsd[currencyIndex(Currency::CNY)] >= 0;
 }
 
 qint64 scaledRate(const double rate)
@@ -197,6 +198,11 @@ bool CurrencyRateCache::load(
         return false;
     }
 
+    if (rates.contains(QStringLiteral("CNY")) && !readPositiveInteger(
+            rates, QStringLiteral("CNY"), candidate.ratesToUsd[currencyIndex(Currency::CNY)])) {
+        setError(error, QStringLiteral("Invalid CNY currency-rate cache value"));
+        return false;
+    }
     if (formatVersion == kLegacyCacheFormatVersion) {
         for (qint64& rate : candidate.ratesToUsd) {
             if (rate > std::numeric_limits<qint64>::max() /
@@ -217,6 +223,11 @@ bool CurrencyRateCache::load(
         bool ok=false; const auto rate=i.value().toVariant().toLongLong(&ok);
         if(ok && rate>0) candidate.extraRatesToRubMicros.insert(i.key(),rate);
     }
+    if (candidate.ratesToUsd[currencyIndex(Currency::CNY)] == 0) {
+        const auto cny = candidate.extraRatesToRubMicros.value(QStringLiteral("CNY"));
+        if (cny > 0) candidate.ratesToUsd[currencyIndex(Currency::CNY)] = scaledRate(
+            static_cast<double>(cny) * candidate.ratesToUsd[currencyIndex(Currency::RUB)] / 1'000'000.0);
+    }
     snapshot = candidate;
     return true;
 }
@@ -226,7 +237,7 @@ bool CurrencyRateCache::replace(
     QString* error
     ) const
 {
-    if (!validSnapshot(snapshot)) {
+    if (!validSnapshot(snapshot) || snapshot.ratesToUsd[currencyIndex(Currency::CNY)] <= 0) {
         setError(error, QStringLiteral("Refusing to cache invalid currency rates"));
         return false;
     }
@@ -247,6 +258,8 @@ bool CurrencyRateCache::replace(
     rates.insert(
         QStringLiteral("EUR"),
         snapshot.ratesToUsd[currencyIndex(Currency::EUR)]);
+
+    rates.insert(QStringLiteral("CNY"), snapshot.ratesToUsd[currencyIndex(Currency::CNY)]);
 
     QJsonObject object;
     object.insert(QStringLiteral("formatVersion"), kCacheFormatVersion);
@@ -325,8 +338,10 @@ bool parseCbrCurrencyRates(
 
     double rublesPerUsd = 0.0;
     double rublesPerEur = 0.0;
+    double rublesPerCny = 0.0;
     bool usdFound = false;
     bool eurFound = false;
+    bool cnyFound = false;
     QHash<QString,qint64> extraRates;
 
     while (xml.readNextStartElement()) {
@@ -336,7 +351,7 @@ bool parseCbrCurrencyRates(
         }
 
         const CbrQuote quote = readQuote(xml);
-        if (quote.code != QStringLiteral("USD") && quote.code != QStringLiteral("EUR")) {
+        if (quote.code != QStringLiteral("USD") && quote.code != QStringLiteral("EUR") && quote.code != QStringLiteral("CNY")) {
             if (quote.nominalValid && quote.valueValid) {
                 const auto rate=scaledRate(quote.valueInRubles/quote.nominal*1'000'000.0);
                 if(rate>0) extraRates.insert(quote.code,rate);
@@ -362,13 +377,21 @@ bool parseCbrCurrencyRates(
             }
             rublesPerUsd = rublesPerUnit;
             usdFound = true;
-        } else {
+        } else if (quote.code == QStringLiteral("EUR")) {
             if (eurFound) {
                 setError(error, QStringLiteral("CBR response contains duplicate EUR rates"));
                 return false;
             }
             rublesPerEur = rublesPerUnit;
             eurFound = true;
+        } else {
+            if (cnyFound) {
+                setError(error, QStringLiteral("CBR response contains duplicate CNY rates"));
+                return false;
+            }
+            rublesPerCny = rublesPerUnit;
+            cnyFound = true;
+            extraRates.insert(QStringLiteral("CNY"), scaledRate(rublesPerCny * 1'000'000.0));
         }
     }
 
@@ -376,8 +399,8 @@ bool parseCbrCurrencyRates(
         setError(error, QStringLiteral("Malformed CBR XML response"));
         return false;
     }
-    if (!usdFound || !eurFound) {
-        setError(error, QStringLiteral("CBR response does not contain USD and EUR rates"));
+    if (!usdFound || !eurFound || !cnyFound) {
+        setError(error, QStringLiteral("CBR response does not contain USD, EUR and CNY rates"));
         return false;
     }
 
@@ -392,7 +415,10 @@ bool parseCbrCurrencyRates(
         static_cast<double>(kCurrencyRateScale) *
         rublesPerEur / rublesPerUsd);
 
-    if (!validSnapshot(candidate)) {
+    candidate.ratesToUsd[currencyIndex(Currency::CNY)] = scaledRate(
+        static_cast<double>(kCurrencyRateScale) * rublesPerCny / rublesPerUsd);
+
+    if (!validSnapshot(candidate) || candidate.ratesToUsd[currencyIndex(Currency::CNY)] <= 0) {
         setError(error, QStringLiteral("Calculated currency rates are invalid"));
         return false;
     }

@@ -27,7 +27,8 @@ public:
     bool setManualRates(
         double rublesPerRub,
         double rublesPerUsd,
-        double rublesPerEur
+        double rublesPerEur,
+        double rublesPerCny = kDefaultCnyToRubRate
         );
 
 signals:
@@ -44,7 +45,8 @@ private:
         double rublesPerRub,
         double rublesPerUsd,
         double rublesPerEur,
-        std::array<qint64, 3>& ratesToUsd
+        double rublesPerCny,
+        std::array<qint64, kCurrencyCount>& ratesToUsd
         );
 
     static constexpr qint64 kRefreshIntervalMs =
@@ -52,15 +54,17 @@ private:
 
     CurrencyRateCache cache_;
     QHash<QString,qint64> extraRatesToRubMicros_;
-    std::array<qint64, 3> automaticRatesToUsd_{
+    std::array<qint64, kCurrencyCount> automaticRatesToUsd_{
         11'000'000,
         kCurrencyRateScale,
-        1'170'000'000
+        1'170'000'000,
+        137'500'000
     };
-    std::array<qint64, 3> manualRatesToUsd_{
+    std::array<qint64, kCurrencyCount> manualRatesToUsd_{
         11'000'000,
         kCurrencyRateScale,
-        1'170'000'000
+        1'170'000'000,
+        137'500'000
     };
     bool automaticUpdatesEnabled_ = true;
     QDateTime lastSuccessfulFetchUtc_;

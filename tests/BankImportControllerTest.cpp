@@ -19,6 +19,7 @@ private slots:
     void transferValidationAndCrossCurrencyAmounts();
     void repeatedMatchAndLinkFailureRollBack();
     void editingKeepsStatementIdentities();
+    void cnyAccountImportAndSettingsSurviveRestart();
 };
 namespace {
 bool seed(const QString& path) {
@@ -282,6 +283,58 @@ void BankImportControllerTest::editingKeepsStatementIdentities() {
     QCOMPARE(r.loadBankImportLinks().value(row.value("rowKey").toString()),QString("ordinary"));
     FinanceController ordinary(nullptr,path);QCOMPARE(ordinary.previewBankImport(QUrl::fromLocalFile(file),profile()).value("duplicateCount").toInt(),1);
     QVERIFY(r.deleteTransaction("ordinary"));QVERIFY(r.loadBankImportLinks().isEmpty());
+}
+
+void BankImportControllerTest::cnyAccountImportAndSettingsSurviveRestart() {
+    QTemporaryDir dir;
+    const auto path=dir.filePath("data.db"),file=dir.filePath("cny.csv");
+    QString accountId;
+    {
+        FinanceRepository repository(path);
+        QVERIFY(repository.saveAutomaticCurrencyRates(false));
+    }
+    {
+        FinanceController controller(nullptr,path);
+        controller.setSelectedAsset("fiat");
+        controller.clearDateFilter();
+        QVERIFY(controller.saveManualCurrencyRates(1,100,120,13.25));
+        QVERIFY(controller.addAccount("Юани","debit_card","CNY",10000,0));
+        const auto account=controller.allAccounts().last().toMap();
+        accountId=account.value("id").toString();
+        QCOMPARE(account.value("currency").toString(),QString("CNY"));
+        QCOMPARE(controller.balanceMinorUnits(),qint64(132500));
+        auto values=profile();values["accountId"]=accountId;
+        QVERIFY(controller.saveBankCsvProfile(values).value("ok").toBool());
+        QVERIFY(csv(file,"01.10.2026;50;Зарплата;in;;;156;Зарплата\n02.10.2026;-10;PYATEROCHKA;out;;;CNY;Продукты\n"));
+        const auto result=controller.importBankCsv(QUrl::fromLocalFile(file),"bank-profile",{{"requireReview",false}});
+        QVERIFY2(result.value("ok").toBool(),qPrintable(result.value("error").toString()));
+        QCOMPARE(result.value("imported").toInt(),2);
+        QCOMPARE(controller.balanceMinorUnits(),qint64(185500));
+        controller.setAppCurrency("CNY");
+        QCOMPARE(controller.balanceMinorUnits(),qint64(14000));
+        controller.setAnalyticsCurrency("CNY");
+        QCOMPARE(controller.analyticsCurrency(),QString("CNY"));
+        QVERIFY(controller.setDateFilter(QDateTime(QDate(2026,10,1),QTime(0,0)),QDateTime(QDate(2026,10,31),QTime(23,59))));
+        QCOMPARE(controller.incomeMinorUnits(),qint64(5000));
+        QCOMPARE(controller.expenseMinorUnits(),qint64(1000));
+        QCOMPARE(controller.balanceMinorUnits(),qint64(14000));
+        controller.clearDateFilter();
+        QVERIFY(controller.saveManualCurrencyRates(1,100,120)); // Legacy overload preserves CNY.
+        QCOMPARE(controller.manualCnyToRubRate(),13.25);
+        QVERIFY(!controller.saveManualCurrencyRates(1,100,120,0));
+        QCOMPARE(controller.manualCnyToRubRate(),13.25);
+    }
+    FinanceController reopened(nullptr,path);
+    reopened.clearDateFilter();
+    QCOMPARE(reopened.appCurrency(),QString("CNY"));
+    QCOMPARE(reopened.analyticsCurrency(),QString("CNY"));
+    QCOMPARE(reopened.manualCnyToRubRate(),13.25);
+    QCOMPARE(reopened.balanceMinorUnits(),qint64(14000));
+    FinanceRepository repository(path);
+    const auto summary=repository.loadSummary();
+    QCOMPARE(summary.income[static_cast<int>(Currency::CNY)],qint64(5000));
+    QCOMPARE(summary.expense[static_cast<int>(Currency::CNY)],qint64(1000));
+    for (const auto& transaction:repository.loadTransactions()) QCOMPARE(transaction.money().currency(),Currency::CNY);
 }
 
 QTEST_GUILESS_MAIN(BankImportControllerTest)

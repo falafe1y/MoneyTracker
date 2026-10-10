@@ -86,7 +86,7 @@ ApplicationWindow {
     ]
 
     function symbol(code) {
-        return code === "USD" ? "$" : code === "EUR" ? "€" : "₽";
+        return code === "USD" ? "$" : code === "EUR" ? "€" : code === "CNY" ? "¥" : "₽";
     }
 
     function uiLocale() {
@@ -774,7 +774,7 @@ ApplicationWindow {
                     id: currencyBox
                     Layout.preferredWidth: 92
                     implicitHeight: root.touchHeight
-                    model: ["RUB", "USD", "EUR"]
+                    model: ["RUB", "USD", "EUR", "CNY"]
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
                     onActivated: financeController.appCurrency = currentText
                 }
@@ -2543,7 +2543,7 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
                             AppComboBox {
-                                model: ["USD", "EUR"]
+                                model: ["USD", "EUR", "CNY"]
                                 currentIndex: Math.max(0, model.indexOf(financeController.analyticsCurrency))
                                 onActivated: financeController.analyticsCurrency = currentText
                                 implicitWidth: 92
@@ -2593,7 +2593,7 @@ ApplicationWindow {
                 }
                 AppComboBox {
                     Layout.fillWidth: true
-                    model: ["RUB", "USD", "EUR"]
+                    model: ["RUB", "USD", "EUR", "CNY"]
                     currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
                     onActivated: financeController.appCurrency = currentText
                 }
@@ -2775,6 +2775,25 @@ ApplicationWindow {
                         }
                         onTextEdited: rateSaveStatus.text = ""
                     }
+
+                    Text {
+                        text: qsTr("1 CNY в рублях")
+                        color: root.accent
+                    }
+                    AppTextField {
+                        id: manualCnyRateField
+                        Layout.fillWidth: true
+                        text: financeController.manualCnyToRubRate.toLocaleString(
+                            root.uiLocale(), "f", 4)
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        validator: DoubleValidator {
+                            bottom: 0.0001
+                            top: 999999999
+                            decimals: 4
+                            locale: root.uiLocale().name
+                        }
+                        onTextEdited: rateSaveStatus.text = ""
+                    }
                 }
                 RowLayout {
                     enabled: !automaticRatesCheck.checked
@@ -2786,12 +2805,14 @@ ApplicationWindow {
                         enabled: manualRubRateField.acceptableInput
                               && manualUsdRateField.acceptableInput
                               && manualEurRateField.acceptableInput
+                              && manualCnyRateField.acceptableInput
                         onClicked: {
                             const rubRate = Number(manualRubRateField.text.replace(",", "."));
                             const usdRate = Number(manualUsdRateField.text.replace(",", "."));
                             const eurRate = Number(manualEurRateField.text.replace(",", "."));
+                            const cnyRate = Number(manualCnyRateField.text.replace(",", "."));
                             const saved = financeController.saveManualCurrencyRates(
-                                rubRate, usdRate, eurRate);
+                                rubRate, usdRate, eurRate, cnyRate);
                             rateSaveStatus.color = saved ? root.income : root.red;
                             rateSaveStatus.text = saved
                                 ? qsTr("Курсы сохранены")
@@ -3123,7 +3144,7 @@ ApplicationWindow {
             AppComboBox {
                 id: accountCurrencyBox
                 Layout.fillWidth: true
-                model: ["RUB", "USD", "EUR"]
+                model: ["RUB", "USD", "EUR", "CNY"]
                 enabled: !accountDialog.editingId
                       || !accountDialog.editingAccount
                       || accountDialog.editingAccount.transactionCount === 0

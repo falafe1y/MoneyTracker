@@ -16,6 +16,9 @@ public:
 
         case Currency::EUR:
             return 1'170'000'000; // 1.17 USD
+
+        case Currency::CNY:
+            return 137'500'000;   // 12.5 RUB
         }
 
         return kCurrencyRateScale;

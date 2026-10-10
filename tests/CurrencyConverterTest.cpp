@@ -13,6 +13,7 @@ private slots:
     void convertsUsdToRub();
     void convertsEurToRub();
     void sameCurrencyDoesNotChange();
+    void convertsCnyInBothDirections();
 };
 
 void CurrencyConverterTest::convertsRubToUsd()
@@ -69,6 +70,20 @@ void CurrencyConverterTest::sameCurrencyDoesNotChange()
 
     QCOMPARE(converted.currency(), Currency::RUB);
     QCOMPARE(converted.minorUnits(), original.minorUnits());
+}
+
+void CurrencyConverterTest::convertsCnyInBothDirections()
+{
+    TestCurrencyRateProvider provider;
+    CurrencyConverter converter(provider);
+    const Money cny(10000,Currency::CNY);
+    const auto rub=converter.convert(cny,Currency::RUB);
+    QCOMPARE(rub.minorUnits(),qint64(125000));
+    QCOMPARE(converter.convert(rub,Currency::CNY).minorUnits(),cny.minorUnits());
+    QCOMPARE(converter.convert(cny,Currency::USD).minorUnits(),qint64(1375));
+    QCOMPARE(converter.convert(cny,Currency::CNY).minorUnits(),cny.minorUnits());
+    QCOMPARE(currencyCode(Currency::CNY),QString("CNY"));
+    QCOMPARE(currencySymbol(Currency::CNY),QString("¥"));
 }
 
 QTEST_MAIN(CurrencyConverterTest)

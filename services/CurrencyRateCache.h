@@ -12,7 +12,7 @@
 
 struct CurrencyRateSnapshot
 {
-    std::array<qint64, 3> ratesToUsd{};
+    std::array<qint64, kCurrencyCount> ratesToUsd{};
     QHash<QString, qint64> extraRatesToRubMicros;
     QDate sourceDate;
     QDateTime fetchedAtUtc;

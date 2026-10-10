@@ -29,9 +29,11 @@ CbrCurrencyRateProvider::CbrCurrencyRateProvider(QObject* parent)
 {
     CurrencyRateSnapshot cached;
     if (cache_.load(cached)) {
-        automaticRatesToUsd_ = cached.ratesToUsd;
+        for (int i = 0; i < kCurrencyCount; ++i)
+            if (cached.ratesToUsd[i] > 0) automaticRatesToUsd_[i] = cached.ratesToUsd[i];
         extraRatesToRubMicros_ = cached.extraRatesToRubMicros;
-        lastSuccessfulFetchUtc_ = cached.fetchedAtUtc;
+        if (cached.ratesToUsd[currencyIndex(Currency::CNY)] > 0)
+            lastSuccessfulFetchUtc_ = cached.fetchedAtUtc;
     }
 
     refreshTimer_.setSingleShot(true);
@@ -85,12 +87,13 @@ void CbrCurrencyRateProvider::setAutomaticUpdatesEnabled(const bool enabled)
 bool CbrCurrencyRateProvider::setManualRates(
     const double rublesPerRub,
     const double rublesPerUsd,
-    const double rublesPerEur
+    const double rublesPerEur,
+    const double rublesPerCny
     )
 {
-    std::array<qint64, 3> candidate;
+    std::array<qint64, kCurrencyCount> candidate;
     if (!buildRatesToUsd(
-            rublesPerRub, rublesPerUsd, rublesPerEur, candidate)) {
+            rublesPerRub, rublesPerUsd, rublesPerEur, rublesPerCny, candidate)) {
         return false;
     }
 
@@ -218,12 +221,14 @@ bool CbrCurrencyRateProvider::buildRatesToUsd(
     const double rublesPerRub,
     const double rublesPerUsd,
     const double rublesPerEur,
-    std::array<qint64, 3>& ratesToUsd
+    const double rublesPerCny,
+    std::array<qint64, kCurrencyCount>& ratesToUsd
     )
 {
     if (!std::isfinite(rublesPerRub) || rublesPerRub <= 0.0 ||
         !std::isfinite(rublesPerUsd) || rublesPerUsd <= 0.0 ||
-        !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0) {
+        !std::isfinite(rublesPerEur) || rublesPerEur <= 0.0 ||
+        !std::isfinite(rublesPerCny) || rublesPerCny <= 0.0) {
         return false;
     }
 
@@ -233,7 +238,10 @@ bool CbrCurrencyRateProvider::buildRatesToUsd(
     const double eurRate =
         static_cast<double>(kCurrencyRateScale) *
         rublesPerEur / rublesPerUsd;
-    if (!std::isfinite(rubRate) || rubRate < 1.0 ||
+    const double cnyRate = static_cast<double>(kCurrencyRateScale) * rublesPerCny / rublesPerUsd;
+    if (!std::isfinite(cnyRate) || cnyRate < 1.0 ||
+        cnyRate >= static_cast<double>(std::numeric_limits<qint64>::max()) ||
+        !std::isfinite(rubRate) || rubRate < 1.0 ||
         rubRate > static_cast<double>(std::numeric_limits<qint64>::max()) ||
         !std::isfinite(eurRate) || eurRate < 1.0 ||
         eurRate > static_cast<double>(std::numeric_limits<qint64>::max())) {
@@ -243,7 +251,8 @@ bool CbrCurrencyRateProvider::buildRatesToUsd(
     ratesToUsd = {
         static_cast<qint64>(std::llround(rubRate)),
         kCurrencyRateScale,
-        static_cast<qint64>(std::llround(eurRate))
+        static_cast<qint64>(std::llround(eurRate)),
+        static_cast<qint64>(std::llround(cnyRate))
     };
     return true;
 }
@@ -251,8 +260,8 @@ bool CbrCurrencyRateProvider::buildRatesToUsd(
 qint64 CbrCurrencyRateProvider::rateToRubMicros(const QString& code) const
 {
     if(code==QStringLiteral("RUB")) return 1'000'000;
-    if(code==QStringLiteral("USD") || code==QStringLiteral("EUR")) {
-        const auto source=rateToUsd(code==QStringLiteral("USD")?Currency::USD:Currency::EUR);
+    if(code==QStringLiteral("USD") || code==QStringLiteral("EUR") || code==QStringLiteral("CNY")) {
+        const auto source=rateToUsd(code==QStringLiteral("USD")?Currency::USD:code==QStringLiteral("EUR")?Currency::EUR:Currency::CNY);
         const auto rub=rateToUsd(Currency::RUB);
         const long double rate=rub>0?static_cast<long double>(source)/rub*1'000'000.0L:0;
         return rate>0 && rate<std::numeric_limits<qint64>::max()?static_cast<qint64>(std::round(rate)):0;

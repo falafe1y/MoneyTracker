@@ -5,8 +5,12 @@
 enum class Currency {
     RUB,
     USD,
-    EUR
+    EUR,
+    CNY
 };
+
+inline constexpr int kCurrencyCount = 4;
+inline constexpr double kDefaultCnyToRubRate = 12.5;
 
 QString currencyCode(Currency currency);
 QString currencySymbol(Currency currency);

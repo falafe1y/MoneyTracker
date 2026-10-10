@@ -275,7 +275,7 @@ Dialog {
                             id: currencyBox
                             Layout.fillWidth: true
                             implicitHeight: 44
-                            model: ["RUB", "USD", "EUR"]
+                            model: ["RUB", "USD", "EUR", "CNY"]
                         }
                     }
                 }

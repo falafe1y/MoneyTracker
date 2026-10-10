@@ -13,9 +13,9 @@ class DateSliceCalculator
 public:
     struct Totals
     {
-        std::array<qint64, 3> balance{};
-        std::array<qint64, 3> income{};
-        std::array<qint64, 3> expense{};
+        std::array<qint64, kCurrencyCount> balance{};
+        std::array<qint64, kCurrencyCount> income{};
+        std::array<qint64, kCurrencyCount> expense{};
     };
 
     static Totals calculate(

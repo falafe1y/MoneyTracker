@@ -33,9 +33,9 @@ class FinanceRepository
 public:
     struct Summary
     {
-        std::array<qint64, 3> balance{};
-        std::array<qint64, 3> income{};
-        std::array<qint64, 3> expense{};
+        std::array<qint64, kCurrencyCount> balance{};
+        std::array<qint64, kCurrencyCount> income{};
+        std::array<qint64, kCurrencyCount> expense{};
     };
 
     struct CryptoPriceSnapshot
@@ -233,11 +233,13 @@ public:
     double loadManualRubToRubRate() const;
     double loadManualUsdToRubRate() const;
     double loadManualEurToRubRate() const;
+    double loadManualCnyToRubRate() const;
     bool saveAutomaticCurrencyRates(bool enabled);
     bool saveManualCurrencyRates(
         double rublesPerRub,
         double rublesPerUsd,
-        double rublesPerEur
+        double rublesPerEur,
+        double rublesPerCny = kDefaultCnyToRubRate
         );
     QVector<BankCsvProfileRecord> loadBankCsvProfiles();
     bool saveBankCsvProfile(
@@ -252,6 +254,7 @@ private:
     bool migrateLegacySchema();
     bool migrateInvestmentSchema();
     bool migrateBankImportSchema();
+    bool migrateCurrencySchema();
     bool seedDefaults();
     void setLastError(const QString& error);
 

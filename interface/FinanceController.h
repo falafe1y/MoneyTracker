@@ -95,6 +95,8 @@ class FinanceController final : public QObject
                 NOTIFY manualCurrencyRatesChanged
         )
 
+    Q_PROPERTY(double manualCnyToRubRate READ manualCnyToRubRate NOTIFY manualCurrencyRatesChanged)
+
     Q_PROPERTY(
         QVariantList currentCurrencyRates
             READ currentCurrencyRates
@@ -382,6 +384,10 @@ public:
         double rublesPerEur
         );
 
+    double manualCnyToRubRate() const;
+    Q_INVOKABLE bool saveManualCurrencyRates(double rublesPerRub, double rublesPerUsd,
+        double rublesPerEur, double rublesPerCny);
+
     QVariantList transactions() const;
     QVariantList categories() const;
     QVariantList accounts() const;
@@ -661,7 +667,7 @@ private:
     static QString accountTypeToString(AccountType type);
 
     qint64 convertedTotal(
-        const std::array<qint64, 3>& amounts
+        const std::array<qint64, kCurrencyCount>& amounts
         ) const;
 
     bool addTransaction(
@@ -791,6 +797,7 @@ private:
     double manualRubToRubRate_ = 1.0;
     double manualUsdToRubRate_ = 90.909090909;
     double manualEurToRubRate_ = 106.363636364;
+    double manualCnyToRubRate_ = kDefaultCnyToRubRate;
     AssetType selectedAsset_ = AssetType::Fiat;
     QString selectedAccountId_;
     QString selectedCryptoWalletId_;

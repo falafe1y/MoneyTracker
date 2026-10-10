@@ -729,19 +729,19 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
     appCurrency_ = currencyFromString(repository_.loadAppCurrency());
     const Currency storedAnalyticsCurrency = currencyFromString(
         repository_.loadAnalyticsCurrency());
-    analyticsCurrency_ = storedAnalyticsCurrency == Currency::EUR
-        ? Currency::EUR
-        : Currency::USD;
+    analyticsCurrency_ = storedAnalyticsCurrency == Currency::EUR || storedAnalyticsCurrency == Currency::CNY
+        ? storedAnalyticsCurrency : Currency::USD;
     uiLanguage_ = repository_.loadUiLanguage() == QStringLiteral("en")
         ? QStringLiteral("en")
         : QStringLiteral("ru");
     manualRubToRubRate_ = repository_.loadManualRubToRubRate();
     manualUsdToRubRate_ = repository_.loadManualUsdToRubRate();
     manualEurToRubRate_ = repository_.loadManualEurToRubRate();
+    manualCnyToRubRate_ = repository_.loadManualCnyToRubRate();
     if (!rateProvider_.setManualRates(
             manualRubToRubRate_,
             manualUsdToRubRate_,
-            manualEurToRubRate_)) {
+            manualEurToRubRate_, manualCnyToRubRate_)) {
         qWarning() << "Failed to apply stored manual currency rates";
     }
     automaticCurrencyRates_ = repository_.loadAutomaticCurrencyRates();
@@ -1049,6 +1049,11 @@ double FinanceController::manualEurToRubRate() const
     return manualEurToRubRate_;
 }
 
+double FinanceController::manualCnyToRubRate() const
+{
+    return manualCnyToRubRate_;
+}
+
 QVariantList FinanceController::currentCurrencyRates() const
 {
     QVariantList result;
@@ -1057,7 +1062,7 @@ QVariantList FinanceController::currentCurrencyRates() const
         return result;
     }
 
-    for (const Currency currency : {Currency::RUB, Currency::USD, Currency::EUR}) {
+    for (const Currency currency : {Currency::RUB, Currency::USD, Currency::EUR, Currency::CNY}) {
         QVariantMap item;
         item[QStringLiteral("code")] = currencyCode(currency);
         item[QStringLiteral("rate")] =
@@ -1074,25 +1079,33 @@ bool FinanceController::saveManualCurrencyRates(
     const double rublesPerEur
     )
 {
+    return saveManualCurrencyRates(rublesPerRub, rublesPerUsd, rublesPerEur, manualCnyToRubRate_);
+}
+
+bool FinanceController::saveManualCurrencyRates(
+    const double rublesPerRub, const double rublesPerUsd,
+    const double rublesPerEur, const double rublesPerCny)
+{
     if (!rateProvider_.setManualRates(
-            rublesPerRub, rublesPerUsd, rublesPerEur)) {
+            rublesPerRub, rublesPerUsd, rublesPerEur, rublesPerCny)) {
         return false;
     }
     if (repository_.isOpen() &&
         !repository_.saveManualCurrencyRates(
-            rublesPerRub, rublesPerUsd, rublesPerEur)) {
+            rublesPerRub, rublesPerUsd, rublesPerEur, rublesPerCny)) {
         qWarning() << "Failed to save manual currency rates:"
                    << repository_.lastError();
         rateProvider_.setManualRates(
             manualRubToRubRate_,
             manualUsdToRubRate_,
-            manualEurToRubRate_);
+            manualEurToRubRate_, manualCnyToRubRate_);
         return false;
     }
 
     manualRubToRubRate_ = rublesPerRub;
     manualUsdToRubRate_ = rublesPerUsd;
     manualEurToRubRate_ = rublesPerEur;
+    manualCnyToRubRate_ = rublesPerCny;
     emit manualCurrencyRatesChanged();
     return true;
 }
@@ -1355,9 +1368,10 @@ QVariantMap FinanceController::clearAllData()
     manualRubToRubRate_ = 1.0;
     manualUsdToRubRate_ = 90.909090909;
     manualEurToRubRate_ = 106.363636364;
+    manualCnyToRubRate_ = kDefaultCnyToRubRate;
     selectedAsset_ = AssetType::Fiat;
     rateProvider_.setManualRates(
-        manualRubToRubRate_, manualUsdToRubRate_, manualEurToRubRate_);
+        manualRubToRubRate_, manualUsdToRubRate_, manualEurToRubRate_, manualCnyToRubRate_);
     rateProvider_.setAutomaticUpdatesEnabled(true);
     summary_ = repository_.loadSummary();
 
@@ -2100,7 +2114,8 @@ QVariantMap FinanceController::saveScheduledTransaction(
     }
     if (amountCurrencyCode != QStringLiteral("RUB") &&
         amountCurrencyCode != QStringLiteral("USD") &&
-        amountCurrencyCode != QStringLiteral("EUR")) {
+        amountCurrencyCode != QStringLiteral("EUR") &&
+        amountCurrencyCode != QStringLiteral("CNY")) {
         result[QStringLiteral("error")] = tr("Выберите валюту суммы");
         return result;
     }
@@ -3359,9 +3374,8 @@ QString FinanceController::analyticsCurrency() const
 void FinanceController::setAnalyticsCurrency(const QString& currency)
 {
     const Currency requested = currencyFromString(currency);
-    const Currency normalized = requested == Currency::EUR
-        ? Currency::EUR
-        : Currency::USD;
+    const Currency normalized = requested == Currency::EUR || requested == Currency::CNY
+        ? requested : Currency::USD;
     if (normalized == analyticsCurrency_) {
         return;
     }
@@ -3878,7 +3892,8 @@ QVariantMap FinanceController::saveBudget(const QVariantMap& values)
     }
     if (currencyText != QStringLiteral("RUB") &&
         currencyText != QStringLiteral("USD") &&
-        currencyText != QStringLiteral("EUR")) {
+        currencyText != QStringLiteral("EUR") &&
+        currencyText != QStringLiteral("CNY")) {
         result[QStringLiteral("error")] = tr("Выберите валюту бюджета");
         return result;
     }
@@ -6001,7 +6016,7 @@ QString FinanceController::accountTypeToString(const AccountType type)
 }
 
 qint64 FinanceController::convertedTotal(
-    const std::array<qint64, 3>& amounts
+    const std::array<qint64, kCurrencyCount>& amounts
     ) const
 {
     qint64 total = 0;
@@ -6033,6 +6048,7 @@ Currency FinanceController::currencyFromString(
         return Currency::EUR;
     }
 
+    if (normalized == QStringLiteral("CNY")) return Currency::CNY;
     return Currency::RUB;
 }
 
@@ -6145,7 +6161,7 @@ QVariantMap FinanceController::saveFinancialGoal(const QVariantMap& values)
     if (goal.name.isEmpty() || goal.name.size() > 80)
         return error(tr("Введите название длиной до 80 символов"));
     const auto code = values.value(QStringLiteral("currency")).toString();
-    if (code != QStringLiteral("RUB") && code != QStringLiteral("USD") && code != QStringLiteral("EUR"))
+    if (code != QStringLiteral("RUB") && code != QStringLiteral("USD") && code != QStringLiteral("EUR") && code != QStringLiteral("CNY"))
         return error(tr("Выберите валюту цели"));
     goal.currency = currencyFromString(code);
     // Parse decimal text without floating-point rounding or silent truncation.
