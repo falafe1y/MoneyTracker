@@ -288,6 +288,13 @@ if(WIN32)
 endif()
 add_test(NAME InvestmentControllerTest COMMAND InvestmentControllerTest)
 
+add_executable(BackupRestoreControllerTest tests/BackupRestoreControllerTest.cpp ${investment_controller_test_sources} services/BankRecipients.qrc)
+target_link_libraries(BackupRestoreControllerTest PRIVATE Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(BackupRestoreControllerTest PRIVATE crypt32)
+endif()
+add_test(NAME BackupRestoreControllerTest COMMAND BackupRestoreControllerTest)
+
 add_executable(InvestmentAccountingRepositoryTest tests/InvestmentAccountingRepositoryTest.cpp
     persistence/FinanceRepository.cpp core/Currency.cpp services/InvestmentValuation.cpp)
 target_link_libraries(InvestmentAccountingRepositoryTest PRIVATE Qt6::Core Qt6::Sql Qt6::Test)

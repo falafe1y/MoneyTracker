@@ -108,6 +108,19 @@ QUrl CryptoProvider::ethereumApiUrl(
     return url;
 }
 
+void CryptoProvider::cancelAll()
+{
+    activeBalanceRequests_.clear();
+    activeTransactionRequests_.clear();
+    priceRequestActive_ = false;
+    const auto replies = networkAccessManager_.findChildren<QNetworkReply*>();
+    for (auto* reply : replies) {
+        QObject::disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        reply->deleteLater();
+    }
+}
+
 bool CryptoProvider::requestBalance(const CryptoWallet& wallet)
 {
     if (wallet.id().isEmpty() || !isSupportedWallet(wallet) ||

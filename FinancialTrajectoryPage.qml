@@ -167,7 +167,7 @@ ScrollView {
                         low = axis.minimum; high = axis.maximum;
                         total = Math.max(1, history.length + forecast.length - 1); offset = Math.max(0, history.length - 1);
                         ctx.strokeStyle = theme.line; ctx.lineWidth = 1;
-                        ctx.font = "13px sans-serif";
+                        ctx.font = "13px Commissioner";
                         for (var g = 0; g <= axis.intervals; ++g) {
                             var gy = 18 + (height - 36) * g / axis.intervals;
                             ctx.beginPath(); ctx.moveTo(90, gy); ctx.lineTo(width - 12, gy); ctx.stroke();

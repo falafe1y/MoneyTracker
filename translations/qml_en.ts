@@ -329,6 +329,9 @@
   </context>
   <context>
     <name>Desktop</name>
+    <message><source>Восстановить данные из копии?</source><translation>Restore data from backup?</translation></message>
+    <message><source>Все текущие счета, операции, настройки и заметки будут заменены данными из выбранной копии. Перед заменой сохраним копию предыдущего состояния.</source><translation>All current accounts, transactions, settings and notes will be replaced with the selected backup. A copy of the previous state will be saved first.</translation></message>
+    <message><source>Данные восстановлены из копии. Предыдущее состояние сохранено: %1</source><translation>Data restored from backup. Previous state saved: %1</translation></message>
     <message><source>Заметки</source><translation>Notes</translation></message>
     <message><source>Один документ. Изменения сохраняются автоматически.</source><translation>One document. Changes are saved automatically.</translation></message>
     <message><source>Ошибка заметок</source><translation>Notes error</translation></message>
@@ -415,6 +418,13 @@
   </context>
   <context>
     <name>FinanceController</name>
+    <message><source>Не удалось загрузить заметки: %1</source><translation>Could not load notes: %1</translation></message>
+    <message><source>Не удалось перенести старые заметки: %1</source><translation>Could not migrate old notes: %1</translation></message>
+    <message><source>Не удалось прочитать старые заметки: %1</source><translation>Could not read old notes: %1</translation></message>
+    <message><source>Не удалось перенести заметки в базу: %1</source><translation>Could not migrate notes into the database: %1</translation></message>
+    <message><source>Заметки перенесены в базу, но старый notes.txt не удалось удалить</source><translation>Notes migrated into the database, but the old notes.txt could not be deleted</translation></message>
+    <message><source>Не удалось создать заметки: %1</source><translation>Could not create notes: %1</translation></message>
+    <message><source>Не удалось удалить старый notes.txt</source><translation>Could not delete the old notes.txt</translation></message>
     <message><source>Не удалось найти каталог для заметок</source><translation>Could not find the notes directory</translation></message>
     <message><source>Не удалось открыть заметки: %1</source><translation>Could not open notes: %1</translation></message>
     <message><source>Не удалось прочитать заметки: %1</source><translation>Could not read notes: %1</translation></message>

@@ -1,4 +1,7 @@
 #include <QGuiApplication>
+#include <QFont>
+#include <QFontDatabase>
+#include <QDebug>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -11,6 +14,19 @@
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
+
+    const int interfaceFontId = QFontDatabase::addApplicationFont(
+        QStringLiteral(":/fonts/Commissioner.ttf"));
+    const int brandFontId = QFontDatabase::addApplicationFont(
+        QStringLiteral(":/fonts/BBHBartle-Regular.ttf"));
+    if (interfaceFontId < 0 || brandFontId < 0) {
+        qCritical() << "Не удалось загрузить встроенные шрифты приложения";
+        return 1;
+    }
+
+    QFont interfaceFont = app.font();
+    interfaceFont.setFamily(QStringLiteral("Commissioner"));
+    app.setFont(interfaceFont);
 
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 

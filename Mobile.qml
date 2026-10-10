@@ -499,7 +499,7 @@ ApplicationWindow {
                 minimum = axis.minimum;
                 maximum = axis.maximum;
                 const range = Math.max(1, maximum - minimum);
-                ctx.font = "14px sans-serif";
+                ctx.font = "14px Commissioner";
                 const intervals = Math.max(1, root.chartPriceLevels - 1);
                 for (let tick = 0; tick <= intervals; ++tick) {
                     const ratio = tick / intervals, y = top + ratio * plotHeight;
@@ -538,7 +538,7 @@ ApplicationWindow {
                 ctx.fillStyle = root.muted; ctx.textBaseline = "top";
                 if (parent.bars) {
                     const monthSlot = plotWidth / data.length;
-                    ctx.font = "14px sans-serif";
+                    ctx.font = "14px Commissioner";
                     ctx.textAlign = "center";
                     for (let label = 0; label < data.length; ++label)
                         ctx.fillText(root.expenseMonthLabel(data[label].monthIndex),

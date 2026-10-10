@@ -13,7 +13,7 @@ ApplicationWindow {
     visible: true
     title: "Ledgera"
     color: root.canvas
-    font.family: "Inter"
+    font.family: "Commissioner"
     font.pixelSize: 14
 
     readonly property int pageGap: 24
@@ -698,7 +698,8 @@ ApplicationWindow {
             || investmentPositionDialog.visible
             || bankCsvImportDialog.visible
             || recurringTransactionsDialog.visible
-            || clearDataDialog.visible;
+            || clearDataDialog.visible
+            || restoreConfirmationDialog.visible;
     }
 
     function selectedInvestmentAccountId() {
@@ -812,7 +813,7 @@ ApplicationWindow {
                 function yFor(value) {
                     return top + (maximum - value) / range * plotHeight;
                 }
-                ctx.font = "14px sans-serif";
+                ctx.font = "14px Commissioner";
                 for (let tick = 0; tick <= axis.intervals; ++tick) {
                     const ratio = tick / axis.intervals;
                     const y = top + ratio * plotHeight;
@@ -939,7 +940,7 @@ ApplicationWindow {
                 const tickIntervals = Math.max(1, root.chartPriceLevels - 1);
                 const tickStep = root.niceChartStep(paddedMaximum, tickIntervals);
                 maximum = tickIntervals * tickStep;
-                ctx.font = "14px sans-serif";
+                ctx.font = "14px Commissioner";
                 for (let tick = 0; tick <= tickIntervals; ++tick) {
                     const ratio = tick / tickIntervals;
                     const y = top + ratio * plotHeight;
@@ -974,7 +975,7 @@ ApplicationWindow {
                     ctx.stroke();
                     ctx.restore();
                 }
-                ctx.font = "14px sans-serif";
+                ctx.font = "14px Commissioner";
                 for (let index = 0; index < data.length; ++index) {
                     ctx.fillStyle = root.muted;
                     ctx.textBaseline = "top";
@@ -1196,34 +1197,20 @@ ApplicationWindow {
                 anchors.fill: parent
                 anchors.margins: 16
                 spacing: 8
-                RowLayout {
+                Text {
+                    Layout.fillWidth: true
                     Layout.leftMargin: 8
+                    Layout.rightMargin: 8
                     Layout.topMargin: 8
                     Layout.bottomMargin: 8
-                    spacing: 16
-                    Rectangle {
-                        HardShadow { depth: 3; shadowColor: root.navSelected }
-
-                        Layout.preferredWidth: 40
-                        Layout.preferredHeight: 40
-                        radius: 12
-                        color: root.soft
-                        border.width: root.outlineWidth
-                        border.color: root.accent
-                        Text {
-                            anchors.centerIn: parent
-                            text: "L"
-                            color: root.accent
-                            font.pixelSize: 23
-                            font.weight: Font.Bold
-                        }
-                    }
-                    Text {
-                        text: "Ledgera"
-                        color: root.accent
-                        font.pixelSize: 26
-                        font.weight: Font.Bold
-                    }
+                    Layout.preferredHeight: 40
+                    text: "Vexa"
+                    color: root.accent
+                    font.family: "Archivo Black"
+                    font.pixelSize: 28
+                    font.weight: Font.ExtraBold
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignHCenter
                 }
                 Rectangle {
                     Layout.fillWidth: true
@@ -4502,6 +4489,16 @@ ApplicationWindow {
                             text = financeController.notesText;
                             loaded = true;
                         }
+                        Connections {
+                            target: financeController
+                            function onNotesChanged() {
+                                if (!notesEditor.loaded || notesEditor.text === financeController.notesText)
+                                    return;
+                                notesEditor.loaded = false;
+                                notesEditor.text = financeController.notesText;
+                                notesEditor.loaded = true;
+                            }
+                        }
                         onTextChanged: {
                             if (loaded)
                                 financeController.setNotesText(text);
@@ -4846,7 +4843,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("Сохранить полную копию базы данных со счетами, операциями и настройками. Функция доступна в настольной версии для Linux и Windows.")
+                    text: qsTr("Сохранить полную копию базы данных со счетами, операциями, настройками и заметками. Функция доступна в настольной версии для Linux и Windows.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -4868,7 +4865,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("Восстановление добавляет отсутствующие записи из выбранной копии. Уже существующие данные сохраняются без изменений.")
+                    text: qsTr("Восстановление полностью заменяет текущие данные содержимым копии. Перед заменой автоматически сохраняется предыдущее состояние.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -4908,11 +4905,86 @@ ApplicationWindow {
         fileMode: FileDialog.OpenFile
         nameFilters: [qsTr("База данных SQLite (*.sqlite3 *.db)"), qsTr("Все файлы (*)")]
         onAccepted: {
-            const result = financeController.restoreDatabase(selectedFile);
-            root.csvStatusOk = result.ok;
-            root.csvStatus = result.ok
-                ? qsTr("Восстановление завершено. Добавлено записей: %1. Уже существовали: %2. Текущие данные сохранены.").arg(result.added).arg(result.skipped)
-                : qsTr("Не удалось восстановить копию: %1").arg(result.error);
+            restoreConfirmationDialog.backupFile = selectedFile;
+            restoreConfirmationDialog.open();
+        }
+    }
+
+    Dialog {
+        id: restoreConfirmationDialog
+        property url backupFile
+        width: Math.min(520, root.width - 48)
+        modal: true
+        anchors.centerIn: parent
+        padding: 24
+        closePolicy: Popup.CloseOnEscape
+        onAboutToShow: restoreDataError.text = ""
+
+        function confirmRestore() {
+            const result = financeController.restoreDatabase(backupFile);
+            if (!result.ok) {
+                restoreDataError.text = result.error;
+                return;
+            }
+            root.csvStatusOk = true;
+            root.csvStatus = qsTr("Данные восстановлены из копии. Предыдущее состояние сохранено: %1")
+                .arg(result.previousBackupPath);
+            close();
+        }
+
+        background: Rectangle {
+            HardShadow { depth: root.shadowDepth; shadowColor: root.accent }
+            color: root.panel
+            radius: 16
+            border.width: root.outlineWidth
+            border.color: root.accent
+        }
+        contentItem: ColumnLayout {
+            spacing: 16
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Восстановить данные из копии?")
+                color: root.accent
+                font.pixelSize: 21
+                font.weight: Font.Bold
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Все текущие счета, операции, настройки и заметки будут заменены данными из выбранной копии. Перед заменой сохраним копию предыдущего состояния.")
+                color: root.accent
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                Layout.fillWidth: true
+                text: decodeURIComponent(String(restoreConfirmationDialog.backupFile).split("/").pop())
+                color: root.muted
+                font.pixelSize: 14
+                elide: Text.ElideMiddle
+            }
+            Text {
+                id: restoreDataError
+                Layout.fillWidth: true
+                visible: text.length > 0
+                color: root.red
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 16
+                Item { Layout.fillWidth: true }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: restoreConfirmationDialog.close()
+                }
+                SoftButton {
+                    text: qsTr("Восстановить")
+                    destructive: true
+                    onClicked: restoreConfirmationDialog.confirmRestore()
+                }
+            }
         }
     }
 

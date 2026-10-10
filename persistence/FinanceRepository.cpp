@@ -273,6 +273,42 @@ FinanceRepository::~FinanceRepository()
 
 bool FinanceRepository::isOpen() const { return database_.isOpen(); }
 QString FinanceRepository::lastError() const { return lastError_; }
+QString FinanceRepository::databasePath() const { return database_.databaseName(); }
+
+bool FinanceRepository::loadNotes(QString& text, bool* exists)
+{
+    if (exists) *exists = false;
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral("SELECT text FROM notes WHERE id = 1"))) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    text.clear();
+    if (query.next()) {
+        text = query.value(0).toString();
+        if (exists) *exists = true;
+    } else if (query.lastError().isValid()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    setLastError({});
+    return true;
+}
+
+bool FinanceRepository::saveNotes(const QString& text)
+{
+    QSqlQuery query(database_);
+    query.prepare(QStringLiteral(
+        "INSERT INTO notes(id,text) VALUES(1,?) "
+        "ON CONFLICT(id) DO UPDATE SET text=excluded.text"));
+    query.addBindValue(text.isNull() ? QStringLiteral("") : text);
+    if (!query.exec()) {
+        setLastError(query.lastError().text());
+        return false;
+    }
+    setLastError({});
+    return true;
+}
 
 bool FinanceRepository::backupDatabase(const QString& destinationPath)
 {
@@ -341,10 +377,11 @@ bool FinanceRepository::backupDatabase(const QString& destinationPath)
 }
 
 bool FinanceRepository::restoreDatabase(const QString& sourcePath,
-                                        qint64* added, qint64* skipped)
+                                        qint64* restoredRecords,
+                                        QString* previousBackupPath)
 {
-    if (added) *added = 0;
-    if (skipped) *skipped = 0;
+    if (restoredRecords) *restoredRecords = 0;
+    if (previousBackupPath) previousBackupPath->clear();
     const QFileInfo file(sourcePath);
     if (!isOpen() || sourcePath.trimmed().isEmpty() || !file.isFile()) {
         setLastError(QStringLiteral("Выберите существующий файл резервной копии"));
@@ -357,7 +394,8 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
 
     const QString connection = QUuid::createUuid().toString(QUuid::WithoutBraces);
     bool restored = false;
-    qint64 inserted = 0, ignored = 0;
+    qint64 inserted = 0;
+    QString safetyCopy;
     {
         QSqlDatabase source = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
         source.setDatabaseName(file.absoluteFilePath());
@@ -394,14 +432,15 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                 QStringLiteral("investment_operations"),
                 QStringLiteral("capital_snapshots"), QStringLiteral("bank_csv_profiles"),
                 QStringLiteral("bank_category_rules"), QStringLiteral("bank_recipient_rules"),
-                QStringLiteral("bank_import_links"), QStringLiteral("settings")};
+                QStringLiteral("bank_import_links"), QStringLiteral("settings"),
+                QStringLiteral("notes")};
             QSet<QString> sourceTables;
-            if (!check.exec(QStringLiteral("SELECT name, type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','view')"))) {
+            if (!check.exec(QStringLiteral("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"))) {
                 return fail(check.lastError().text());
             }
             while (check.next()) {
                 const QString table = check.value(0).toString();
-                if (check.value(1).toString() != QStringLiteral("table") || !tables.contains(table)) {
+                if (!tables.contains(table)) {
                     return fail(QStringLiteral("Структура копии не поддерживается этой версией программы"));
                 }
                 sourceTables.insert(table);
@@ -410,6 +449,11 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
             for (const auto& required : {QStringLiteral("accounts"), QStringLiteral("categories"), QStringLiteral("transactions"), QStringLiteral("settings")}) {
                 if (!sourceTables.contains(required)) return fail(QStringLiteral("Файл не является резервной копией Ledgera"));
             }
+            safetyCopy = QFileInfo(database_.databaseName()).absolutePath()
+                + QStringLiteral("/before-restore-")
+                + QUuid::createUuid().toString(QUuid::WithoutBraces)
+                + QStringLiteral(".sqlite3");
+            if (!backupDatabase(safetyCopy)) return fail(lastError_);
             if (!database_.transaction()) return fail(database_.lastError().text());
             const auto rollback = [&](const QString& error) {
                 database_.rollback();
@@ -417,6 +461,11 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
             };
             QSqlQuery pragma(database_);
             if (!pragma.exec(QStringLiteral("PRAGMA defer_foreign_keys = ON"))) return rollback(pragma.lastError().text());
+            // Children are cleared before parents. The transaction also restores deletions.
+            for (auto table = tables.crbegin(); table != tables.crend(); ++table) {
+                if (!pragma.exec(QStringLiteral("DELETE FROM \"%1\"").arg(*table)))
+                    return rollback(pragma.lastError().text());
+            }
             for (const QString& table : tables) {
                 if (!sourceTables.contains(table)) continue; // Older copies may lack newer features.
                 QSqlQuery targetInfo(database_), sourceInfo(source);
@@ -451,8 +500,8 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                 QSqlQuery rows(source), insert(database_);
                 rows.setForwardOnly(true);
                 if (!rows.exec(QStringLiteral("SELECT %1 FROM \"%2\"").arg(columns.join(','), table))
-                    || !insert.prepare(QStringLiteral("INSERT INTO \"%1\" (%2) VALUES (%3) ON CONFLICT (%4) DO NOTHING")
-                        .arg(table, columns.join(','), placeholders.join(','), keys.join(',')))) {
+                    || !insert.prepare(QStringLiteral("INSERT INTO \"%1\" (%2) VALUES (%3)")
+                        .arg(table, columns.join(','), placeholders.join(',')))) {
                     return rollback(QStringLiteral("Не удалось прочитать таблицу %1").arg(table));
                 }
                 while (rows.next()) {
@@ -461,10 +510,20 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                         if (rows.value(columns.indexOf(key)).isNull()) return rollback(QStringLiteral("Пустой идентификатор в таблице %1").arg(table));
                     }
                     if (!insert.exec()) return rollback(QStringLiteral("Конфликт данных в таблице %1: %2").arg(table, insert.lastError().text()));
-                    if (insert.numRowsAffected() > 0) ++inserted; else ++ignored;
+                    ++inserted;
                 }
                 if (rows.lastError().isValid()) return rollback(rows.lastError().text());
             }
+            // Old copies have no notes. Record an empty document so notes.txt cannot
+            // be imported again on a later startup after restoring such a copy.
+            if (!pragma.exec(QStringLiteral("INSERT OR IGNORE INTO notes(id,text) VALUES(1,'')")))
+                return rollback(pragma.lastError().text());
+            if (!pragma.exec(QStringLiteral("INSERT OR IGNORE INTO settings(key,value) VALUES"
+                    "('accounts_initialized','1'),('categories_initialized','1')")))
+                return rollback(pragma.lastError().text());
+            if (!pragma.exec(QStringLiteral("PRAGMA foreign_key_check")) || pragma.next())
+                return rollback(QStringLiteral("В копии нарушены связи между записями"));
+            pragma.finish();
             if (!database_.commit()) return rollback(database_.lastError().text());
             return true;
         }();
@@ -472,9 +531,11 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
     }
     QSqlDatabase::removeDatabase(connection);
     if (restored) {
-        if (added) *added = inserted;
-        if (skipped) *skipped = ignored;
+        if (restoredRecords) *restoredRecords = inserted;
+        if (previousBackupPath) *previousBackupPath = safetyCopy;
         setLastError({});
+    } else if (!safetyCopy.isEmpty()) {
+        QFile::remove(safetyCopy);
     }
     return restored;
 }
@@ -513,7 +574,8 @@ bool FinanceRepository::clearAllUserData()
         QStringLiteral("DELETE FROM projects"),
         QStringLiteral("DELETE FROM accounts"),
         QStringLiteral("DELETE FROM categories"),
-        QStringLiteral("DELETE FROM settings")};
+        QStringLiteral("DELETE FROM settings"),
+        QStringLiteral("DELETE FROM notes")};
     QSqlQuery query(database_);
     for (const QString& statement : statements) {
         if (!query.exec(statement)) {
@@ -523,6 +585,7 @@ bool FinanceRepository::clearAllUserData()
         }
     }
     const QStringList defaults{
+        QStringLiteral("INSERT INTO notes(id,text) VALUES(1,'')"),
         QStringLiteral("INSERT INTO settings(key,value) VALUES('app_currency','RUB')"),
         QStringLiteral("INSERT INTO settings(key,value) VALUES('analytics_currency','USD')"),
         QStringLiteral("INSERT INTO settings(key,value) VALUES('selected_asset','fiat')"),
@@ -3158,6 +3221,8 @@ bool FinanceRepository::initializeSchema()
 {
     const QStringList statements{
         // Additive, idempotent migration: existing operations are untouched.
+        QStringLiteral("CREATE TABLE IF NOT EXISTS notes ("
+                       "id INTEGER PRIMARY KEY CHECK(id=1), text TEXT NOT NULL DEFAULT '')"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS bank_import_links (row_key TEXT PRIMARY KEY, "
                        "transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS bank_category_rules ("

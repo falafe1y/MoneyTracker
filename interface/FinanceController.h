@@ -351,6 +351,7 @@ public:
     Q_INVOKABLE QVariantMap saveFinancialTrajectorySettings(const QVariantMap& values);
 
     explicit FinanceController(QObject* parent = nullptr, const QString& databasePath = {});
+    ~FinanceController() override;
 
     QString notesText() const;
     bool notesDirty() const;
@@ -689,7 +690,8 @@ private:
         const Budget& budget
         ) const;
     void refreshBudgetMonthLimits();
-    void loadNotes();
+    void loadNotes(bool migrateLegacyFile = true);
+    void cancelPendingAssetRequests();
 
     qint64 accountBalanceMinor(const Account& account) const;
     qint64 investmentAccountValueMinor(const QString& accountId) const;
@@ -814,7 +816,9 @@ private:
     QTimer cryptoRefreshTimer_;
     QTimer recurringTimer_;
     QTimer notesSaveTimer_;
-    QString notesFilePath_;
+    QString legacyNotesFilePath_;
+    quint64 dataGeneration_ = 0;
+    bool restoringDatabase_ = false;
     QString notesText_;
     QString notesError_;
     bool notesDirty_ = false;

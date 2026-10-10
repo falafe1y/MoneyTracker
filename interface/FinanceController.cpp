@@ -3,6 +3,8 @@
 #include "../services/MoexInvestmentParser.h"
 #include <QtConcurrent>
 #include <QFutureWatcher>
+#include <QSignalBlocker>
+#include <QScopedValueRollback>
 
 #include "../services/BankCsvImporter.h"
 #include "../services/BankCategoryMatcher.h"
@@ -29,7 +31,6 @@
 #include <QFileInfo>
 #include <QFile>
 #include <QDir>
-#include <QSaveFile>
 #include <QStandardPaths>
 #include <QRegularExpression>
 
@@ -825,6 +826,43 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
     }
 }
 
+FinanceController::~FinanceController()
+{
+    saveNotes();
+}
+
+void FinanceController::cancelPendingAssetRequests()
+{
+    ++dataGeneration_;
+    cryptoRefreshTimer_.stop();
+    recurringTimer_.stop();
+    recurringMaterializationScheduled_ = false;
+    cryptoProvider_.cancelAll();
+    investmentProvider_.cancelAll();
+    for (const auto& account : cryptoExchanges_)
+        bybitProvider_.cancel(account.toMap().value("id").toString());
+    loadingExchangeCredentials_.clear();
+    exchangeCredentials_.clear();
+    exchangeErrors_.clear();
+    exchangeCredentialWarnings_.clear();
+    cryptoWalletNames_.clear();
+    cryptoPricesUsdMicros_.clear();
+    cryptoPricesFetchedAtUtc_.clear();
+    refreshingCryptoWalletIds_.clear();
+    pendingCryptoWalletRequests_.clear();
+    pendingCryptoRequests_ = 0;
+    cryptoRefreshing_ = false;
+    cryptoLastError_.clear();
+    investmentSearchResults_.clear();
+    selectedInvestmentSearchIndex_ = -1;
+    requestedSearchQuoteId_.clear();
+    investmentSearchBusy_ = false;
+    investmentQuoteBusy_ = false;
+    investmentRefreshing_ = false;
+    refreshingInvestmentIds_.clear();
+    investmentLastError_.clear();
+}
+
 QString FinanceController::notesText() const
 {
     return notesText_;
@@ -845,37 +883,56 @@ QString FinanceController::notesError() const
     return notesError_;
 }
 
-void FinanceController::loadNotes()
+void FinanceController::loadNotes(const bool migrateLegacyFile)
 {
-    const QString directory = QStandardPaths::writableLocation(
-        QStandardPaths::AppDataLocation);
-    if (directory.isEmpty()) {
+    notesSaveTimer_.stop();
+    notesDirty_ = false;
+    notesError_.clear();
+    legacyNotesFilePath_ = QFileInfo(repository_.databasePath()).absolutePath()
+        + QStringLiteral("/notes.txt");
+    bool exists = false;
+    QString text;
+    if (!repository_.loadNotes(text, &exists)) {
         notesAvailable_ = false;
-        notesError_ = tr("Не удалось найти каталог для заметок");
+        notesError_ = tr("Не удалось загрузить заметки: %1").arg(repository_.lastError());
         emit notesChanged();
         return;
     }
-
-    notesFilePath_ = QDir(directory).filePath(QStringLiteral("notes.txt"));
-    if (!QFile::exists(notesFilePath_)) {
-        return;
+    if (!exists && migrateLegacyFile && QFile::exists(legacyNotesFilePath_)) {
+        QFile file(legacyNotesFilePath_);
+        if (!file.open(QIODevice::ReadOnly)) {
+            notesAvailable_ = false;
+            notesError_ = tr("Не удалось перенести старые заметки: %1").arg(file.errorString());
+            emit notesChanged();
+            return;
+        }
+        const QByteArray contents = file.readAll();
+        if (file.error() != QFileDevice::NoError) {
+            notesAvailable_ = false;
+            notesError_ = tr("Не удалось прочитать старые заметки: %1").arg(file.errorString());
+            emit notesChanged();
+            return;
+        }
+        file.close();
+        text = QString::fromUtf8(contents);
+        if (!repository_.saveNotes(text)) {
+            notesAvailable_ = false;
+            notesError_ = tr("Не удалось перенести заметки в базу: %1").arg(repository_.lastError());
+            emit notesChanged();
+            return;
+        }
+        exists = true;
+        if (!QFile::remove(legacyNotesFilePath_))
+            notesError_ = tr("Заметки перенесены в базу, но старый notes.txt не удалось удалить");
     }
-
-    QFile file(notesFilePath_);
-    if (!file.open(QIODevice::ReadOnly)) {
+    if (!exists && !repository_.saveNotes(text)) {
         notesAvailable_ = false;
-        notesError_ = tr("Не удалось открыть заметки: %1").arg(file.errorString());
+        notesError_ = tr("Не удалось создать заметки: %1").arg(repository_.lastError());
         emit notesChanged();
         return;
     }
-    const QByteArray contents = file.readAll();
-    if (file.error() != QFileDevice::NoError) {
-        notesAvailable_ = false;
-        notesError_ = tr("Не удалось прочитать заметки: %1").arg(file.errorString());
-        emit notesChanged();
-        return;
-    }
-    notesText_ = QString::fromUtf8(contents);
+    notesText_ = text;
+    notesAvailable_ = true;
     emit notesChanged();
 }
 
@@ -894,24 +951,10 @@ void FinanceController::setNotesText(const QString& text)
 bool FinanceController::saveNotes()
 {
     if (!notesDirty_) {
-        return notesError_.isEmpty();
+        return notesAvailable_;
     }
-    const QString directory = QFileInfo(notesFilePath_).absolutePath();
-    if (notesFilePath_.isEmpty() || !QDir().mkpath(directory)) {
-        notesError_ = tr("Не удалось создать каталог для заметок");
-        emit notesChanged();
-        return false;
-    }
-
-    QSaveFile file(notesFilePath_);
-    if (!file.open(QIODevice::WriteOnly)) {
-        notesError_ = tr("Не удалось сохранить заметки: %1").arg(file.errorString());
-        emit notesChanged();
-        return false;
-    }
-    const QByteArray contents = notesText_.toUtf8();
-    if (file.write(contents) != contents.size() || !file.commit()) {
-        notesError_ = tr("Не удалось сохранить заметки: %1").arg(file.errorString());
+    if (!repository_.saveNotes(notesText_)) {
+        notesError_ = tr("Не удалось сохранить заметки: %1").arg(repository_.lastError());
         emit notesChanged();
         return false;
     }
@@ -1213,6 +1256,9 @@ QVariantMap FinanceController::backupDatabase(const QUrl& fileUrl)
                 {QStringLiteral("error"), tr("Не выбрано место для резервной копии")}};
     }
     if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".sqlite3");
+    if (!saveNotes()) {
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), notesError_}};
+    }
     if (!repository_.backupDatabase(path)) {
         return {{QStringLiteral("ok"), false},
                 {QStringLiteral("error"), repository_.lastError()}};
@@ -1222,10 +1268,51 @@ QVariantMap FinanceController::backupDatabase(const QUrl& fileUrl)
 
 QVariantMap FinanceController::restoreDatabase(const QUrl& fileUrl)
 {
-    qint64 added = 0, skipped = 0;
-    if (!repository_.restoreDatabase(fileUrl.toLocalFile(), &added, &skipped)) {
+    if (!saveNotes())
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), notesError_}};
+    qint64 restoredRecords = 0;
+    QString previousBackupPath;
+    if (!repository_.restoreDatabase(fileUrl.toLocalFile(), &restoredRecords, &previousBackupPath)) {
         return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), repository_.lastError()}};
     }
+    const QScopedValueRollback<bool> restoring(restoringDatabase_, true);
+    cancelPendingAssetRequests();
+    notesSaveTimer_.stop();
+    notesText_.clear();
+    notesDirty_ = false;
+    loadNotes(false);
+    {
+        const QSignalBlocker blockRates(&rateProvider_);
+        appCurrency_ = currencyFromString(repository_.loadAppCurrency());
+        const Currency storedAnalyticsCurrency = currencyFromString(
+            repository_.loadAnalyticsCurrency());
+        analyticsCurrency_ = storedAnalyticsCurrency == Currency::EUR || storedAnalyticsCurrency == Currency::CNY
+            ? storedAnalyticsCurrency : Currency::USD;
+        uiLanguage_ = repository_.loadUiLanguage() == QStringLiteral("en")
+            ? QStringLiteral("en")
+            : QStringLiteral("ru");
+        manualRubToRubRate_ = repository_.loadManualRubToRubRate();
+        manualUsdToRubRate_ = repository_.loadManualUsdToRubRate();
+        manualEurToRubRate_ = repository_.loadManualEurToRubRate();
+        manualCnyToRubRate_ = repository_.loadManualCnyToRubRate();
+        if (!rateProvider_.setManualRates(
+                manualRubToRubRate_,
+                manualUsdToRubRate_,
+                manualEurToRubRate_, manualCnyToRubRate_)) {
+            qWarning() << "Failed to apply stored manual currency rates";
+        }
+        automaticCurrencyRates_ = repository_.loadAutomaticCurrencyRates();
+        rateProvider_.setAutomaticUpdatesEnabled(automaticCurrencyRates_);
+        selectedAsset_ = assetTypeFromString(repository_.loadSelectedAsset());
+    }
+    selectedAccountId_.clear();
+    selectedProjectId_.clear();
+    selectedBudgetId_.clear();
+    selectedCryptoWalletId_.clear();
+    selectedBudgetMonth_ = QDate(QDate::currentDate().year(), QDate::currentDate().month(), 1);
+    dateFilterFrom_ = {};
+    dateFilterTo_ = {};
+    lastCapitalSnapshotDate_ = {};
     transactions_ = repository_.loadTransactions();
     projects_ = repository_.loadProjects();
     recurringTransactions_ = repository_.loadRecurringTransactions();
@@ -1272,6 +1359,9 @@ QVariantMap FinanceController::restoreDatabase(const QUrl& fileUrl)
         else if (!cryptoExchanges_.isEmpty()) selectedCryptoWalletId_ = cryptoExchanges_.constFirst().toMap().value("id").toString();
         emit selectedCryptoWalletIdChanged();
     }
+    if (!cryptoPricesUsdMicros_.contains(QStringLiteral("USDT")))
+        cryptoPricesUsdMicros_.insert(QStringLiteral("USDT"), 1'000'000);
+    lastCryptoRefreshAttemptUtc_ = repository_.loadCryptoRefreshAttemptUtc();
     refreshBudgetMonthLimits();
     emit accountsChanged();
     emit categoriesChanged();
@@ -1284,10 +1374,29 @@ QVariantMap FinanceController::restoreDatabase(const QUrl& fileUrl)
     emit cryptoWalletsChanged();
     emit cryptoTransactionsChanged();
     emit investmentPositionsChanged();
-    emit balanceChanged(); // Rebuilds history, analytics, goals and the current capital snapshot.
+    emit balanceChanged(); // Rebuilds history, analytics and goals without changing restored snapshots.
     scheduleRecurringMaterialization();
-    return {{QStringLiteral("ok"), true}, {QStringLiteral("added"), added},
-            {QStringLiteral("skipped"), skipped}};
+    emit selectedAssetChanged();
+    emit selectedAccountIdChanged();
+    emit selectedProjectIdChanged();
+    emit selectedBudgetIdChanged();
+    emit selectedCryptoWalletIdChanged();
+    emit selectedBudgetMonthChanged();
+    emit appCurrencyChanged();
+    emit analyticsChanged();
+    emit uiLanguageChanged();
+    emit automaticCurrencyRatesChanged();
+    emit manualCurrencyRatesChanged();
+    emit currencyRatesChanged();
+    emit dateFilterChanged();
+    emit financialTrajectoryChanged();
+    emit cryptoRefreshingChanged();
+    emit cryptoLastErrorChanged();
+    emit investmentSearchResultsChanged();
+    emit investmentSearchStateChanged();
+    emit investmentRefreshingChanged();
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("restoredRecords"), restoredRecords},
+            {QStringLiteral("previousBackupPath"), previousBackupPath}};
 }
 
 QVariantMap FinanceController::clearAllData()
@@ -1297,17 +1406,14 @@ QVariantMap FinanceController::clearAllData()
                 {QStringLiteral("error"), repository_.lastError()}};
     }
 
+    cancelPendingAssetRequests();
     notesSaveTimer_.stop();
-    const bool notesRemoved = notesFilePath_.isEmpty() ||
-        !QFile::exists(notesFilePath_) || QFile::remove(notesFilePath_);
-    if (notesRemoved) {
-        notesText_.clear();
-        notesDirty_ = false;
-        notesAvailable_ = true;
-        notesError_.clear();
-    } else {
-        notesError_ = tr("Не удалось удалить файл заметок");
-    }
+    const bool notesRemoved = legacyNotesFilePath_.isEmpty() ||
+        !QFile::exists(legacyNotesFilePath_) || QFile::remove(legacyNotesFilePath_);
+    notesText_.clear();
+    notesDirty_ = false;
+    notesAvailable_ = true;
+    notesError_ = notesRemoved ? QString() : tr("Не удалось удалить старый notes.txt");
     emit notesChanged();
 
     recurringTimer_.stop();
@@ -4100,8 +4206,10 @@ QVariantMap FinanceController::saveCryptoConnection(const QVariantMap& values)
     if (!key.isEmpty()) {
         exchangeCredentials_[id] = {key, secret}; exchangeCredentialWarnings_.remove(id);
         auto* watcher = new QFutureWatcher<bool>(this);
-        connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, id] {
+        const auto generation = dataGeneration_;
+        connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, id, generation] {
             const bool saved = watcher->result(); watcher->deleteLater();
+            if (generation != dataGeneration_) return;
             bool exists = false;
             for (const auto& value : cryptoExchanges_) if (value.toMap().value("id").toString() == id) exists = true;
             if (!exists) { (void)QtConcurrent::run([id] { ExchangeCredentials::remove(id); }); return; }
@@ -4123,8 +4231,11 @@ void FinanceController::startExchangeRefresh(const QString& id)
     if (!exchangeCredentials_.contains(id)) {
         loadingExchangeCredentials_.insert(id);
         auto* watcher = new QFutureWatcher<QPair<QString, QString>>(this);
-        connect(watcher, &QFutureWatcher<QPair<QString, QString>>::finished, this, [this, watcher, id] {
-            const auto credentials = watcher->result(); watcher->deleteLater(); loadingExchangeCredentials_.remove(id);
+        const auto generation = dataGeneration_;
+        connect(watcher, &QFutureWatcher<QPair<QString, QString>>::finished, this, [this, watcher, id, generation] {
+            const auto credentials = watcher->result(); watcher->deleteLater();
+            if (generation != dataGeneration_) return;
+            loadingExchangeCredentials_.remove(id);
             bool exists = false;
             for (const auto& value : cryptoExchanges_) if (value.toMap().value("id").toString() == id) exists = true;
             if (!exists) return;
@@ -6211,7 +6322,7 @@ bool FinanceController::deleteFinancialGoal(const QString& id)
 
 void FinanceController::captureCapitalSnapshot(const bool overwriteToday)
 {
-    if (!repository_.isOpen()) return;
+    if (restoringDatabase_ || !repository_.isOpen()) return;
     if (accounts_.isEmpty() && cryptoWallets_.isEmpty() && cryptoExchanges_.isEmpty()) return;
     const QDate today = QDate::currentDate();
     if (!overwriteToday && lastCapitalSnapshotDate_ == today) return;

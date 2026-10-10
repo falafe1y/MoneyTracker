@@ -50,10 +50,10 @@ private slots:
     void deletesAccountWithRelatedOperations();
     void storesCryptoWalletAndPriceSnapshots();
     void migratesLegacyCryptoSchema();
-    void restoresMissingRowsWithoutOverwritingAndIsIdempotent();
+    void replacesExistingDataAndIsIdempotent();
     void restoreRejectsInvalidFilesAndRollsBackSchemaConflict();
     void restoresCompositeKeysAndRelatedRows();
-    void restoresEveryBackupTableAndRollsBackUniqueConflicts();
+    void restoresEveryBackupTableExactly();
     void restoresOlderCopyWithOptionalColumnsMissing();
     void createsConsistentDatabaseBackup();
     void clearsAllUserDataAndResetsSettings();
@@ -172,7 +172,7 @@ void FinanceRepositoryTest::cnyMigrationPreservesData()
     QCOMPARE(reopened.loadSummary().balance[static_cast<int>(Currency::CNY)],qint64(9500));
 }
 
-void FinanceRepositoryTest::restoresMissingRowsWithoutOverwritingAndIsIdempotent()
+void FinanceRepositoryTest::replacesExistingDataAndIsIdempotent()
 {
     QTemporaryDir directory;
     FinanceRepository current(directory.filePath(QStringLiteral("current.sqlite3")));
@@ -212,25 +212,29 @@ void FinanceRepositoryTest::restoresMissingRowsWithoutOverwritingAndIsIdempotent
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QByteArray before = QCryptographicHash::hash(file.readAll(), QCryptographicHash::Sha256);
     file.close();
-    qint64 added = -1, skipped = -1;
-    QVERIFY2(current.restoreDatabase(copy, &added, &skipped), qPrintable(current.lastError()));
-    QCOMPARE(added, 2); // Only the missing account and transaction.
-    QVERIFY(skipped > 0);
+    qint64 added = -1;
+    QString previousPath;
+    QVERIFY2(current.restoreDatabase(copy, &added, &previousPath), qPrintable(current.lastError()));
+    QVERIFY(added > 2);
+    QVERIFY(QFileInfo::exists(previousPath));
+    FinanceRepository previousState(previousPath);
+    QCOMPARE(previousState.loadAppCurrency(), QStringLiteral("EUR"));
+    QCOMPARE(previousState.loadTransactions().size(), 2);
     QCOMPARE(current.loadAccounts().size(), 2);
-    QCOMPARE(current.loadTransactions().size(), 3);
-    QCOMPARE(current.loadAppCurrency(), QStringLiteral("EUR"));
+    QCOMPARE(current.loadTransactions().size(), 2);
+    QCOMPARE(current.loadAppCurrency(), QStringLiteral("USD"));
     for (const Account& account : current.loadAccounts()) {
-        if (account.id() == existing.id()) QCOMPARE(account.name(), existing.name());
+        if (account.id() == existing.id()) QCOMPARE(account.name(), previous.name());
     }
     for (const Transaction& tx : current.loadTransactions()) {
         if (tx.id() == shared.id()) {
-            QCOMPARE(tx.money().minorUnits(), shared.money().minorUnits());
-            QCOMPARE(tx.description(), shared.description());
+            QCOMPARE(tx.money().minorUnits(), oldShared.money().minorUnits());
+            QCOMPARE(tx.description(), oldShared.description());
         }
     }
-    QVERIFY2(current.restoreDatabase(copy, &added, &skipped), qPrintable(current.lastError()));
-    QCOMPARE(added, 0);
-    QCOMPARE(current.loadTransactions().size(), 3);
+    QVERIFY2(current.restoreDatabase(copy, &added, &previousPath), qPrintable(current.lastError()));
+    QVERIFY(added > 2);
+    QCOMPARE(current.loadTransactions().size(), 2);
     QVERIFY(file.open(QIODevice::ReadOnly));
     QCOMPARE(QCryptographicHash::hash(file.readAll(), QCryptographicHash::Sha256), before);
 }
@@ -245,11 +249,14 @@ void FinanceRepositoryTest::restoreRejectsInvalidFilesAndRollsBackSchemaConflict
     QVERIFY(source.clearAllUserData());
     QVERIFY(source.insertAccount(Account(QStringLiteral("new"), QStringLiteral("Новый"),
         AssetType::Fiat, AccountType::Cash, Currency::RUB)));
-    qint64 added = 9, skipped = 9;
-    QVERIFY(!current.restoreDatabase(directory.filePath(QStringLiteral("absent.sqlite3")), &added, &skipped));
+    QVERIFY(current.insertAccount(Account(QStringLiteral("survivor"), QStringLiteral("Сохранить"), AssetType::Fiat, AccountType::Cash, Currency::RUB)));
+    QVERIFY(current.saveNotes(QStringLiteral("Не потерять")));
+    qint64 added = 9;
+    QString previousPath;
+    QVERIFY(!current.restoreDatabase(directory.filePath(QStringLiteral("absent.sqlite3")), &added, &previousPath));
     QVERIFY(!QFileInfo::exists(directory.filePath(QStringLiteral("absent.sqlite3"))));
     QCOMPARE(added, 0);
-    QCOMPARE(skipped, 0);
+    QVERIFY(previousPath.isEmpty());
     QVERIFY(!current.restoreDatabase(currentPath));
     const QString invalidPath = directory.filePath(QStringLiteral("invalid.sqlite3"));
     QFile invalid(invalidPath);
@@ -268,11 +275,15 @@ void FinanceRepositoryTest::restoreRejectsInvalidFilesAndRollsBackSchemaConflict
         QVERIFY(query.exec(QStringLiteral("ALTER TABLE settings ADD COLUMN future_column TEXT")));
     }
     QSqlDatabase::removeDatabase(connection);
-    QVERIFY(!current.restoreDatabase(backup, &added, &skipped));
+    QVERIFY(!current.restoreDatabase(backup, &added, &previousPath));
     QCOMPARE(added, 0);
-    QVERIFY(current.loadAccounts().isEmpty());
+    QCOMPARE(current.loadAccounts().size(), 1);
+    QCOMPARE(current.loadAccounts().first().id(), QStringLiteral("survivor"));
+    QString notes; QVERIFY(current.loadNotes(notes));
+    QCOMPARE(notes, QStringLiteral("Не потерять"));
+    QVERIFY(previousPath.isEmpty());
     QCOMPARE(current.loadAppCurrency(), QStringLiteral("RUB"));
-    // The connection/transaction is usable after the failed merge.
+    // The connection/transaction is usable after the failed replacement.
     QVERIFY(current.insertAccount(Account(QStringLiteral("after"), QStringLiteral("После"),
         AssetType::Fiat, AccountType::Cash, Currency::RUB)));
 }
@@ -307,11 +318,11 @@ void FinanceRepositoryTest::restoresCompositeKeysAndRelatedRows()
     QCOMPARE(current.loadBankCategoryRules().size(), 1);
     qint64 added = -1;
     QVERIFY2(current.restoreDatabase(backup, &added), qPrintable(current.lastError()));
-    QCOMPARE(added, 0);
+    QVERIFY(added > 0);
     QCOMPARE(current.loadSummary().balance[0], 0);
 }
 
-void FinanceRepositoryTest::restoresEveryBackupTableAndRollsBackUniqueConflicts()
+void FinanceRepositoryTest::restoresEveryBackupTableExactly()
 {
     QTemporaryDir directory;
     const QString currentPath = directory.filePath(QStringLiteral("current.sqlite3"));
@@ -365,13 +376,14 @@ void FinanceRepositoryTest::restoresEveryBackupTableAndRollsBackUniqueConflicts(
             QStringLiteral("INSERT INTO capital_snapshots VALUES('2026-10-01','RUB',1000,1)"),
             QStringLiteral("INSERT INTO bank_csv_profiles VALUES('profile','Импорт','{}',1,1)"),
             QStringLiteral("INSERT INTO bank_category_rules(pattern,match_mode,type,category_id) VALUES('банк','exact',0,'c')"),
+            QStringLiteral("UPDATE notes SET text='Заметки из копии' WHERE id=1"),
             QStringLiteral("INSERT INTO settings VALUES('custom_setting','value')")};
         for (const QString& statement : statements) QVERIFY2(query.exec(statement), qPrintable(query.lastError().text()));
         const QStringList tables = database.tables();
         for (const QString& table : tables) expected.insert(table, readRows(database, table));
     }
     QSqlDatabase::removeDatabase(connection);
-    // A natural unique key with different IDs must fail visibly, never silently drop data.
+    // Existing natural keys must be replaced along with the old rows.
     {
         auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
         database.setDatabaseName(currentPath); QVERIFY(database.open());
@@ -379,12 +391,6 @@ void FinanceRepositoryTest::restoresEveryBackupTableAndRollsBackUniqueConflicts(
         QVERIFY(query.exec(QStringLiteral("INSERT INTO investment_instruments(id,symbol,isin,name,type,currency,created_at) VALUES('existing','OLD','RU-TEST','Текущая',0,'RUB',1)")));
     }
     QSqlDatabase::removeDatabase(connection);
-    QVERIFY(!current.restoreDatabase(backup));
-    QVERIFY(current.loadAccounts().isEmpty());
-    QVERIFY(current.loadTransactions().isEmpty());
-    QCOMPARE(current.loadInvestmentInstruments().size(), 1);
-    QCOMPARE(current.loadInvestmentInstruments().first().id(), QStringLiteral("existing"));
-    QVERIFY(current.clearAllUserData());
     qint64 added = -1;
     QVERIFY2(current.restoreDatabase(backup, &added), qPrintable(current.lastError()));
     QVERIFY(added > 20);
@@ -400,7 +406,7 @@ void FinanceRepositoryTest::restoresEveryBackupTableAndRollsBackUniqueConflicts(
     }
     QSqlDatabase::removeDatabase(connection);
     QVERIFY2(current.restoreDatabase(backup, &added), qPrintable(current.lastError()));
-    QCOMPARE(added, 0);
+    QVERIFY(added > 20);
 }
 
 void FinanceRepositoryTest::restoresOlderCopyWithOptionalColumnsMissing()
@@ -419,11 +425,15 @@ void FinanceRepositoryTest::restoresOlderCopyWithOptionalColumnsMissing()
         QSqlQuery query(database);
         QVERIFY(query.exec(QStringLiteral("ALTER TABLE accounts DROP COLUMN is_archived")));
         QVERIFY(query.exec(QStringLiteral("DROP TABLE bank_category_rules")));
+        QVERIFY(query.exec(QStringLiteral("DROP TABLE notes")));
     }
     QSqlDatabase::removeDatabase(connection);
     QVERIFY2(current.restoreDatabase(backup), qPrintable(current.lastError()));
     QCOMPARE(current.loadAccounts().size(), 1);
     QCOMPARE(current.loadAccounts().first().id(), QStringLiteral("old"));
+    QString notes; bool exists = false;
+    QVERIFY(current.loadNotes(notes, &exists));
+    QVERIFY(exists); QVERIFY(notes.isEmpty());
 }
 
 void FinanceRepositoryTest::createsConsistentDatabaseBackup()

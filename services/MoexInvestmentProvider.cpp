@@ -47,6 +47,17 @@ MoexInvestmentProvider::MoexInvestmentProvider(QObject* parent)
 }
 
 
+void MoexInvestmentProvider::cancelAll()
+{
+    ++searchGeneration_;
+    const auto replies = network_.findChildren<QNetworkReply*>();
+    for (auto* reply : replies) {
+        QObject::disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        reply->deleteLater();
+    }
+}
+
 void MoexInvestmentProvider::search(const QString& query)
 {
     searchPage(query.trimmed(), 0, ++searchGeneration_, {});

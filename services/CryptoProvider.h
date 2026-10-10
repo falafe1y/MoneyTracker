@@ -19,6 +19,7 @@ class CryptoProvider final : public QObject
 
 public:
     explicit CryptoProvider(QObject* parent = nullptr);
+    void cancelAll();
 
     bool requestBalance(const CryptoWallet& wallet);
     bool requestTransactions(const CryptoWallet& wallet);

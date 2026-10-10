@@ -14,6 +14,7 @@ class MoexInvestmentProvider final : public QObject
 
 public:
     explicit MoexInvestmentProvider(QObject* parent = nullptr);
+    void cancelAll();
 
     void search(const QString& query);
     void requestQuote(const InvestmentMarketInstrument& instrument);

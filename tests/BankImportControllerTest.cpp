@@ -112,10 +112,10 @@ void BankImportControllerTest::rollbackBackupAndRestoreKeepRecipients() {
     QVERIFY(!r.insertTransactions({t},{category},{invalid}));QVERIFY(r.loadTransactions().isEmpty());QVERIFY(r.loadBankCategoryRules().isEmpty());
     QVERIFY2(r.insertTransactions({t},{category},{alias}),qPrintable(r.lastError()));
     const auto copy=dir.filePath("backup.db");QVERIFY(r.backupDatabase(copy));
-    FinanceRepository restored(dir.filePath("restored.db"));qint64 added=0,skipped=0;QVERIFY2(restored.restoreDatabase(copy,&added,&skipped),qPrintable(restored.lastError()));
+    FinanceRepository restored(dir.filePath("restored.db"));qint64 added=0;QString previous;QVERIFY2(restored.restoreDatabase(copy,&added,&previous),qPrintable(restored.lastError()));
     QCOMPARE(restored.loadBankRecipientRules().size(),1);QCOMPARE(restored.loadBankCategoryRules().front().field,QString("recipient"));
     QCOMPARE(restored.loadTransactions().front().recipient().name,QString("Пятёрочка"));
-    QVERIFY(restored.restoreDatabase(copy,&added,&skipped));QCOMPARE(added,qint64(0));
+    QVERIFY(restored.restoreDatabase(copy,&added,&previous));QVERIFY(added>0);
     auto renamed=t;QVERIFY(restored.updateTransaction(renamed));QCOMPARE(restored.loadTransactions().front().recipient().name,QString("Пятёрочка"));
     QVERIFY(restored.clearAllUserData());QVERIFY(restored.loadBankRecipientRules().isEmpty());
 }
