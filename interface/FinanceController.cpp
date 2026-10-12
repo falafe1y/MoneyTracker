@@ -828,6 +828,7 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
 
 FinanceController::~FinanceController()
 {
+    cancelPendingAssetRequests();
     saveNotes();
 }
 

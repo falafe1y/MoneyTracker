@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(MoneyTracker VERSION 0.1 LANGUAGES CXX)
+project(MoneyTracker VERSION 0.1 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
@@ -9,6 +9,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network Concurrent LinguistTools Svg)
 find_package(ZLIB REQUIRED)
+add_subdirectory(security)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -28,6 +29,8 @@ qt_add_qml_module(appMoneyTracker
     QML_FILES
         Desktop.qml
         Mobile.qml
+        AccessWindow.qml
+        PasswordSettings.qml
         InvestmentPositionDialog.qml
         InvestmentOperationDialog.qml
         InvestmentPositionsPanel.qml
@@ -158,6 +161,7 @@ target_link_libraries(appMoneyTracker
         Qt6::Concurrent
         Qt6::Svg
         ZLIB::ZLIB
+        vexa_access
 )
 
 if(WIN32)
@@ -532,3 +536,15 @@ add_executable(WindowScrollInputTest tests/WindowScrollInputTest.cpp ui/WindowSc
 target_link_libraries(WindowScrollInputTest PRIVATE Qt6::Gui Qt6::Test)
 add_test(NAME WindowScrollInputTest COMMAND WindowScrollInputTest)
 set_tests_properties(WindowScrollInputTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+if(NOT ANDROID)
+    add_executable(PasswordLockTest tests/PasswordLockTest.cpp)
+    target_link_libraries(PasswordLockTest PRIVATE vexa_access Qt6::Test)
+    add_test(NAME PasswordLockTest COMMAND PasswordLockTest)
+endif()
+
+if(NOT ANDROID)
+    add_executable(AppAccessTest tests/AppAccessTest.cpp)
+    target_link_libraries(AppAccessTest PRIVATE vexa_access Qt6::Test)
+    add_test(NAME AppAccessTest COMMAND AppAccessTest)
+endif()

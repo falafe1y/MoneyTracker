@@ -9,7 +9,8 @@ ApplicationWindow {
     minimumWidth: 320
     minimumHeight: 560
     visible: true
-    title: "Ledgera"
+    title: "Vexa"
+    onClosing: Qt.quit()
     color: root.canvas
     font.pixelSize: 14
 
@@ -2578,6 +2579,10 @@ ApplicationWindow {
                     x: 16
                     y: 16
                     width: Math.max(0, settingsScroll.availableWidth - 32)
+                    PasswordSettings {
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 24
+                    }
                 Text {
                     Layout.fillWidth: true
                     text: qsTr("Основная валюта")
