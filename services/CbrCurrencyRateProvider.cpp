@@ -32,6 +32,9 @@ CbrCurrencyRateProvider::CbrCurrencyRateProvider(QObject* parent)
         for (int i = 0; i < kCurrencyCount; ++i)
             if (cached.ratesToUsd[i] > 0) automaticRatesToUsd_[i] = cached.ratesToUsd[i];
         extraRatesToRubMicros_ = cached.extraRatesToRubMicros;
+        automaticRateDate_ = cached.sourceDate;
+        automaticRatesObservedAt_ = cached.fetchedAtUtc;
+        automaticCnyObserved_ = cached.ratesToUsd[currencyIndex(Currency::CNY)] > 0;
         if (cached.ratesToUsd[currencyIndex(Currency::CNY)] > 0)
             lastSuccessfulFetchUtc_ = cached.fetchedAtUtc;
     }
@@ -182,6 +185,9 @@ void CbrCurrencyRateProvider::finishRefresh(QNetworkReply* reply)
                 &updateError)) {
             automaticRatesToUsd_ = updated.ratesToUsd;
             extraRatesToRubMicros_ = updated.extraRatesToRubMicros;
+            automaticRateDate_ = updated.sourceDate;
+            automaticRatesObservedAt_ = updated.fetchedAtUtc;
+            automaticCnyObserved_ = updated.ratesToUsd[currencyIndex(Currency::CNY)] > 0;
             lastSuccessfulFetchUtc_ = updated.fetchedAtUtc;
             emit ratesUpdated();
         } else {
@@ -267,4 +273,24 @@ qint64 CbrCurrencyRateProvider::rateToRubMicros(const QString& code) const
         return rate>0 && rate<std::numeric_limits<qint64>::max()?static_cast<qint64>(std::round(rate)):0;
     }
     return automaticUpdatesEnabled_?extraRatesToRubMicros_.value(code,0):0;
+}
+
+QVector<HistoricalFxRate> CbrCurrencyRateProvider::historicalRates() const
+{
+    const auto now=QDateTime::currentDateTimeUtc();
+    const auto date=automaticUpdatesEnabled_ && automaticRateDate_.isValid()?automaticRateDate_:now.toLocalTime().date();
+    const auto observed=automaticUpdatesEnabled_ && automaticRatesObservedAt_.isValid()?automaticRatesObservedAt_:now;
+    const QString source=automaticUpdatesEnabled_?(automaticRateDate_.isValid()?QStringLiteral("CBR"):QStringLiteral("estimated")):QStringLiteral("manual");
+    QVector<HistoricalFxRate> result;
+    for(const auto code:{QStringLiteral("RUB"),QStringLiteral("USD"),QStringLiteral("EUR"),QStringLiteral("CNY")}) {
+        const auto rate=rateToRubMicros(code);
+        const bool estimatedCny=automaticUpdatesEnabled_ && code=="CNY" && !automaticCnyObserved_;
+        if(rate>0)result.append({code,code=="RUB"?QStringLiteral("identity"):estimatedCny?QStringLiteral("estimated"):source,
+            estimatedCny?now.toLocalTime().date():date,estimatedCny?now:observed,rate});
+    }
+    if(automaticUpdatesEnabled_)for(auto it=extraRatesToRubMicros_.cbegin();it!=extraRatesToRubMicros_.cend();++it) {
+        bool present=false;for(const auto& value:result)if(value.currency==it.key())present=true;
+        if(!present && it.value()>0)result.append({it.key(),source,date,observed,it.value()});
+    }
+    return result;
 }

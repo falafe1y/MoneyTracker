@@ -26,7 +26,7 @@ Dialog {
     background: Rectangle { color: dialog.panelColor; radius: 16; border.width: 1; border.color: dialog.accentColor; HardShadow { depth: 6; shadowColor: dialog.accentColor } }
     function openFor(value) {
         position = value; localError = ""; operationBox.currentIndex = 0;
-        quantityField.text = ""; priceField.text = ""; cashField.text = ""; remainingValueField.text = "";
+        quantityField.text = ""; priceField.text = ""; cashField.text = ""; feeField.text = ""; taxField.text = ""; remainingValueField.text = "";
         accruedField.text = "0"; faceField.text = value.faceValueText || "";
         dateField.text = Qt.formatDateTime(new Date(), "dd.MM.yyyy HH:mm:ss"); descriptionField.text = ""; open();
     }
@@ -45,7 +45,7 @@ Dialog {
         const result = controller.recordInvestmentOperation({positionId: position.id, kind: kind,
             quantity: quantityField.text, price: priceField.text, cashAmount: cashField.text,
             remainingValue: remainingValueField.text, accruedAfter: accruedField.text, faceAfter: faceField.text,
-            date: dateField.text, description: descriptionField.text});
+            date: dateField.text, description: descriptionField.text, fee: dialog.kind === "fee" ? "" : feeField.text, tax: taxField.text});
         if (result.ok) close(); else localError = result.error || qsTr("Не удалось записать операцию");
     }
     component FormField: StyledTextField {
@@ -103,6 +103,9 @@ Dialog {
                 Label { text: qsTr("Изменение денег на счёте, %1").arg(dialog.position ? dialog.position.currency : ""); color: dialog.mutedColor; font.pixelSize: 14 }
                 FormField { id: cashField; Layout.fillWidth: true; placeholderText: qsTr("Со знаком: например, −1000 или 500") }
                 Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("Вводите фактическое движение денег с учётом комиссий и удержаний. Не добавляйте сюда стоимость всей позиции или обеспечение."); color: dialog.mutedColor; font.pixelSize: 14 }
+                Label { Layout.fillWidth: true; text: qsTr("Комиссия и удержания уже входят в движение денег. Пустое поле — сумма неизвестна; 0 — списания не было."); color: dialog.mutedColor; font.pixelSize: 14; wrapMode: Text.WordWrap }
+                FormField { id: feeField; Layout.fillWidth: true; visible: dialog.kind !== "fee"; placeholderText: qsTr("Комиссия, %1 (необязательно)").arg(dialog.position ? dialog.position.currency : "") }
+                FormField { id: taxField; Layout.fillWidth: true; placeholderText: qsTr("Удержания / налог, %1 (необязательно)").arg(dialog.position ? dialog.position.currency : "") }
                 FormField { id: quantityField; Layout.fillWidth: true; visible: dialog.trade; placeholderText: qsTr("Количество операции") }
                 FormField { id: priceField; Layout.fillWidth: true; visible: dialog.trade || dialog.kind === "margin"; placeholderText: dialog.kind === "margin" ? qsTr("Цена проведённого расчёта") : qsTr("Цена сделки в единицах котировки") }
                 FormField { id: remainingValueField; Layout.fillWidth: true; visible: !!dialog.position && dialog.position.manualValuation && (dialog.trade || dialog.kind === "coupon" || dialog.kind === "amortization"); placeholderText: qsTr("Новая стоимость оставшейся позиции, %1").arg(dialog.position ? dialog.position.currency : "") }

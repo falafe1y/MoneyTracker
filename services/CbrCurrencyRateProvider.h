@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CurrencyRateCache.h"
+#include "../core/AnalyticsHistory.h"
 #include "CurrencyRateProvider.h"
 
 #include <QNetworkAccessManager>
@@ -23,6 +24,7 @@ public:
     qint64 rateToUsd(Currency currency) const override;
     qint64 rateToRubMicros(const QString& code) const;
     bool automaticUpdatesEnabled() const;
+    QVector<HistoricalFxRate> historicalRates() const;
     void setAutomaticUpdatesEnabled(bool enabled);
     bool setManualRates(
         double rublesPerRub,
@@ -68,6 +70,9 @@ private:
     };
     bool automaticUpdatesEnabled_ = true;
     QDateTime lastSuccessfulFetchUtc_;
+    QDate automaticRateDate_;
+    QDateTime automaticRatesObservedAt_;
+    bool automaticCnyObserved_ = false;
     QNetworkAccessManager networkAccessManager_;
     QTimer refreshTimer_;
     QNetworkReply* activeReply_ = nullptr;

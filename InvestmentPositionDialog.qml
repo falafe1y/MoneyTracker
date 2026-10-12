@@ -53,7 +53,7 @@ Dialog {
         localError = ""; selectedResult = -1; searchField.text = ""; quantityField.text = "";
         averagePriceField.text = ""; nameField.text = ""; symbolField.text = ""; manualValueField.text = "";
         referencePriceField.text = ""; referenceDateField.text = ""; marginField.text = "0";
-        adjustmentField.text = "0"; fxField.text = ""; cashField.text = "";
+        adjustmentField.text = "0"; fxField.text = ""; cashField.text = ""; costField.text = ""; feeField.text = ""; taxField.text = "";
         sourceBox.currentIndex = 0; directionBox.currentIndex = 0; entryBox.currentIndex = 0;
         optionSchemeBox.currentIndex = 0; rightBox.currentIndex = 0; strikeField.text = ""; maturityField.text = ""; underlyingField.text = "";
         manualCheck.checked = false; accountBox.currentIndex = -1;
@@ -74,6 +74,7 @@ Dialog {
         showingCurrentInstrument = true; fixedAccountId = ""; selectedResult = 0;
         chooseAccount(position.accountId); searchField.text = position.symbol;
         quantityField.text = position.quantityText; averagePriceField.text = position.averagePriceText;
+        costField.text = position.costBasisText || "";
         directionBox.currentIndex = position.direction === -1 ? 1 : 0;
         manualCheck.checked = position.manualValuation; manualValueField.text = position.manualValueText || "";
         referencePriceField.text = position.referencePriceText || "";
@@ -92,6 +93,7 @@ Dialog {
             referencePrice: referencePriceField.text, referenceDate: referenceDateField.text,
             blockedMargin: marginField.text, adjustment: adjustmentField.text, fxRate: fxField.text,
             purchase: !editingPositionId && entryBox.currentIndex === 1, cashAmount: cashField.text,
+            costBasis: costField.visible ? costField.text : "", fee: feeField.visible ? feeField.text : "", tax: taxField.visible ? taxField.text : "",
             optionPricing: optionSchemeBox.currentIndex === 1 ? "margined_option" : "premium_option",
             optionRight: rightBox.currentIndex === 1 ? "P" : "C", strike: strikeField.text,
             maturity: maturityField.text, underlying: underlyingField.text
@@ -284,6 +286,10 @@ Dialog {
                 }
                 FormCombo { id: entryBox; Layout.fillWidth: true; visible: !dialog.editingPositionId; model: [qsTr("Добавить уже имеющуюся позицию"), qsTr("Записать новую сделку и движение денег")] }
                 FormField { id: cashField; Layout.fillWidth: true; visible: !dialog.editingPositionId && entryBox.currentIndex === 1; placeholderText: qsTr("Изменение денег со знаком, %1").arg(dialog.accountCurrency) }
+                FormField { id: costField; Layout.fillWidth: true; visible: !dialog.derivative && (!!dialog.editingPositionId || entryBox.currentIndex === 0); placeholderText: qsTr("Стоимость приобретения всей позиции с комиссиями, %1 (если известна)").arg(dialog.accountCurrency) }
+                Label { Layout.fillWidth: true; visible: costField.visible; wrapMode: Text.WordWrap; color: dialog.mutedColor; font.pixelSize: 14; text: qsTr("Это фактические затраты в валюте счёта, а не текущая оценка. При исправлении количества укажите затраты на исправленный остаток; пустое поле оставляет их неизвестными.") }
+                FormField { id: feeField; Layout.fillWidth: true; visible: !dialog.editingPositionId && entryBox.currentIndex === 1; placeholderText: qsTr("Комиссия внутри указанного движения денег (необязательно)") }
+                FormField { id: taxField; Layout.fillWidth: true; visible: feeField.visible; placeholderText: qsTr("Удержания / налог внутри движения денег (необязательно)") }
                 Label { Layout.fillWidth: true; visible: !dialog.editingPositionId; wrapMode: Text.WordWrap; color: dialog.mutedColor; font.pixelSize: 14; text: entryBox.currentIndex === 0 ? qsTr("Деньги не изменятся: используйте этот режим для переноса текущего портфеля.") : qsTr("Укажите фактическую сумму с комиссиями: расход со знаком минус, поступление со знаком плюс.") }
             }
         }

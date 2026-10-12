@@ -789,6 +789,8 @@ private:
     QVector<FinancialGoal> financialGoals_;
     QVector<GoalAssetValue> goalAssetValues() const;
     void captureCapitalSnapshot(bool overwriteToday = true);
+    bool captureDailyAssetValuations();
+    bool valuationHistoryReady_ = false;
     FinancialTrajectorySettings trajectorySettings_;
     QDate lastCapitalSnapshotDate_;
     QSet<QString> archivedCategoryIds_;

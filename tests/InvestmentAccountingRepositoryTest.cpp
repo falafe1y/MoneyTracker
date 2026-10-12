@@ -92,7 +92,7 @@ void InvestmentAccountingRepositoryTest::backupRestoreKeepsTermsOperationsAndCur
     QCOMPARE(target.loadInvestmentPositions().at(0).settings().blockedMarginMinor,qint64(2'000'000));
     const auto accounts=target.loadAccounts();
     const auto account=std::find_if(accounts.cbegin(),accounts.cend(),[](const auto& a){return a.id()==QStringLiteral("broker");});
-    QVERIFY(account!=accounts.cend());QCOMPARE(account->initialBalanceMinor(),qint64(777));
+    QVERIFY(account!=accounts.cend());QCOMPARE(account->initialBalanceMinor(),broker().initialBalanceMinor());
     QVERIFY(target.restoreDatabase(copy));QCOMPARE(target.loadInvestmentOperations().size(),1);
     QVERIFY(target.clearAllUserData());QVERIFY(target.loadInvestmentOperations().isEmpty());
 }

@@ -815,6 +815,7 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
     }
 
     rebuildCapitalHistory();
+    valuationHistoryReady_ = true;
     captureCapitalSnapshot();
     scheduleRecurringMaterialization();
     QTimer::singleShot(
@@ -3275,6 +3276,9 @@ QVariantList FinanceController::investmentPositions() const
         item["type"]=static_cast<int>(i->type());item["typeName"]=investmentTypeName(i->type());
         item["currency"]=currencyCode(a->currency());item["quantityText"]=formatMicros(position.quantityMicros());
         item["averagePriceText"]=formatMicros(position.averagePriceMicros());
+        const auto basis=repository_.investmentCostBasis(position.id());
+        item["costBasisKnown"]=!basis.isNull();item["costBasisMinor"]=basis;
+        item["costBasisText"]=basis.isNull()?QString():QString::number(basis.toLongLong()/100)+"."+QString::number(basis.toLongLong()%100).rightJustified(2,'0');
         item["averageValueMinor"]=scaledInvestmentValueMinor(position.quantityMicros(),position.averagePriceMicros());
         item["createdAt"]=position.createdAtUtc();item["hasQuote"]=value.available;item["hasMarketQuote"]=q!=investmentQuotes_.cend();
         item["marketValueMinor"]=value.valueMinor;item["valuationError"]=value.error;
@@ -6326,23 +6330,10 @@ bool FinanceController::deleteFinancialGoal(const QString& id)
 
 void FinanceController::captureCapitalSnapshot(const bool overwriteToday)
 {
-    if (restoringDatabase_ || !repository_.isOpen()) return;
-    if (accounts_.isEmpty() && cryptoWallets_.isEmpty() && cryptoExchanges_.isEmpty()) return;
-    const QDate today = QDate::currentDate();
-    if (!overwriteToday && lastCapitalSnapshotDate_ == today) return;
-    qint64 total = 0;
-    for (const auto& asset : goalAssetValues()) {
-        if (!asset.available || rateProvider_.rateToUsd(asset.value.currency()) <= 0 ||
-            rateProvider_.rateToUsd(appCurrency_) <= 0) return;
-        total = saturatedCapitalAdd(total,
-            currencyConverter_.convert(asset.value, appCurrency_).minorUnits());
-    }
-    if (!repository_.saveCapitalSnapshot(
-            {today, appCurrency_, total})) {
-        qWarning() << "Failed to save capital snapshot:" << repository_.lastError();
-    } else {
-        lastCapitalSnapshotDate_ = today;
-    }
+    if (restoringDatabase_ || !repository_.isOpen() || !valuationHistoryReady_) return;
+    const QDate today=QDate::currentDate();
+    if (!overwriteToday && lastCapitalSnapshotDate_==today) return;
+    if (captureDailyAssetValuations()) lastCapitalSnapshotDate_=today;
 }
 
 QVariantMap FinanceController::financialTrajectory()
@@ -6485,8 +6476,20 @@ bool parseSignedInvestmentNumber(QString text, qint64& result, bool minor = fals
     const bool negative=text.startsWith('-');if(negative || text.startsWith('+'))text.remove(0,1);
     static const QRegularExpression zero(QStringLiteral("^0+(?:[.,]0{1,6})?$"));
     if(zero.match(text).hasMatch()){result=0;return true;}
+    if(minor){
+        const auto match=QRegularExpression(QStringLiteral("^([0-9]+)(?:[.,]([0-9]{1,6}))?$" )).match(text);
+        if(!match.hasMatch())return false;
+        bool ok=false;const auto whole=match.captured(1).toULongLong(&ok);if(!ok)return false;
+        const auto fraction=match.captured(2);
+        for(int i=2;i<fraction.size();++i)if(fraction.at(i)!='0')return false;
+        const __int128_t amount=__int128_t(whole)*100+fraction.left(2).leftJustified(2,'0').toInt();
+        const __int128_t maximum=std::numeric_limits<qint64>::max();
+        if(amount>maximum+(negative?1:0))return false;
+        if(negative && amount==maximum+1)result=std::numeric_limits<qint64>::min();
+        else result=negative?-static_cast<qint64>(amount):static_cast<qint64>(amount);
+        return true;
+    }
     qint64 n=0;if(!parsePositiveMicros(text,n))return false;
-    if(minor){if(n%10'000!=0)return false;n/=10'000;}
     result=negative?-n:n;return true;
 }
 QDateTime parseInvestmentDate(const QString& text)
@@ -6506,6 +6509,27 @@ QString investmentOperationName(const QString& kind)
     if(kind=="fee")return QCoreApplication::translate("FinanceController","Комиссия");
     if(kind=="margin")return QCoreApplication::translate("FinanceController","Расчёт вариационной маржи");
     return QCoreApplication::translate("FinanceController","Погашение / исполнение контракта");
+}
+}
+
+namespace {
+bool readOperationCharges(const QVariantMap& values, InvestmentOperation& op)
+{
+    const auto read=[&](const char* key,std::optional<qint64>& target) {
+        const auto text=values.value(key).toString().trimmed();
+        if(text.isEmpty())return true;
+        qint64 value=0;if(!parseSignedInvestmentNumber(text,value,true) || value<0)return false;
+        target=value;return true;
+    };
+    if(!read("fee",op.feeMinor) || !read("tax",op.taxMinor))return false;
+    if(op.kind=="fee") {
+        if(op.cashDeltaMinor>=0 || op.cashDeltaMinor==std::numeric_limits<qint64>::min())return false;
+        const auto paid=-op.cashDeltaMinor;
+        const auto tax=op.taxMinor.value_or(0);
+        if(tax>paid || (op.feeMinor && *op.feeMinor!=paid-tax))return false;
+        op.feeMinor=paid-tax;
+    }
+    return true;
 }
 }
 
@@ -6620,8 +6644,21 @@ QVariantMap FinanceController::saveInvestmentPosition(const QVariantMap& v)
         operation=InvestmentOperation{QUuid::createUuid().toString(QUuid::WithoutBraces),accountId,position.id(),instrumentId,"buy",cash,quantity,now,
             tr("Открытие позиции: %1").arg(symbol)};
     }
+    if(operation){
+        if(!readOperationCharges(v,*operation))return fail(tr("Укажите неотрицательные комиссию и удержания, до 2 знаков после запятой"));
+        operation->tradePriceMicros=average;operation->tradeCurrency=terms.currencyCode;
+    }
+    std::optional<qint64> openingCost;
+    if(!operation && !v.value("costBasis").toString().trimmed().isEmpty()){
+        qint64 cost=0;if(!parseSignedInvestmentNumber(v.value("costBasis").toString(),cost,true) || cost<0)
+            return fail(tr("Укажите неотрицательную стоимость приобретения в валюте счёта"));
+        if(type==InvestmentInstrumentType::Future || type==InvestmentInstrumentType::Option || settings.direction!=1)
+            return fail(tr("Для производных инструментов стоимость приобретения по этой схеме не применяется"));
+        openingCost=cost;
+    }
     const InvestmentInstrument instrument(instrumentId,symbol,isin,name,type,valuationCurrency,market,board,terms);
-    if(!repository_.saveInvestmentBundle(instrument,position,quote,editing,operation))return fail(tr("Не удалось сохранить позицию: %1").arg(repository_.lastError()));
+    if(!repository_.saveInvestmentBundle(instrument,position,quote,editing,operation,openingCost,
+        editing && v.contains("costBasis") && v.value("costBasis").toString().trimmed().isEmpty()))return fail(tr("Не удалось сохранить позицию: %1").arg(repository_.lastError()));
     reloadInvestments();return {{"ok",true}};
 }
 
@@ -6716,8 +6753,14 @@ QVariantMap FinanceController::recordInvestmentOperation(const QVariantMap& v)
     }
     if(kind=="expiry"){close=true;delta=-quantity;}
     const InvestmentPosition updated(p->id(),p->accountId(),p->instrumentId(),close?p->quantityMicros():quantity,average,p->createdAtUtc(),QDateTime::currentDateTimeUtc(),settings);
-    const InvestmentOperation op{QUuid::createUuid().toString(QUuid::WithoutBraces),p->accountId(),id,p->instrumentId(),kind,cash,delta,date,
+    InvestmentOperation op{QUuid::createUuid().toString(QUuid::WithoutBraces),p->accountId(),id,p->instrumentId(),kind,cash,delta,date,
         v.value("description").toString().trimmed().isEmpty()?investmentOperationName(kind)+QStringLiteral(" · ")+i->symbol():v.value("description").toString()};
+    if(!readOperationCharges(v,op))return fail(tr("Комиссия и удержания должны быть неотрицательными и соответствовать фактическому списанию"));
+    const auto tradePrice=v.value("price").toString().trimmed();
+    if(!tradePrice.isEmpty()){
+        qint64 price=0;if(!parseSignedInvestmentNumber(tradePrice,price) || (price<0 && i->type()!=InvestmentInstrumentType::Future))return fail(tr("Некорректная цена операции"));
+        op.tradePriceMicros=price;op.tradeCurrency=terms.currencyCode;
+    }
     if(!repository_.bookInvestmentOperation(op,*p,updated,close,adjustedQuote))return fail(tr("Не удалось сохранить операцию: %1").arg(repository_.lastError()));
     reloadInvestments();if(kind=="coupon" || kind=="amortization")refreshInvestmentQuotes();return {{"ok",true}};
 }
@@ -6732,6 +6775,124 @@ QVariantList FinanceController::investmentOperations() const
         if(a==accounts_.cend())continue;
         result.append(QVariantMap{{"id",op.id},{"accountId",op.accountId},{"positionId",op.positionId},{"accountName",accountDisplayName(*a)},
             {"type","investment_cash"},{"kind",op.kind},{"amount",op.cashDeltaMinor},{"currency",currencyCode(a->currency())},
-            {"categoryName",investmentOperationName(op.kind)},{"rawDescription",op.description},{"date",op.occurredAtUtc}});
+            {"categoryName",investmentOperationName(op.kind)},{"rawDescription",op.description},{"date",op.occurredAtUtc},
+            {"feeMinor",op.feeMinor?QVariant(*op.feeMinor):QVariant()}, {"taxMinor",op.taxMinor?QVariant(*op.taxMinor):QVariant()}});
     }return result;
+}
+
+bool FinanceController::captureDailyAssetValuations()
+{
+    DailyValuationBatch batch;
+    batch.observedAtUtc=QDateTime::currentDateTimeUtc();batch.date=batch.observedAtUtc.toLocalTime().date();
+    batch.rates=rateProvider_.historicalRates();
+    const auto bounded=[](const __int128_t n)->std::optional<qint64> {
+        if(n>std::numeric_limits<qint64>::max() || n<std::numeric_limits<qint64>::min())return {};
+        return static_cast<qint64>(n);
+    };
+    const auto issue=[](AssetDailyValuation& row,const QString& code) {
+        if(!row.issues.isEmpty())row.issues+=';';row.issues+=code;
+    };
+    const auto finish=[&](AssetDailyValuation& row) {
+        bool rateFound=false;
+        QJsonObject details=QJsonDocument::fromJson(row.detailsJson.toUtf8()).object();
+        for(const auto& rate:batch.rates)if(rate.currency==row.currency){
+            rateFound=true;details.insert("rubPerUnitMicros",QString::number(rate.rubPerUnitMicros));
+            details.insert("fxDate",rate.rateDate.toString(Qt::ISODate));details.insert("fxSource",rate.source);
+            if(rate.source=="estimated")issue(row,"estimated_fx");
+            if(rate.source=="CBR" && rate.observedAtUtc.secsTo(batch.observedAtUtc)>72*3600)issue(row,"stale_fx");
+        }
+        if(!rateFound)issue(row,"missing_fx");
+        row.detailsJson=QString::fromUtf8(QJsonDocument(details).toJson(QJsonDocument::Compact));batch.assets.append(row);
+    };
+    for(const auto& account:accounts_){
+        AssetDailyValuation row;row.kind=account.assetType()==AssetType::Investment?AssetDailyValuation::Investment:
+            account.assetType()==AssetType::Crypto?AssetDailyValuation::Crypto:AssetDailyValuation::Fiat;
+        row.sourceId="cash:"+account.id();row.accountId=account.id();row.currency=currencyCode(account.currency());
+        row.source="ledger";row.valuedAtUtc=batch.observedAtUtc;row.quantityDecimals=2;
+        row.detailsJson=QString::fromUtf8(QJsonDocument(QJsonObject{{"name",account.name()},{"accountType",int(account.type())}}).toJson(QJsonDocument::Compact));
+        __int128_t cash=account.initialBalanceMinor();
+        for(const auto& tx:transactions_)if(tx.accountId()==account.id() && tx.date()<=batch.observedAtUtc)
+            cash+=tx.type()==TransactionType::Income?__int128_t(tx.money().minorUnits()):-__int128_t(tx.money().minorUnits());
+        for(const auto& op:investmentOperations_)if(op.accountId==account.id() && op.occurredAtUtc<=batch.observedAtUtc)cash+=op.cashDeltaMinor;
+        row.valueMinor=bounded(cash);if(!row.valueMinor)issue(row,"value_overflow");finish(row);
+    }
+    for(const auto& position:investmentPositions_){
+        const auto account=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==position.accountId();});
+        if(account==accounts_.cend())continue;
+        AssetDailyValuation row;row.kind=AssetDailyValuation::Investment;row.sourceId="position:"+position.id();row.accountId=position.accountId();
+        row.instrumentId=position.instrumentId();row.currency=currencyCode(account->currency());row.quantityAtomic=position.quantityMicros();
+        const auto basis=repository_.investmentCostBasis(position.id());if(!basis.isNull())row.costBasisMinor=basis.toLongLong();else issue(row,"cost_unknown");
+        const auto value=investmentPositionValue(position);if(value.available)row.valueMinor=value.valueMinor;else issue(row,"missing_valuation");
+        const auto quote=std::find_if(investmentQuotes_.cbegin(),investmentQuotes_.cend(),[&](const auto& q){return q.instrumentId()==position.instrumentId();});
+        const auto instrument=std::find_if(investmentInstruments_.cbegin(),investmentInstruments_.cend(),[&](const auto& i){return i.id()==position.instrumentId();});
+        QJsonObject details{{"settings",QJsonDocument::fromJson(position.settings().serialize().toUtf8()).object()}};
+        if(position.settings().manualValuation){row.source="manual";row.valuedAtUtc=position.settings().valuedAtUtc;
+            if(!row.valuedAtUtc.isValid())issue(row,"unknown_valuation_date");
+        }else if(quote!=investmentQuotes_.cend()){
+            row.priceMicros=quote->priceMicros();row.valuedAtUtc=quote->quotedAtUtc();
+            auto terms=quote->terms();if(terms.currencyCode.isEmpty() && instrument!=investmentInstruments_.cend())terms=instrument->terms();
+            row.source=terms.quoteSource.isEmpty()?QStringLiteral("market"):terms.quoteSource;
+            details.insert("terms",QJsonDocument::fromJson(terms.serialize().toUtf8()).object());
+            const QString quoteCurrency=terms.currencyCode.isEmpty() && instrument!=investmentInstruments_.cend()?currencyCode(instrument->currency()):terms.currencyCode;
+            details.insert("quoteCurrency",quoteCurrency);
+            qint64 fx=position.settings().manualFxRateMicros;
+            if(fx<=0){const long double from=rateProvider_.rateToRubMicros(quoteCurrency),to=rateProvider_.rateToRubMicros(row.currency);
+                const auto rate=to>0?from/to*1'000'000.0L:0;
+                if(rate>0 && rate<std::numeric_limits<qint64>::max())fx=static_cast<qint64>(std::round(rate));}
+            if(fx>0)details.insert("quoteToAccountMicros",QString::number(fx));else issue(row,"missing_quote_fx");
+        }else{row.source="unavailable";issue(row,"missing_price");}
+        if(row.valuedAtUtc.isValid() && row.valuedAtUtc.secsTo(batch.observedAtUtc)>72*3600)issue(row,"stale_valuation");
+        row.detailsJson=QString::fromUtf8(QJsonDocument(details).toJson(QJsonDocument::Compact));finish(row);
+    }
+    for(const auto& wallet:cryptoWallets_){
+        AssetDailyValuation row;row.kind=AssetDailyValuation::Crypto;row.sourceId="wallet:"+wallet.id();row.accountId=wallet.id();
+        row.instrumentId=wallet.symbol();row.currency="USD";row.source="crypto_provider";row.quantityAtomic=wallet.balanceAtomic();row.quantityDecimals=wallet.decimals();
+        const auto price=cryptoPricesUsdMicros_.value(wallet.symbol());const auto at=cryptoPricesFetchedAtUtc_.value(wallet.symbol());
+        row.valuedAtUtc=at; if(at.isValid() && price>0)row.priceMicros=price;else issue(row,"missing_price");
+        if(!wallet.balanceFetchedAtUtc().isValid())issue(row,"missing_balance");
+        else if(wallet.balanceAtomic()==0)row.valueMinor=0;
+        else if(row.priceMicros && wallet.decimals()>=0 && wallet.decimals()<=18){
+            __int128_t scale=1;for(int i=0;i<wallet.decimals();++i)scale*=10;
+            // price is in millionths of USD; round only once to cents.
+            const __int128_t denominator=scale*10'000,numerator=__int128_t(wallet.balanceAtomic())*price;
+            row.valueMinor=bounded((numerator+denominator/2)/denominator);if(!row.valueMinor)issue(row,"value_overflow");
+        }
+        if(wallet.balanceFetchedAtUtc().isValid() && wallet.balanceFetchedAtUtc().secsTo(batch.observedAtUtc)>72*3600)issue(row,"stale_balance");
+        if(at.isValid() && at.secsTo(batch.observedAtUtc)>72*3600)issue(row,"stale_price");
+        row.detailsJson=QString::fromUtf8(QJsonDocument(QJsonObject{{"network",wallet.network()},
+            {"balanceAt",wallet.balanceFetchedAtUtc().toUTC().toString(Qt::ISODateWithMs)}}).toJson(QJsonDocument::Compact));finish(row);
+    }
+    for(const auto& entry:cryptoExchanges_){
+        const auto exchange=entry.toMap();AssetDailyValuation row;row.kind=AssetDailyValuation::Crypto;
+        row.sourceId="exchange:"+exchange.value("id").toString();row.accountId=exchange.value("id").toString();row.currency="USD";row.source="Bybit";
+        const auto fetched=exchange.value("fetchedAtMs").toLongLong();
+        if(fetched>0){row.valuedAtUtc=QDateTime::fromMSecsSinceEpoch(fetched,QTimeZone::UTC);
+            __int128_t total=0;bool valid=true,found=false;
+            for(const auto& holding:exchange.value("holdings").toList()){
+                const auto data=holding.toMap();if(!data.value("summary").toBool())continue;
+                found=true;const auto text=data.value("usdValue").toString();
+                const auto match=QRegularExpression(QStringLiteral("^([+-]?)([0-9]+)(?:[.]([0-9]+))?$" )).match(text);
+                bool ok=false;const auto whole=match.captured(2).toULongLong(&ok);
+                if(!match.hasMatch() || !ok || whole>quint64(std::numeric_limits<qint64>::max()/100)){valid=false;break;}
+                const auto fraction=match.captured(3).leftJustified(3,'0');
+                __int128_t cents=__int128_t(whole)*100+fraction.left(2).toInt()+(fraction.at(2)>='5'?1:0);
+                total+=match.captured(1)=="-"?-cents:cents;
+            }
+            if(valid && found)row.valueMinor=bounded(total);
+            if(!row.valueMinor)issue(row,"invalid_exchange_valuation");
+            if(row.valuedAtUtc.secsTo(batch.observedAtUtc)>72*3600)issue(row,"stale_balance");
+        }else issue(row,"missing_balance");
+        // Exchange-reported total is counted once. Underlying balances remain attached as evidence.
+        row.detailsJson=QString::fromUtf8(QJsonDocument(QJsonObject{{"holdings",QJsonArray::fromVariantList(exchange.value("holdings").toList())}}).toJson(QJsonDocument::Compact));finish(row);
+    }
+    if(!batch.assets.isEmpty()){
+        __int128_t total=0;bool complete=true;
+        for(const auto& row:batch.assets){
+            if(!row.valueMinor || rateProvider_.rateToUsd(currencyFromString(row.currency))<=0 || rateProvider_.rateToUsd(appCurrency_)<=0){complete=false;break;}
+            total+=currencyConverter_.convert(Money(*row.valueMinor,currencyFromString(row.currency)),appCurrency_).minorUnits();
+        }
+        if(complete){batch.totalMinor=bounded(total);batch.totalCurrency=currencyCode(appCurrency_);}
+    }
+    if(repository_.saveDailyValuations(batch))return true;
+    qWarning()<<"Failed to save daily asset valuations:"<<repository_.lastError();return false;
 }

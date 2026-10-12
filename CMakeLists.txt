@@ -79,6 +79,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES core/CryptoTransaction.h
         SOURCES core/InvestmentTerms.h
         SOURCES core/InvestmentOperation.h
+        SOURCES core/AnalyticsHistory.h
         SOURCES services/InvestmentValuation.h
         SOURCES services/InvestmentValuation.cpp
         SOURCES core/InvestmentInstrument.h
@@ -136,6 +137,7 @@ qt_add_qml_module(appMoneyTracker
         SOURCES interface/FinanceController.cpp
         SOURCES persistence/FinanceRepository.h
         SOURCES persistence/FinanceRepository.cpp
+        SOURCES persistence/FinanceRepositoryHistory.cpp
 )
 
 qt_add_translations(
@@ -287,7 +289,7 @@ add_test(
 add_executable(FinanceRepositoryTest
     tests/FinanceRepositoryTest.cpp
     core/Currency.cpp
-    persistence/FinanceRepository.cpp
+    persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp
 )
 
 target_link_libraries(FinanceRepositoryTest
@@ -319,7 +321,7 @@ endif()
 add_test(NAME BackupRestoreControllerTest COMMAND BackupRestoreControllerTest)
 
 add_executable(InvestmentAccountingRepositoryTest tests/InvestmentAccountingRepositoryTest.cpp
-    persistence/FinanceRepository.cpp core/Currency.cpp services/InvestmentValuation.cpp)
+    persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp core/Currency.cpp services/InvestmentValuation.cpp)
 target_link_libraries(InvestmentAccountingRepositoryTest PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
 add_test(NAME InvestmentAccountingRepositoryTest COMMAND InvestmentAccountingRepositoryTest)
 
@@ -346,7 +348,7 @@ add_test(
 add_executable(InvestmentRepositoryTest
     tests/InvestmentRepositoryTest.cpp
     core/Currency.cpp
-    persistence/FinanceRepository.cpp
+    persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp
 )
 
 target_link_libraries(InvestmentRepositoryTest
@@ -510,7 +512,7 @@ add_executable(BybitProviderTest
     tests/BybitProviderTest.cpp
     services/BybitProvider.cpp
     core/Currency.cpp
-    persistence/FinanceRepository.cpp
+    persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp
 )
 target_link_libraries(BybitProviderTest PRIVATE Qt6::Core Qt6::Test Qt6::Network Qt6::Sql)
 add_test(NAME BybitProviderTest COMMAND BybitProviderTest)
@@ -563,7 +565,7 @@ endforeach()
 
 if(NOT ANDROID)
     add_executable(DatabaseEncryptionTest tests/DatabaseEncryptionTest.cpp
-        persistence/FinanceRepository.cpp core/Currency.cpp)
+        persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp core/Currency.cpp)
     target_link_libraries(DatabaseEncryptionTest PRIVATE vexa_storage Qt6::Test)
     add_test(NAME DatabaseEncryptionTest COMMAND DatabaseEncryptionTest)
 endif()
@@ -571,6 +573,18 @@ endif()
 target_compile_definitions(appMoneyTracker PRIVATE VEXA_APP_VERSION="${PROJECT_VERSION}")
 
 add_executable(PortableBackupTest tests/PortableBackupTest.cpp
-    persistence/FinanceRepository.cpp core/Currency.cpp)
+    persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp core/Currency.cpp)
 target_link_libraries(PortableBackupTest PRIVATE vexa_storage Qt6::Test)
 add_test(NAME PortableBackupTest COMMAND PortableBackupTest)
+
+add_executable(AnalyticsHistoryRepositoryTest tests/AnalyticsHistoryRepositoryTest.cpp
+    persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp core/Currency.cpp)
+target_link_libraries(AnalyticsHistoryRepositoryTest PRIVATE vexa_storage Qt6::Test Qt6::Sql)
+add_test(NAME AnalyticsHistoryRepositoryTest COMMAND AnalyticsHistoryRepositoryTest)
+
+add_executable(AnalyticsHistoryControllerTest tests/AnalyticsHistoryControllerTest.cpp ${investment_controller_test_sources} services/BankRecipients.qrc)
+target_link_libraries(AnalyticsHistoryControllerTest PRIVATE vexa_storage Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(AnalyticsHistoryControllerTest PRIVATE crypt32)
+endif()
+add_test(NAME AnalyticsHistoryControllerTest COMMAND AnalyticsHistoryControllerTest)

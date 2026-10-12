@@ -1,4 +1,5 @@
 #include "FinanceRepository.h"
+#include "HistorySavepoint.h"
 #include "storage/CipherDriver.h"
 
 #include "../core/Currency.h"
@@ -264,7 +265,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath, const QByteArr
         return;
     }
 
-    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !migrateCurrencySchema() || !seedDefaults()) {
+    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !migrateCurrencySchema() || !migrateAnalyticsHistorySchema() || !seedDefaults()) {
         database_.close();
     }
 }
@@ -447,7 +448,11 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                 QStringLiteral("capital_snapshots"), QStringLiteral("bank_csv_profiles"),
                 QStringLiteral("bank_category_rules"), QStringLiteral("bank_recipient_rules"),
                 QStringLiteral("bank_import_links"), QStringLiteral("settings"),
-                QStringLiteral("notes")};
+                QStringLiteral("notes"), QStringLiteral("fiat_daily_snapshots"),
+                QStringLiteral("crypto_daily_snapshots"), QStringLiteral("investment_daily_snapshots"),
+                QStringLiteral("daily_valuation_runs"), QStringLiteral("crypto_price_history"),
+                QStringLiteral("investment_price_history"), QStringLiteral("fx_rate_history"),
+                QStringLiteral("investment_position_history")};
             QSet<QString> sourceTables;
             if (!check.exec(QStringLiteral("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"))) {
                 return fail(check.lastError().text());
@@ -538,6 +543,8 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
             if (!pragma.exec(QStringLiteral("PRAGMA foreign_key_check")) || pragma.next())
                 return rollback(QStringLiteral("В копии нарушены связи между записями"));
             pragma.finish();
+            if (!sourceTables.contains(QStringLiteral("investment_position_history")) && !migrateAnalyticsHistorySchema())
+                return rollback(lastError_);
             if (!database_.commit()) return rollback(database_.lastError().text());
             return true;
         }();
@@ -561,6 +568,14 @@ bool FinanceRepository::clearAllUserData()
         return false;
     }
     const QStringList statements{
+        QStringLiteral("DELETE FROM fiat_daily_snapshots"),
+        QStringLiteral("DELETE FROM crypto_daily_snapshots"),
+        QStringLiteral("DELETE FROM investment_daily_snapshots"),
+        QStringLiteral("DELETE FROM daily_valuation_runs"),
+        QStringLiteral("DELETE FROM crypto_price_history"),
+        QStringLiteral("DELETE FROM investment_price_history"),
+        QStringLiteral("DELETE FROM fx_rate_history"),
+        QStringLiteral("DELETE FROM investment_position_history"),
         QStringLiteral("DELETE FROM recurring_transaction_occurrences"),
         QStringLiteral("DELETE FROM deposit_interest_occurrences"),
         QStringLiteral("DELETE FROM crypto_exchanges"),
@@ -1736,11 +1751,7 @@ bool FinanceRepository::deleteHistoryRows(const QVariantList& rows)
             const QString key = QStringLiteral("investment:") + id;
             if (processed.contains(key)) continue;
             processed.insert(key);
-            QSqlQuery query(database_);
-            query.prepare(QStringLiteral("DELETE FROM investment_positions WHERE id = ?"));
-            query.addBindValue(id);
-            if (!query.exec() || query.numRowsAffected() != 1)
-                return fail(query.lastError().isValid() ? query.lastError().text() : QStringLiteral("Investment position not found"));
+            if (!deleteInvestmentPosition(id)) return fail(lastError_);
         } else if (type == QStringLiteral("investment_cash")) {
             return fail(QStringLiteral("Инвестиционная операция связана с количеством позиции; удаление отдельно от позиции не поддерживается"));
         } else {
@@ -2240,6 +2251,11 @@ bool FinanceRepository::deleteAccount(const QString& id)
         }
     }
 
+    QStringList positionIds;
+    QSqlQuery positionLookup(database_);positionLookup.prepare("SELECT id FROM investment_positions WHERE account_id=? AND is_archived=0");positionLookup.addBindValue(id);
+    if(!positionLookup.exec()){setLastError(positionLookup.lastError().text());database_.rollback();return false;}
+    while(positionLookup.next())positionIds.append(positionLookup.value(0).toString());positionLookup.finish();
+
     QSqlQuery positions(database_);
     positions.prepare(QStringLiteral(
         "UPDATE investment_positions "
@@ -2252,6 +2268,8 @@ bool FinanceRepository::deleteAccount(const QString& id)
         database_.rollback();
         return false;
     }
+
+    for(const auto& positionId:positionIds)if(!appendPositionState(positionId,"archive")){database_.rollback();return false;}
 
     QSqlQuery account(database_);
     account.prepare(QStringLiteral(
@@ -2526,6 +2544,9 @@ bool FinanceRepository::saveCryptoPrice(
     const QDateTime& fetchedAtUtc
     )
 {
+    HistorySavepoint atomic(database_);
+    if (!atomic.active()) { setLastError(database_.lastError().text()); return false; }
+
     const QString normalizedSymbol = symbol.trimmed().toUpper();
     if ((normalizedSymbol != QStringLiteral("USDT") &&
          normalizedSymbol != QStringLiteral("BTC") &&
@@ -2541,7 +2562,7 @@ bool FinanceRepository::saveCryptoPrice(
         "VALUES(?, ?, ?) "
         "ON CONFLICT(symbol) DO UPDATE SET "
         "price_usd_micros = excluded.price_usd_micros, "
-        "fetched_at = excluded.fetched_at"));
+        "fetched_at = excluded.fetched_at WHERE excluded.fetched_at >= crypto_prices.fetched_at"));
     query.addBindValue(normalizedSymbol);
     query.addBindValue(priceUsdMicros);
     query.addBindValue(fetchedAtUtc.toUTC().toMSecsSinceEpoch());
@@ -2549,7 +2570,8 @@ bool FinanceRepository::saveCryptoPrice(
         setLastError(query.lastError().text());
         return false;
     }
-    return true;
+    if (!savePriceHistory("crypto", normalizedSymbol, priceUsdMicros, fetchedAtUtc, "USD", "crypto_provider")) return false;
+    return atomic.commit();
 }
 
 bool FinanceRepository::saveCryptoRefreshAttemptUtc(
@@ -2693,6 +2715,9 @@ bool FinanceRepository::insertInvestmentPosition(
     const InvestmentPosition& position
     )
 {
+    HistorySavepoint atomic(database_);
+    if (!atomic.active()) { setLastError(database_.lastError().text()); return false; }
+
     if (position.id().trimmed().isEmpty() ||
         position.accountId().trimmed().isEmpty() ||
         position.instrumentId().trimmed().isEmpty() ||
@@ -2734,13 +2759,17 @@ bool FinanceRepository::insertInvestmentPosition(
                                "Investment account or instrument was not found"));
         return false;
     }
-    return true;
+    if (!appendPositionState(position.id(), "opening")) return false;
+    return atomic.commit();
 }
 
 bool FinanceRepository::updateInvestmentPosition(
     const InvestmentPosition& position
     )
 {
+    HistorySavepoint atomic(database_);
+    if (!atomic.active()) { setLastError(database_.lastError().text()); return false; }
+
     if (position.id().trimmed().isEmpty() ||
         position.accountId().trimmed().isEmpty() ||
         position.instrumentId().trimmed().isEmpty() ||
@@ -2778,11 +2807,16 @@ bool FinanceRepository::updateInvestmentPosition(
                                "Investment position, account or instrument was not found"));
         return false;
     }
-    return true;
+    if (!appendPositionState(position.id(), "correction")) return false;
+    return atomic.commit();
 }
 
 bool FinanceRepository::deleteInvestmentPosition(const QString& id)
 {
+    HistorySavepoint atomic(database_);
+    if (!atomic.active()) { setLastError(database_.lastError().text()); return false; }
+
+    if (!appendPositionState(id, "delete")) return false;
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "DELETE FROM investment_positions WHERE id = ?"));
@@ -2793,11 +2827,14 @@ bool FinanceRepository::deleteInvestmentPosition(const QString& id)
                          : QStringLiteral("Investment position was not found"));
         return false;
     }
-    return true;
+    return atomic.commit();
 }
 
 bool FinanceRepository::archiveInvestmentPosition(const QString& id)
 {
+    HistorySavepoint atomic(database_);
+    if (!atomic.active()) { setLastError(database_.lastError().text()); return false; }
+
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "UPDATE investment_positions SET is_archived = 1, updated_at = ? "
@@ -2810,11 +2847,15 @@ bool FinanceRepository::archiveInvestmentPosition(const QString& id)
                          : QStringLiteral("Investment position was not found"));
         return false;
     }
-    return true;
+    if (!appendPositionState(id, "archive")) return false;
+    return atomic.commit();
 }
 
 bool FinanceRepository::saveInvestmentQuote(const InvestmentQuote& quote)
 {
+    HistorySavepoint atomic(database_);
+    if (!atomic.active()) { setLastError(database_.lastError().text()); return false; }
+
     if (quote.instrumentId().trimmed().isEmpty() ||
         !quote.quotedAtUtc().isValid()) {
         setLastError(QStringLiteral("Invalid investment quote"));
@@ -2846,7 +2887,13 @@ bool FinanceRepository::saveInvestmentQuote(const InvestmentQuote& quote)
                                "Investment instrument was not found or quote is stale"));
         return false;
     }
-    return true;
+    QSqlQuery currency(database_); currency.prepare("SELECT currency,terms_json FROM investment_instruments WHERE id=?"); currency.addBindValue(quote.instrumentId());
+    if (!currency.exec() || !currency.next()) { setLastError(currency.lastError().text()); return false; }
+    const auto terms = quote.terms().currencyCode.isEmpty() ? InvestmentTerms::deserialize(currency.value(1).toString()) : quote.terms();
+    const QString code = terms.currencyCode.isEmpty() ? currency.value(0).toString() : terms.currencyCode;
+    if (!savePriceHistory("investment", quote.instrumentId(), quote.priceMicros(), quote.quotedAtUtc(), code,
+                         terms.quoteSource.isEmpty() ? QStringLiteral("market") : terms.quoteSource, terms.serialize())) return false;
+    return atomic.commit();
 }
 
 bool FinanceRepository::updateCategoryName(
@@ -4387,13 +4434,18 @@ QVector<InvestmentOperation> FinanceRepository::loadInvestmentOperations()
 {
     QVector<InvestmentOperation> result; QSqlQuery q(database_);
     if (!q.exec("SELECT o.id,o.account_id,o.position_id,o.instrument_id,o.kind,o.cash_delta_minor,"
-                "o.quantity_delta_micros,o.occurred_at,o.description FROM investment_operations o "
+                "o.quantity_delta_micros,o.occurred_at,o.description,o.fee_minor,o.tax_minor,o.trade_price_micros,o.trade_currency FROM investment_operations o "
                 "JOIN accounts a ON a.id=o.account_id WHERE a.is_archived=0 ORDER BY o.occurred_at DESC,o.id")) {
         setLastError(q.lastError().text()); return result;
     }
-    while(q.next()) result.append({q.value(0).toString(),q.value(1).toString(),q.value(2).toString(),q.value(3).toString(),
+    while(q.next()) { InvestmentOperation op{q.value(0).toString(),q.value(1).toString(),q.value(2).toString(),q.value(3).toString(),
         q.value(4).toString(),q.value(5).toLongLong(),q.value(6).toLongLong(),
-        QDateTime::fromMSecsSinceEpoch(q.value(7).toLongLong(),QTimeZone::UTC),q.value(8).toString()});
+        QDateTime::fromMSecsSinceEpoch(q.value(7).toLongLong(),QTimeZone::UTC),q.value(8).toString()};
+        if (!q.value(9).isNull()) op.feeMinor=q.value(9).toLongLong();
+        if (!q.value(10).isNull()) op.taxMinor=q.value(10).toLongLong();
+        if (!q.value(11).isNull()) op.tradePriceMicros=q.value(11).toLongLong();
+        op.tradeCurrency=q.value(12).toString(); result.append(op);
+    }
     return result;
 }
 
@@ -4406,15 +4458,20 @@ bool FinanceRepository::hasInvestmentOperations(const QString& id) const
 namespace {
 bool insertInvestmentOperation(QSqlDatabase& database, const InvestmentOperation& op, QString& error)
 {
-    if(op.id.isEmpty() || op.accountId.isEmpty() || op.instrumentId.isEmpty() || !op.occurredAtUtc.isValid()) {
+    if(op.id.isEmpty() || op.accountId.isEmpty() || op.instrumentId.isEmpty() || !op.occurredAtUtc.isValid()
+        || (op.feeMinor && *op.feeMinor<0) || (op.taxMinor && *op.taxMinor<0)) {
         error=QStringLiteral("Некорректная инвестиционная операция");return false;
     }
     QSqlQuery q(database);q.prepare("INSERT INTO investment_operations(id,account_id,position_id,instrument_id,kind,"
-        "cash_delta_minor,quantity_delta_micros,occurred_at,description) SELECT ?,?,?,?,?,?,?,?,? "
+        "cash_delta_minor,quantity_delta_micros,occurred_at,description,fee_minor,tax_minor,trade_price_micros,trade_currency) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? "
         "WHERE EXISTS (SELECT 1 FROM accounts WHERE id=? AND asset_type=2 AND account_type=6 AND is_archived=0)");
     q.addBindValue(op.id);q.addBindValue(op.accountId);q.addBindValue(op.positionId.isEmpty()?QVariant():QVariant(op.positionId));
     q.addBindValue(op.instrumentId);q.addBindValue(op.kind);q.addBindValue(op.cashDeltaMinor);q.addBindValue(op.quantityDeltaMicros);
     q.addBindValue(op.occurredAtUtc.toMSecsSinceEpoch());q.addBindValue(op.description.isNull()?QStringLiteral(""):op.description);
+    q.addBindValue(op.feeMinor ? QVariant(*op.feeMinor) : QVariant());
+    q.addBindValue(op.taxMinor ? QVariant(*op.taxMinor) : QVariant());
+    q.addBindValue(op.tradePriceMicros ? QVariant(*op.tradePriceMicros) : QVariant());
+    q.addBindValue(op.tradeCurrency.isEmpty() ? QVariant() : QVariant(op.tradeCurrency));
     q.addBindValue(op.accountId);
     if(!q.exec() || q.numRowsAffected()!=1){error=q.lastError().isValid()?q.lastError().text():QStringLiteral("Счёт не найден");return false;}return true;
 }
@@ -4422,8 +4479,16 @@ bool insertInvestmentOperation(QSqlDatabase& database, const InvestmentOperation
 
 bool FinanceRepository::saveInvestmentBundle(const InvestmentInstrument& instrument,
     const InvestmentPosition& position, const std::optional<InvestmentQuote>& quote,
-    bool editing, const std::optional<InvestmentOperation>& operation)
+    bool editing, const std::optional<InvestmentOperation>& operation, const std::optional<qint64>& openingCostMinor, bool clearCostBasis)
 {
+    if(operation && (editing || operation->positionId!=position.id() || operation->accountId!=position.accountId()
+        || operation->instrumentId!=position.instrumentId() || operation->kind!="buy" || openingCostMinor)) {
+        setLastError(QStringLiteral("Операция открытия не соответствует позиции"));return false;
+    }
+    if(openingCostMinor && (instrument.type()==InvestmentInstrumentType::Future || instrument.type()==InvestmentInstrumentType::Option || position.settings().direction!=1)) {
+        setLastError(QStringLiteral("Стоимость приобретения не применяется к этой позиции"));return false;
+    }
+    if(openingCostMinor && *openingCostMinor<0){setLastError(QStringLiteral("Стоимость приобретения не может быть отрицательной"));return false;}
     if(!database_.transaction()){setLastError(database_.lastError().text());return false;}
     const auto fail=[&](){const auto error=lastError_;database_.rollback();setLastError(error);return false;};
     QSqlQuery q(database_);q.prepare("SELECT is_archived FROM investment_instruments WHERE id=?");q.addBindValue(instrument.id());
@@ -4434,7 +4499,14 @@ bool FinanceRepository::saveInvestmentBundle(const InvestmentInstrument& instrum
     if(!(exists?updateInvestmentInstrument(instrument):insertInvestmentInstrument(instrument)))return fail();
     if(!(editing?updateInvestmentPosition(position):insertInvestmentPosition(position)))return fail();
     if(quote && !saveInvestmentQuote(*quote))return fail();
-    if(operation){QString error;if(!insertInvestmentOperation(database_,*operation,error)){setLastError(error);return fail();}}
+    if(operation){QString error;if(!insertInvestmentOperation(database_,*operation,error)){setLastError(error);return fail();}
+        if(!completePositionEvent(*operation,QVariant(qint64(0)),0,position.quantityMicros())) return fail();
+    } else if(openingCostMinor || clearCostBasis) {
+        QSqlQuery cost(database_); cost.prepare("UPDATE investment_position_history SET cost_basis_minor=?,issues=? WHERE sequence=(SELECT max(sequence) FROM investment_position_history WHERE position_id=?)");
+        cost.addBindValue(openingCostMinor?QVariant(*openingCostMinor):QVariant());
+        cost.addBindValue(openingCostMinor?QStringLiteral(""):QStringLiteral("cost_unknown"));cost.addBindValue(position.id());
+        if(!cost.exec()){setLastError(cost.lastError().text());return fail();}
+    }
     if(!database_.commit()){setLastError(database_.lastError().text());return fail();}return true;
 }
 
@@ -4443,6 +4515,7 @@ bool FinanceRepository::bookInvestmentOperation(const InvestmentOperation& op,
     const std::optional<InvestmentQuote>& quote)
 {
     if(op.positionId!=expected.id() || op.accountId!=expected.accountId() || op.instrumentId!=expected.instrumentId()
+        || (close?0:updated.quantityMicros())-expected.quantityMicros()!=op.quantityDeltaMicros
         || updated.id()!=expected.id() || updated.accountId()!=expected.accountId() || updated.instrumentId()!=expected.instrumentId()) {
         setLastError(QStringLiteral("Операция не соответствует позиции"));return false;
     }
@@ -4453,9 +4526,17 @@ bool FinanceRepository::bookInvestmentOperation(const InvestmentOperation& op,
     if(q.value(0).toLongLong()!=expected.quantityMicros() || q.value(2).toLongLong()!=expected.averagePriceMicros()
         || InvestmentPositionSettings::deserialize(q.value(1).toString()).serialize()!=expected.settings().serialize())return fail(QStringLiteral("Позиция уже изменилась; откройте операцию заново"));
     q.finish();
+    if(op.kind=="buy" || op.kind=="sell" || op.kind=="expiry" || op.kind=="margin") {
+        q.prepare("SELECT max(occurred_at) FROM investment_operations WHERE position_id=? AND kind IN ('buy','sell','expiry','margin')");q.addBindValue(expected.id());
+        if(!q.exec() || !q.next())return fail(q.lastError().text());
+        if(!q.value(0).isNull() && q.value(0).toLongLong()/1000>op.occurredAtUtc.toSecsSinceEpoch())return fail(QStringLiteral("Изменение позиции предшествует последней записанной операции"));
+        q.finish();
+    }
+    const QVariant previousBasis = investmentCostBasis(expected.id());
     if(!(close?archiveInvestmentPosition(expected.id()):updateInvestmentPosition(updated)))return fail(lastError_);
     if(quote && !saveInvestmentQuote(*quote))return fail(lastError_);
     QString error;if(!insertInvestmentOperation(database_,op,error))return fail(error);
+    if(!completePositionEvent(op,previousBasis,expected.quantityMicros(),close?0:updated.quantityMicros()))return fail(lastError_);
     if(!database_.commit())return fail(database_.lastError().text());return true;
 }
 

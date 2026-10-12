@@ -13,6 +13,7 @@
 #include "../core/InvestmentPosition.h"
 #include "../core/InvestmentQuote.h"
 #include "../core/InvestmentOperation.h"
+#include "../core/AnalyticsHistory.h"
 #include "../core/Project.h"
 #include "../core/Budget.h"
 #include "../core/FinancialGoal.h"
@@ -69,6 +70,12 @@ public:
     bool saveFinancialGoal(const FinancialGoal& goal, bool editing);
     bool deleteFinancialGoal(const QString& id);
 
+    bool saveDailyValuations(const DailyValuationBatch& batch);
+    QVariantList loadDailyValuations(AssetDailyValuation::Kind kind, const QDate& from = {}, const QDate& to = {});
+    QVariantList loadPositionHistory(const QString& positionId);
+    QVariantList loadPriceHistory(AssetDailyValuation::Kind kind, const QString& assetId);
+    QVariantList loadFxHistory(const QString& currency);
+    QVariant investmentCostBasis(const QString& positionId) const;
     QVector<CapitalSnapshot> loadCapitalSnapshots();
     bool saveCapitalSnapshot(const CapitalSnapshot& snapshot);
     FinancialTrajectorySettings loadFinancialTrajectorySettings() const;
@@ -220,7 +227,8 @@ public:
     QVector<InvestmentOperation> loadInvestmentOperations();
     bool saveInvestmentBundle(const InvestmentInstrument& instrument,
         const InvestmentPosition& position, const std::optional<InvestmentQuote>& quote,
-        bool editing, const std::optional<InvestmentOperation>& operation = {});
+        bool editing, const std::optional<InvestmentOperation>& operation = {},
+        const std::optional<qint64>& openingCostMinor = {}, bool clearCostBasis = false);
     bool bookInvestmentOperation(const InvestmentOperation& operation,
         const InvestmentPosition& expected, const InvestmentPosition& updated, bool close,
         const std::optional<InvestmentQuote>& quote = {});
@@ -256,6 +264,14 @@ public:
     bool deleteBankCsvProfile(const QString& id);
 
 private:
+    bool migrateAnalyticsHistorySchema();
+    bool appendPositionState(const QString& id, const QString& event);
+    bool completePositionEvent(const InvestmentOperation& operation, const QVariant& previousBasis,
+                               qint64 beforeQuantity, qint64 afterQuantity);
+    bool savePriceHistory(const QString& kind, const QString& assetId, qint64 priceMicros,
+                          const QDateTime& quotedAt, const QString& currency,
+                          const QString& source, const QString& termsJson = QStringLiteral("{}"));
+
     bool initializeSchema();
     bool migrateLegacySchema();
     bool migrateInvestmentSchema();

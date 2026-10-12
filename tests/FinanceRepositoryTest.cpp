@@ -373,7 +373,7 @@ void FinanceRepositoryTest::restoresEveryBackupTableExactly()
             QStringLiteral("INSERT INTO investment_instruments(id,symbol,isin,name,type,currency,created_at) VALUES('instrument','SBER','RU-TEST','Акция',0,'RUB',1)"),
             QStringLiteral("INSERT INTO investment_positions(id,account_id,instrument_id,quantity_micros,average_price_micros,is_archived,created_at,updated_at) VALUES('position','b','instrument',1000000,1000000,0,1,1)"),
             QStringLiteral("INSERT INTO investment_quotes(instrument_id,price_micros,quoted_at) VALUES('instrument',1000000,1)"),
-            QStringLiteral("INSERT INTO investment_operations VALUES('investment-op','b','position','instrument','buy',-100,1000000,1,'Покупка')"),
+            QStringLiteral("INSERT INTO investment_operations(id,account_id,position_id,instrument_id,kind,cash_delta_minor,quantity_delta_micros,occurred_at,description) VALUES('investment-op','b','position','instrument','buy',-100,1000000,1,'Покупка')"),
             QStringLiteral("INSERT INTO capital_snapshots VALUES('2026-10-01','RUB',1000,1)"),
             QStringLiteral("INSERT INTO bank_csv_profiles VALUES('profile','Импорт','{}',1,1)"),
             QStringLiteral("INSERT INTO bank_category_rules(pattern,match_mode,type,category_id) VALUES('банк','exact',0,'c')"),
