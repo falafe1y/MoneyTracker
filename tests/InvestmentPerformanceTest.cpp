@@ -139,6 +139,32 @@ private slots:
         auto after=before;after["sequence"]=2;after["event"]="correction";after["account_id"]="a";after["recorded_at"]=time(2).addSecs(-3600).toMSecsSinceEpoch();i.positionHistory={before,after};
         const auto r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(r.value("gainMinor").isNull());QVERIFY(r.value("periodPercent").isNull());
     }
+    void riskUsesFlowAdjustedDailyReturns(){
+        auto i=input();i.from={};i.to={};i.now=time(3);
+        i.valuations={row(1,"cash:a",10000),row(2,"cash:a",16500),row(3,"cash:a",3200)};
+        i.transactions={{"deposit","a","top-up",Money(5000,Currency::RUB),TransactionType::Income,time(2).addSecs(-3600)},
+                        {"withdrawal","a","withdraw",Money(10000,Currency::RUB),TransactionType::Expense,time(3).addSecs(-3600)}};
+        const auto r=InvestmentPerformanceCalculator::calculate(i);const auto risk=r.value("risk").toMap();
+        QVERIFY(risk.value("available").toBool());QCOMPARE(risk.value("returnDays").toInt(),2);
+        QVERIFY(std::abs(risk.value("maximumDrawdownPercent").toDouble()-20)<1e-8);
+        QVERIFY(std::abs(risk.value("bestDayPercent").toDouble()-10)<1e-8);
+        QVERIFY(std::abs(risk.value("worstDayPercent").toDouble()+20)<1e-8);
+        QVERIFY(std::abs(risk.value("annualVolatilityPercent").toDouble()-std::sqrt(450.0*365.25))<1e-8);
+        QCOMPARE(risk.value("drawdowns").toList().size(),3);
+    }
+    void riskIsUnavailableWhenHistoryIsBroken(){
+        auto i=input();i.to=QDate(2025,1,3);i.valuations={row(1,"cash:a",10000),row(3,"cash:a",11000)};
+        auto risk=InvestmentPerformanceCalculator::calculate(i).value("risk").toMap();
+        QVERIFY(!risk.value("available").toBool());QVERIFY(risk.value("drawdowns").toList().isEmpty());QVERIFY(risk.value("maximumDrawdownPercent").isNull());
+        i.valuations={row(1,"cash:a",10000),row(2,"cash:a",10000),row(3,"cash:a",11000)};
+        i.transactions.append({"broken-in","a","transfer-in",Money(1000,Currency::RUB),TransactionType::Income,time(2).addSecs(-3600)});
+        risk=InvestmentPerformanceCalculator::calculate(i).value("risk").toMap();QVERIFY(!risk.value("available").toBool());QVERIFY(risk.value("drawdowns").toList().isEmpty());
+    }
+    void oneDailyReturnDoesNotInventVolatility(){
+        auto i=input();i.valuations={row(1,"cash:a",10000),row(2,"cash:a",11000)};
+        const auto risk=InvestmentPerformanceCalculator::calculate(i).value("risk").toMap();
+        QVERIFY(risk.value("available").toBool());QVERIFY(risk.value("annualVolatilityPercent").isNull());QCOMPARE(risk.value("maximumDrawdownPercent").toDouble(),0.0);
+    }
     void firstDayIsNotAnInventedZeroReturn(){
         auto i=input();i.from={};i.to={};i.now=time(1);i.valuations={row(1,"cash:a",10000)};
         const auto r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(r.value("periodPercent").isNull());QVERIFY(r.value("gainMinor").isNull());

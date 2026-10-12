@@ -108,6 +108,16 @@ Rectangle {
         Label { id: inflationError; visible: text.length > 0; color: panel.negative; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         Label { Layout.fillWidth: true; text: qsTr("Ставка — ваше допущение, одинаковое на весь период. Это не исторический индекс потребительских цен."); color: panel.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
+        InvestmentRiskPanel {
+            Layout.fillWidth: true
+            risk: panel.report.risk || ({})
+            ink: panel.ink
+            muted: panel.muted
+            line: panel.line
+            negative: panel.negative
+            positive: panel.positive
+        }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
         Label { text: qsTr("Разложение результата за период"); font.pixelSize: 17; font.bold: true; color: panel.ink }
         Label {
             Layout.fillWidth: true

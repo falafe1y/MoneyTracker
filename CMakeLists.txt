@@ -28,6 +28,7 @@ qt_add_executable(appMoneyTracker
 qt_add_qml_module(appMoneyTracker
     URI MoneyTracker
     QML_FILES
+        InvestmentRiskPanel.qml
         InvestmentPerformancePanel.qml
         Desktop.qml
         Mobile.qml
@@ -84,6 +85,8 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/InvestmentValuation.h
         SOURCES services/InvestmentValuation.cpp
         SOURCES services/InvestmentPerformanceCalculator.cpp
+        SOURCES services/InvestmentRiskCalculator.cpp
+        SOURCES services/InvestmentRiskCalculator.h
         SOURCES services/InvestmentPerformanceCalculator.h
         SOURCES interface/FinanceControllerPerformance.cpp
         SOURCES core/InvestmentInstrument.h
@@ -593,7 +596,7 @@ if(WIN32)
 endif()
 add_test(NAME AnalyticsHistoryControllerTest COMMAND AnalyticsHistoryControllerTest)
 
-add_executable(InvestmentPerformanceTest tests/InvestmentPerformanceTest.cpp services/InvestmentPerformanceCalculator.cpp services/InvestmentValuation.cpp core/Currency.cpp)
+add_executable(InvestmentPerformanceTest tests/InvestmentPerformanceTest.cpp services/InvestmentRiskCalculator.cpp services/InvestmentPerformanceCalculator.cpp services/InvestmentValuation.cpp core/Currency.cpp)
 target_link_libraries(InvestmentPerformanceTest PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME InvestmentPerformanceTest COMMAND InvestmentPerformanceTest)
 
@@ -603,3 +606,7 @@ if(WIN32)
     target_link_libraries(InvestmentPerformanceControllerTest PRIVATE crypt32)
 endif()
 add_test(NAME InvestmentPerformanceControllerTest COMMAND InvestmentPerformanceControllerTest)
+
+add_executable(InvestmentRiskTest tests/InvestmentRiskTest.cpp services/InvestmentRiskCalculator.cpp)
+target_compile_features(InvestmentRiskTest PRIVATE cxx_std_17)
+add_test(NAME InvestmentRiskTest COMMAND InvestmentRiskTest)

@@ -1,5 +1,6 @@
 #include "InvestmentPerformanceCalculator.h"
 #include "InvestmentValuation.h"
+#include "InvestmentRiskCalculator.h"
 #include "../core/InvestmentQuote.h"
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -260,6 +261,7 @@ QVariantMap Calculation::run(){
     if(!closingComplete || !openingComplete)warn(tr("Для части позиций неизвестна стоимость приобретения или её метод неприменим."));
     std::optional<qint64> gain,gainBase,netFlow,fx,unrealizedChange;
     std::optional<long double> period,annual,inflationAdjusted;
+    InvestmentRisk risk;
     bool valuationsComplete=opening && closing && opening->total && closing->total && closing->at>opening->at;
     bool consecutive=valuationsComplete;
     if(valuationsComplete){
@@ -275,6 +277,7 @@ QVariantMap Calculation::run(){
         if(endAtFixed && flowsComplete)gainBase=checked(__int128_t(*endAtFixed)- *opening->total-fixedExternal);
         if(gain && gainBase)fx=checked(__int128_t(*gain)- *gainBase);
         long double factor=1;bool fundedDay=false;
+        std::vector<InvestmentReturnDay> dailyReturns;
         auto previous=points.find(opening->date);
         for(auto it=std::next(previous);it!=points.end() && it->date<=closing->date;++it){
             if(previous->date.daysTo(it->date)!=1 || !previous->total || !it->total){consecutive=false;break;}
@@ -286,12 +289,16 @@ QVariantMap Calculation::run(){
             const long double denominator=static_cast<long double>(*previous->total)+static_cast<long double>(inflow);
             const long double numerator=static_cast<long double>(*it->total)+static_cast<long double>(outflow);
             if(!consecutive || numerator<0){consecutive=false;break;}
-            if(denominator==0 && numerator==0){previous=it;continue;}
+            if(denominator==0 && numerator==0){dailyReturns.push_back({it->date.toString(Qt::ISODate).toStdString(),1,false});previous=it;continue;}
             if(denominator<=0){consecutive=false;break;}
-            fundedDay=true;factor*=numerator/denominator;previous=it;
+            fundedDay=true;
+            const auto dailyFactor=numerator/denominator;
+            dailyReturns.push_back({it->date.toString(Qt::ISODate).toStdString(),dailyFactor,true});
+            factor*=dailyFactor;previous=it;
         }
         if(consecutive && fundedDay && flowsComplete && std::isfinite(factor)){
             period=(factor-1)*100;
+            risk=calculateInvestmentRisk(opening->date.toString(Qt::ISODate).toStdString(),dailyReturns);
             const long double days=(closing->at-opening->at)/86400000.0L;
             const long double yearly=std::pow(factor,365.25L/days)-1;
             if(std::isfinite(yearly))annual=yearly*100;
@@ -307,6 +314,17 @@ QVariantMap Calculation::run(){
     int count=0;for(const auto& p:points)if(p.date>=baseDate && p.date<=to)++count;
     result["observationCount"]=count;
     result["inflationPercent"]=in.annualInflationPercent?QVariant(*in.annualInflationPercent):QVariant();
+    QVariantList drawdowns;
+    for(const auto& p:risk.drawdowns)drawdowns.append(QVariantMap{{"date",QString::fromStdString(p.date)},{"percent",double(p.percent)}});
+    result["risk"]=QVariantMap{
+        {"available",risk.available},{"returnDays",risk.returnDays},
+        {"annualVolatilityPercent",real(risk.annualVolatilityPercent)},
+        {"maximumDrawdownPercent",risk.available?QVariant(double(risk.maximumDrawdownPercent)):QVariant()},
+        {"currentDrawdownPercent",risk.available?QVariant(double(risk.currentDrawdownPercent)):QVariant()},
+        {"bestDayPercent",real(risk.bestDayPercent)},{"worstDayPercent",real(risk.worstDayPercent)},
+        {"bestDay",QString::fromStdString(risk.bestDay)},{"worstDay",QString::fromStdString(risk.worstDay)},
+        {"peakDate",QString::fromStdString(risk.peakDate)},{"troughDate",QString::fromStdString(risk.troughDate)},
+        {"recoveryDate",QString::fromStdString(risk.recoveryDate)},{"drawdowns",drawdowns}};
     QVariantList breakdown;__int128_t explained=0;
     const auto component=[&](const QString& code,const QString& label,const std::optional<qint64>& amount,bool complete){
         breakdown.append(QVariantMap{{"code",code},{"label",label},{"amountMinor",value(amount)},{"complete",complete}});if(amount)explained+=*amount;
