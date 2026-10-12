@@ -75,6 +75,10 @@ public:
     QVariantList loadPositionHistory(const QString& positionId);
     QVariantList loadPriceHistory(AssetDailyValuation::Kind kind, const QString& assetId);
     QVariantList loadFxHistory(const QString& currency);
+    QVariantList loadPerformanceAccounts();
+    QVariantList loadAllPositionHistory();
+    QString loadPerformanceInflation() const;
+    bool savePerformanceInflation(const QString& value);
     QVariant investmentCostBasis(const QString& positionId) const;
     QVector<CapitalSnapshot> loadCapitalSnapshots();
     bool saveCapitalSnapshot(const CapitalSnapshot& snapshot);

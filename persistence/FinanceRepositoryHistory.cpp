@@ -290,3 +290,22 @@ QVariantList FinanceRepository::loadFxHistory(const QString& currency) {
     QVariantList rows;QSqlQuery q(database_);q.prepare("SELECT * FROM fx_rate_history WHERE currency=? ORDER BY rate_date,source");q.addBindValue(currency);
     if(!q.exec()){setLastError(q.lastError().text());return rows;}while(q.next())rows.append(rowMap(q));return rows;
 }
+
+QVariantList FinanceRepository::loadPerformanceAccounts() {
+    QVariantList result; QSqlQuery q(database_);
+    if(!q.exec("SELECT id,name,currency,initial_balance_minor,created_at FROM accounts WHERE is_archived=0 AND account_type IN (6,7) ORDER BY created_at,id")){setLastError(q.lastError().text());return result;}
+    while(q.next())result.append(rowMap(q));return result;
+}
+QVariantList FinanceRepository::loadAllPositionHistory() {
+    QVariantList result; QSqlQuery q(database_);
+    if(!q.exec("SELECT * FROM investment_position_history ORDER BY sequence")){setLastError(q.lastError().text());return result;}
+    while(q.next())result.append(rowMap(q));return result;
+}
+QString FinanceRepository::loadPerformanceInflation() const {
+    QSqlQuery q(database_);q.prepare("SELECT value FROM settings WHERE key='performance_annual_inflation'");
+    return q.exec() && q.next()?q.value(0).toString():QString();
+}
+bool FinanceRepository::savePerformanceInflation(const QString& value) {
+    QSqlQuery q(database_);q.prepare("INSERT INTO settings(key,value) VALUES('performance_annual_inflation',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");q.addBindValue(value.isNull()?QStringLiteral(""):value);
+    if(q.exec())return true;setLastError(q.lastError().text());return false;
+}

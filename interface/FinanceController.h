@@ -177,6 +177,10 @@ class FinanceController final : public QObject
                 NOTIFY accountsChanged
         )
 
+    Q_PROPERTY(QVariantMap investmentPerformance READ investmentPerformance NOTIFY performanceChanged)
+    Q_PROPERTY(QVariantList performanceAccounts READ performanceAccounts NOTIFY performanceChanged)
+    Q_PROPERTY(QString performanceAccountId READ performanceAccountId NOTIFY performanceChanged)
+    Q_PROPERTY(QString performanceInflation READ performanceInflation NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList investmentOperations READ investmentOperations NOTIFY investmentPositionsChanged)
     Q_PROPERTY(bool investmentValuationIncomplete READ investmentValuationIncomplete NOTIFY balanceChanged)
     Q_PROPERTY(
@@ -405,6 +409,12 @@ public:
     QVariantList cryptoTransactions() const;
     QVariantList investmentAccounts() const;
     QVariantList investmentPositions() const;
+    QVariantMap investmentPerformance() const { return investmentPerformance_; }
+    QVariantList performanceAccounts() const { return performanceAccounts_; }
+    QString performanceAccountId() const { return performanceAccountId_; }
+    QString performanceInflation() const { return performanceInflation_; }
+    Q_INVOKABLE void setPerformanceAccount(const QString& id);
+    Q_INVOKABLE bool setPerformanceInflation(const QString& percent);
     QVariantList investmentOperations() const;
     bool investmentValuationIncomplete() const;
     Q_INVOKABLE QVariantMap saveInvestmentPosition(const QVariantMap& values);
@@ -651,6 +661,7 @@ signals:
     void investmentRefreshingChanged();
     void capitalHistoryChanged();
     void analyticsChanged();
+    void performanceChanged();
     void bankCsvProfilesChanged();
     void bankCsvInspectionFinished(int requestId, const QVariantMap& result);
     void scheduledTransactionsChanged();
@@ -789,6 +800,10 @@ private:
     QVector<FinancialGoal> financialGoals_;
     QVector<GoalAssetValue> goalAssetValues() const;
     void captureCapitalSnapshot(bool overwriteToday = true);
+    void rebuildInvestmentPerformance();
+    QVariantMap investmentPerformance_;
+    QVariantList performanceAccounts_;
+    QString performanceAccountId_, performanceInflation_;
     bool captureDailyAssetValuations();
     bool valuationHistoryReady_ = false;
     FinancialTrajectorySettings trajectorySettings_;

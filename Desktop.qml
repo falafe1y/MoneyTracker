@@ -4257,6 +4257,17 @@ ApplicationWindow {
                 width: Math.max(0, analyticsScroll.availableWidth - root.shadowDepth)
                 spacing: 14
 
+                InvestmentPerformancePanel {
+                    Layout.fillWidth: true
+                    controller: financeController
+                    surface: root.panel
+                    ink: root.accent
+                    muted: root.muted
+                    line: root.line
+                    positive: root.income
+                    negative: root.red
+                }
+
                 Panel {
                     neo: true
                     Layout.fillWidth: true

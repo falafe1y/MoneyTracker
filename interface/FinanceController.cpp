@@ -489,7 +489,7 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
     auto* trajectoryClock = new QTimer(this);
     trajectoryClock->setInterval(60'000);
     connect(trajectoryClock, &QTimer::timeout, this, [this]() {
-        captureCapitalSnapshot(false);
+        captureCapitalSnapshot();
     });
     trajectoryClock->start(); // Capture the next day even if no balance signal fires.
 
@@ -6330,10 +6330,12 @@ bool FinanceController::deleteFinancialGoal(const QString& id)
 
 void FinanceController::captureCapitalSnapshot(const bool overwriteToday)
 {
-    if (restoringDatabase_ || !repository_.isOpen() || !valuationHistoryReady_) return;
+    if (!repository_.isOpen() || !valuationHistoryReady_) return;
+    if (restoringDatabase_) { rebuildInvestmentPerformance(); return; }
     const QDate today=QDate::currentDate();
     if (!overwriteToday && lastCapitalSnapshotDate_==today) return;
     if (captureDailyAssetValuations()) lastCapitalSnapshotDate_=today;
+    rebuildInvestmentPerformance();
 }
 
 QVariantMap FinanceController::financialTrajectory()
