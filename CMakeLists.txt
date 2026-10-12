@@ -34,6 +34,7 @@ qt_add_qml_module(appMoneyTracker
         PasswordSettings.qml
         DatabaseEncryptionSettings.qml
         DatabaseWindow.qml
+        BackupDialogs.qml
         InvestmentPositionDialog.qml
         InvestmentOperationDialog.qml
         InvestmentPositionsPanel.qml
@@ -566,3 +567,10 @@ if(NOT ANDROID)
     target_link_libraries(DatabaseEncryptionTest PRIVATE vexa_storage Qt6::Test)
     add_test(NAME DatabaseEncryptionTest COMMAND DatabaseEncryptionTest)
 endif()
+
+target_compile_definitions(appMoneyTracker PRIVATE VEXA_APP_VERSION="${PROJECT_VERSION}")
+
+add_executable(PortableBackupTest tests/PortableBackupTest.cpp
+    persistence/FinanceRepository.cpp core/Currency.cpp)
+target_link_libraries(PortableBackupTest PRIVATE vexa_storage Qt6::Test)
+add_test(NAME PortableBackupTest COMMAND PortableBackupTest)

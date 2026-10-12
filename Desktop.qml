@@ -12,7 +12,7 @@ ApplicationWindow {
     minimumHeight: 720
     visible: true
     title: "Vexa"
-    onClosing: Qt.quit()
+    onClosing: function(event) { if (databaseProtection.busy) event.accepted = false; else Qt.quit() }
     color: root.canvas
     font.family: "Commissioner"
     font.pixelSize: 14
@@ -700,7 +700,7 @@ ApplicationWindow {
             || bankCsvImportDialog.visible
             || recurringTransactionsDialog.visible
             || clearDataDialog.visible
-            || restoreConfirmationDialog.visible;
+            || backupDialogs.active;
     }
 
     function selectedInvestmentAccountId() {
@@ -4852,7 +4852,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("Сохранить полную копию базы данных со счетами, операциями, настройками и заметками. Функция доступна в настольной версии для Linux и Windows.")
+                    text: qsTr("Сохранить переносимую копию счетов, операций, настроек и заметок. Пароль копии позволяет восстановить данные на другой системе.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -4863,13 +4863,15 @@ ApplicationWindow {
                         text: qsTr("Создать резервную копию")
                         highlighted: true
                         implicitWidth: 230
-                        onClicked: databaseBackupDialog.open()
+                        enabled: !databaseProtection.busy
+                        onClicked: backupDialogs.openExport()
                     }
                     SoftButton {
                         neo: true
                         text: qsTr("Восстановить")
                         implicitWidth: 160
-                        onClicked: databaseRestoreDialog.open()
+                        enabled: !databaseProtection.busy
+                        onClicked: backupDialogs.openImport()
                     }
                 }
                 Text {
@@ -4908,107 +4910,11 @@ ApplicationWindow {
         }
     }
 
-    FileDialog {
-        id: databaseRestoreDialog
-        title: qsTr("Выберите резервную копию для восстановления")
-        fileMode: FileDialog.OpenFile
-        nameFilters: [qsTr("База данных SQLite (*.sqlite3 *.db)"), qsTr("Все файлы (*)")]
-        onAccepted: {
-            restoreConfirmationDialog.backupFile = selectedFile;
-            restoreConfirmationDialog.open();
-        }
-    }
-
-    Dialog {
-        id: restoreConfirmationDialog
-        property url backupFile
-        width: Math.min(520, root.width - 48)
-        modal: true
-        anchors.centerIn: parent
-        padding: 24
-        closePolicy: Popup.CloseOnEscape
-        onAboutToShow: restoreDataError.text = ""
-
-        function confirmRestore() {
-            const result = financeController.restoreDatabase(backupFile);
-            if (!result.ok) {
-                restoreDataError.text = result.error;
-                return;
-            }
-            root.csvStatusOk = true;
-            root.csvStatus = qsTr("Данные восстановлены из копии. Предыдущее состояние сохранено: %1")
-                .arg(result.previousBackupPath);
-            close();
-        }
-
-        background: Rectangle {
-            HardShadow { depth: root.shadowDepth; shadowColor: root.accent }
-            color: root.panel
-            radius: 16
-            border.width: root.outlineWidth
-            border.color: root.accent
-        }
-        contentItem: ColumnLayout {
-            spacing: 16
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("Восстановить данные из копии?")
-                color: root.accent
-                font.pixelSize: 21
-                font.weight: Font.Bold
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("Все текущие счета, операции, настройки и заметки будут заменены данными из выбранной копии. Перед заменой сохраним копию предыдущего состояния.")
-                color: root.accent
-                font.pixelSize: 14
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                Layout.fillWidth: true
-                text: decodeURIComponent(String(restoreConfirmationDialog.backupFile).split("/").pop())
-                color: root.muted
-                font.pixelSize: 14
-                elide: Text.ElideMiddle
-            }
-            Text {
-                id: restoreDataError
-                Layout.fillWidth: true
-                visible: text.length > 0
-                color: root.red
-                font.pixelSize: 14
-                wrapMode: Text.WordWrap
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 16
-                Item { Layout.fillWidth: true }
-                SoftButton {
-                    text: qsTr("Отмена")
-                    onClicked: restoreConfirmationDialog.close()
-                }
-                SoftButton {
-                    text: qsTr("Восстановить")
-                    destructive: true
-                    onClicked: restoreConfirmationDialog.confirmRestore()
-                }
-            }
-        }
-    }
-
-    FileDialog {
-        id: databaseBackupDialog
-        title: qsTr("Сохранить резервную копию базы данных")
-        fileMode: FileDialog.SaveFile
-        nameFilters: [qsTr("База данных SQLite (*.sqlite3 *.db)")]
-        defaultSuffix: "sqlite3"
-        onAccepted: {
-            const result = financeController.backupDatabase(selectedFile);
-            root.csvStatusOk = result.ok;
-            root.csvStatus = result.ok
-                ? qsTr("Резервная копия сохранена: %1").arg(result.path)
-                : qsTr("Не удалось создать копию: %1").arg(result.error);
+    BackupDialogs {
+        id: backupDialogs
+        onExported: function(path) {
+            root.csvStatusOk = true
+            root.csvStatus = qsTr("Резервная копия сохранена: %1").arg(path)
         }
     }
 

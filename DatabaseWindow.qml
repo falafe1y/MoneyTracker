@@ -10,6 +10,7 @@ ApplicationWindow {
     visible: !appAccess.locked && !databaseProtection.ready
     title: "Vexa"
     color: "#F5F3E4"
+    BackupDialogs { id: recoveryDialogs; recoveryMode: true }
     font.family: "Commissioner"
     onClosing: function(event) {
         if (databaseProtection.busy) event.accepted = false
@@ -45,6 +46,11 @@ ApplicationWindow {
                 font.pixelSize: 14
                 background: null
             }
+        }
+        StyledButton {
+            visible: !databaseProtection.busy && !databaseProtection.restartRequired && databaseProtection.error.length > 0
+            text: qsTr("Восстановить из копии")
+            onClicked: recoveryDialogs.openImport()
         }
         StyledButton {
             visible: !databaseProtection.busy

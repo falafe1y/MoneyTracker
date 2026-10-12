@@ -32,6 +32,7 @@
 class FinanceRepository
 {
 public:
+    static bool migrateBackup(const DatabaseAccess& access, const QString& workspace, QString& error);
     struct Summary
     {
         std::array<qint64, kCurrencyCount> balance{};

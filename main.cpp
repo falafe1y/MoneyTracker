@@ -26,6 +26,7 @@
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
+    QCoreApplication::setApplicationVersion(QStringLiteral(VEXA_APP_VERSION));
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/app/vexa.png")));
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
     app.setDesktopFileName(QStringLiteral("vexa"));
@@ -58,6 +59,7 @@ int main(int argc, char *argv[])
     app.setQuitOnLastWindowClosed(false);
     AppAccess appAccess(dataDirectory);
     DatabaseProtection databaseProtection(QDir(dataDirectory).filePath("moneytracker.sqlite3"));
+    databaseProtection.setBackupSchemaValidator(FinanceRepository::migrateBackup);
     SystemLockMonitor systemLock;
     QObject::connect(&systemLock, &SystemLockMonitor::lockRequested, &appAccess, &AppAccess::systemLock);
     WindowScrollInput windowScrollInput;
@@ -136,6 +138,13 @@ int main(int argc, char *argv[])
         QTimer::singleShot(0, &app, [&, encrypted] {
             closeFinance();
             databaseProtection.beginChange(encrypted);
+        });
+    });
+    QObject::connect(&databaseProtection, &DatabaseProtection::restoreRequested, &app, [&] {
+        hideFinance();
+        QTimer::singleShot(0, &app, [&] {
+            closeFinance();
+            databaseProtection.beginRestore();
         });
     });
     QObject::connect(&appAccess, &AppAccess::admissionChanged, &app, [&] {

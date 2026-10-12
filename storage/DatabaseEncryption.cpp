@@ -216,6 +216,108 @@ bool integrityRows(sqlite3* db, const char* sql, bool expectsOk, QString& error)
 std::shared_ptr<DatabaseKeyStore> nativeDatabaseKeyStore() { return std::make_shared<NativeKeyStore>(); }
 
 namespace DatabaseEncryption {
+bool copy(const DatabaseAccess& source, const DatabaseAccess& target, QString& error) {
+    return copyDatabase(source, target, error);
+}
+DatabaseOutcome recover(const QString& path, const DatabaseAccess& source, DatabaseKeyStore& store) {
+    DatabaseOutcome result;
+    result.access.path = QFileInfo(path).absoluteFilePath();
+    if (!validate(source, result.error)) return result;
+    QFile original(path);
+    bool plaintext = false;
+    if (original.exists()) {
+        if (!original.open(QIODevice::ReadOnly)) { result.error = original.errorString(); return result; }
+        plaintext = original.read(16) == QByteArray("SQLite format 3\0", 16); original.close();
+    }
+    const bool encrypted = QFile::exists(marker(path)) || (QFile::exists(path) && !plaintext);
+    // Only explicit recovery may provision a key for an unreadable old database.
+    if (encrypted && !ensureKey(store, result.access.key, result.error)) return result;
+    const auto directory = QFileInfo(path).absolutePath();
+    QStringList originals;
+    qint64 originalSize = 0;
+    for (const auto& suffix : {QString(), QString("-wal"), QString("-shm"), QString("-journal")}) {
+        QFileInfo info(path + suffix);
+        if (info.isSymLink() || (info.exists() && !info.isFile())) {
+            result.error = QStringLiteral("Восстановление требует обычные файлы базы и журналов."); return result;
+        }
+        if (info.exists()) { originals.append(info.absoluteFilePath()); originalSize += info.size(); }
+    }
+    if (!spaceAvailable(directory, originalSize + QFileInfo(source.path).size(), result.error)) return result;
+    QTemporaryDir work(directory + "/." + QFileInfo(path).fileName() + ".maintenance-XXXXXX");
+    if (!work.isValid()) { result.error = QStringLiteral("Не удалось подготовить восстановление."); return result; }
+    DatabaseAccess candidate{work.filePath("recovered.db"), result.access.key};
+    if (!copyDatabase(source, candidate, result.error) || !validate(candidate, result.error) || !syncFile(candidate.path, result.error)) return result;
+    const auto archive = directory + "/recovery-original-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (!QDir().mkdir(archive)) { result.error = QStringLiteral("Не удалось сохранить исходные файлы."); return result; }
+    result.recoveryPath = archive;
+    for (const auto& file : originals) {
+        const auto saved = archive + "/" + QFileInfo(file).fileName();
+        const auto size = QFileInfo(file).size();
+        if (!QFile::copy(file, saved) || QFileInfo(saved).size() != size || !syncFile(saved, result.error)) {
+            result.error = QStringLiteral("Не удалось сохранить исходные файлы перед восстановлением."); return result;
+        }
+    }
+#ifndef Q_OS_WIN
+    for (const auto& dir : {archive, directory}) {
+        const int fd = ::open(QFile::encodeName(dir).constData(), O_RDONLY | O_DIRECTORY);
+        const bool synced = fd >= 0 && ::fsync(fd) == 0;
+        if (fd >= 0) ::close(fd);
+        if (!synced) { result.error = QStringLiteral("Не удалось подтвердить сохранение исходных файлов."); return result; }
+    }
+#endif
+    // All original bytes are durable before changing any active filename.
+    for (const auto& file : originals) {
+        if (file != result.access.path && !QFile::remove(file)) {
+            result.error = QStringLiteral("Не удалось закрыть исходные файлы журнала."); return result;
+        }
+    }
+    if (!publish(candidate.path, path, result.error) || !validate(result.access, result.error)) return result;
+    recordPolicy(result.access); result.ok = true; return result;
+}
+DatabaseOutcome restore(const QString& path, const DatabaseAccess& source, DatabaseKeyStore& store) {
+    auto result = open(path, store);
+    if (!result.ok) return result;
+    result.ok = false;
+    const auto current = result.access;
+    if (!validate(source, result.error)) return result;
+    const auto directory = QFileInfo(path).absolutePath();
+    if (!spaceAvailable(directory, QFileInfo(path).size() * 2 + QFileInfo(source.path).size() * 2, result.error)) return result;
+    {
+        Connection c;
+        if (!c.open(current, false, false, result.error)) return result;
+        int total = 0, done = 0;
+        if (sqlite3_wal_checkpoint_v2(c.db, nullptr, SQLITE_CHECKPOINT_TRUNCATE, &total, &done) != SQLITE_OK
+            || (total >= 0 && total != done)
+            || !c.exec("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;", result.error)) {
+            result.error = QStringLiteral("База занята. Восстановление отменено."); return result;
+        }
+    }
+    QTemporaryDir work(directory + "/." + QFileInfo(path).fileName() + ".maintenance-XXXXXX");
+    if (!work.isValid()) { result.error = QStringLiteral("Не удалось подготовить восстановление."); return result; }
+    DatabaseAccess candidate{work.filePath("candidate.db"), current.key};
+    if (!copyDatabase(source, candidate, result.error) || !validate(candidate, result.error)) return result;
+    const auto recovery = directory + "/backups/before-restore-" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".sqlite3";
+    if (!snapshot(current, recovery, result.error)) return result;
+    result.recoveryPath = recovery;
+    if (QFileInfo(path + "-wal").size() > 0) {
+        result.error = QStringLiteral("В журнале базы появились новые записи. Восстановление отменено."); return result;
+    }
+    for (const auto& suffix : {QStringLiteral("-wal"), QStringLiteral("-shm"), QStringLiteral("-journal")}) {
+        if (QFile::exists(path + suffix) && !QFile::remove(path + suffix)) {
+            result.error = QStringLiteral("Не удалось закрыть файлы журнала базы."); return result;
+        }
+    }
+    if (!publish(candidate.path, path, result.error)) return result;
+    if (!validate(current, result.error)) {
+        DatabaseAccess backup{recovery, current.key}, rollback{work.filePath("rollback.db"), current.key};
+        QString rollbackError;
+        if (!copyDatabase(backup, rollback, rollbackError) || !validate(rollback, rollbackError)
+            || !publish(rollback.path, path, rollbackError) || !validate(current, rollbackError))
+            result.error += QStringLiteral(" Откат не подтверждён. Сохранена копия: %1").arg(recovery);
+        return result;
+    }
+    recordPolicy(current); result.ok = true; return result;
+}
 bool validate(const DatabaseAccess& access, QString& error) {
     Connection c;
     if (!c.open(access, true, false, error)) return false;
