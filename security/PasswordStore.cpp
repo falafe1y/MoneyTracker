@@ -5,6 +5,11 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <wincred.h>
+#elif defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusObjectPath>
+#include <QDBusVariant>
 #endif
 
 namespace {
@@ -14,6 +19,53 @@ QString unavailable()
 }
 class NativePasswordStore final : public PasswordStore {
 public:
+    bool available(QString& error) override
+    {
+#ifdef Q_OS_WIN
+        // Enumerate metadata for a deliberately absent name; do not retrieve secrets.
+        DWORD count = 0;
+        PCREDENTIALW* entries = nullptr;
+        if (CredEnumerateW(L"Vexa/availability-check/*", 0, &count, &entries)) {
+            CredFree(entries);
+            return true;
+        }
+        if (GetLastError() == ERROR_NOT_FOUND) return true;
+        error = unavailable();
+        return false;
+#elif defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
+        if (QStandardPaths::findExecutable("secret-tool").isEmpty()) {
+            error = QCoreApplication::translate("AppAccess", "Системное хранилище недоступно: не найден secret-tool.");
+            return false;
+        }
+        const auto bus = QDBusConnection::sessionBus();
+        auto alias = QDBusMessage::createMethodCall("org.freedesktop.secrets", "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "ReadAlias");
+        alias << QStringLiteral("default");
+        const auto reply = bus.call(alias, QDBus::Block, 1500);
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().size() != 1) {
+            error = unavailable();return false;
+        }
+        const auto path = qvariant_cast<QDBusObjectPath>(reply.arguments().first()).path();
+        if (path.isEmpty() || path == "/") {
+            error = QCoreApplication::translate("AppAccess", "Системное хранилище недоступно: хранилище по умолчанию не настроено.");
+            return false;
+        }
+        auto locked = QDBusMessage::createMethodCall("org.freedesktop.secrets", path, "org.freedesktop.DBus.Properties", "Get");
+        locked << QStringLiteral("org.freedesktop.Secret.Collection") << QStringLiteral("Locked");
+        const auto state = bus.call(locked, QDBus::Block, 1500);
+        if (state.type() != QDBusMessage::ReplyMessage || state.arguments().size() != 1) {
+            error = unavailable();return false;
+        }
+        const auto property = qvariant_cast<QDBusVariant>(state.arguments().first()).variant();
+        if (property.metaType().id() != QMetaType::Bool) { error = unavailable();return false; }
+        if (property.toBool()) {
+            error = QCoreApplication::translate("AppAccess", "Системное хранилище заблокировано. Разблокируйте его и перезапустите Vexa.");
+            return false;
+        }
+        return true;
+#else
+        error = unavailable();return false;
+#endif
+    }
     bool read(QByteArray& value, QString& error) override
     {
 #ifdef Q_OS_WIN

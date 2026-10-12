@@ -9,6 +9,8 @@ struct AccessResult {
     QString error;
     QString recoveryCode;
     qint64 retryAfter = 0;
+    bool storeChecked = false, storeAvailable = false;
+    QString storeError;
 };
 
 // Called serially on a worker thread. The application owns an installation lock.

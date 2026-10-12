@@ -47,7 +47,7 @@ void AppAccess::unlock(const QString& proof)
 }
 void AppAccess::changePassword(const QString& proof, const QString& password, const QString& confirmation)
 {
-    if (busy_ || !ready_ || !recoveryCode_.isEmpty() || (locked_ && !enabled_)) return;
+    if (busy_ || !ready_ || !storeAvailable_ || !recoveryCode_.isEmpty() || (locked_ && !enabled_)) return;
     if (password != confirmation) { error_ = tr("Пароли не совпадают."); emit changed(); return; }
     if (!PasswordLock::validPassword(password)) {
         error_ = tr("Пароль должен содержать от 1 до 1024 символов."); emit changed(); return;
@@ -56,7 +56,7 @@ void AppAccess::changePassword(const QString& proof, const QString& password, co
 }
 void AppAccess::disablePassword(const QString& proof)
 {
-    if (busy_ || !ready_ || locked_ || !enabled_) return;
+    if (busy_ || !ready_ || !storeAvailable_ || locked_ || !enabled_) return;
     run(Operation::PrepareDisable, proof);
 }
 void AppAccess::acknowledgeRecovery()
@@ -78,6 +78,11 @@ void AppAccess::run(Operation operation, const QString& proof, const QString& pa
     connect(&worker_, &QFutureWatcher<AccessResult>::finished, this, [this, operation, generation, proof, password] {
         const auto result = worker_.result();
         busy_ = false;
+        if (result.storeChecked) {
+            storeChecked_ = true;
+            storeAvailable_ = result.storeAvailable;
+            storeError_ = result.storeError;
+        }
         error_ = result.error;
         retryAt_ = result.retryAfter ? QDateTime::currentSecsSinceEpoch() + result.retryAfter : 0;
         if (result.ok && (operation == Operation::PrepareChange || operation == Operation::PrepareDisable)) {

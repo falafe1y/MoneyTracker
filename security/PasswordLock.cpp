@@ -94,6 +94,12 @@ bool PasswordLock::write(const QJsonObject& record, QString& error)
 AccessResult PasswordLock::status()
 {
     AccessResult result;
+    result.storeChecked = true;
+    result.storeAvailable = store_->available(result.storeError);
+    // Never bypass existing protection when credentials cannot be reached.
+    if (!result.storeAvailable && QFile::exists(marker_)) {
+        result.error = result.storeError;return result;
+    }
     QJsonObject record;
     if (!read(record, result.error)) return result;
     result.ok = true;
@@ -154,6 +160,7 @@ AccessResult PasswordLock::verify(const QString& proof)
 AccessResult PasswordLock::change(const QString& proof, const QString& password, bool disable)
 {
     AccessResult result;
+    if (!store_->available(result.error)) return result;
     if (!disable && !validPassword(password)) {
         result.error = message("Пароль должен содержать от 1 до 1024 символов."); return result;
     }

@@ -13,16 +13,26 @@ ColumnLayout {
         color: "#687483"
         wrapMode: Text.WordWrap
     }
+    Text {
+        visible: !appAccess.storeAvailable
+        Layout.fillWidth: true
+        text: !appAccess.storeChecked ? qsTr("Проверяем системное хранилище…")
+              : (appAccess.storeError || qsTr("Системное хранилище недоступно. Защита паролем недоступна."))
+        color: "#687483"
+        wrapMode: Text.WordWrap
+    }
     Flow {
         Layout.fillWidth: true
         spacing: 8
         StyledButton {
             text: appAccess.enabled ? qsTr("Изменить пароль") : qsTr("Установить пароль")
+            enabled: appAccess.storeChecked && appAccess.storeAvailable && appAccess.ready && !appAccess.busy
             onClicked: { dialog.removing = false; dialog.open() }
         }
         StyledButton {
             visible: appAccess.enabled
             text: qsTr("Отключить пароль")
+            enabled: appAccess.storeChecked && appAccess.storeAvailable && appAccess.ready && !appAccess.busy
             onClicked: { dialog.removing = true; dialog.open() }
         }
         StyledButton {
@@ -84,7 +94,7 @@ ColumnLayout {
                     text: dialog.removing ? qsTr("Отключить") : qsTr("Сохранить")
                     primary: true
                     dimWhenDisabled: false
-                    enabled: !appAccess.busy && (!appAccess.enabled || current.text.length > 0)
+                    enabled: appAccess.storeAvailable && !appAccess.busy && (!appAccess.enabled || current.text.length > 0)
                              && (dialog.removing || (password.text.length > 0 && password.text === confirmation.text))
                     onClicked: {
                         if (dialog.removing) appAccess.disablePassword(current.text)

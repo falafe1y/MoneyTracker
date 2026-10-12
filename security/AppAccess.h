@@ -7,6 +7,9 @@
 
 class AppAccess final : public QObject {
     Q_OBJECT
+    Q_PROPERTY(bool storeChecked READ storeChecked NOTIFY changed)
+    Q_PROPERTY(bool storeAvailable READ storeAvailable NOTIFY changed)
+    Q_PROPERTY(QString storeError READ storeError NOTIFY changed)
     Q_PROPERTY(bool locked READ locked NOTIFY changed)
     Q_PROPERTY(bool enabled READ enabled NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
@@ -18,6 +21,9 @@ public:
     explicit AppAccess(const QString& directory, QObject* parent = nullptr);
     explicit AppAccess(std::shared_ptr<PasswordLock> lock, QObject* parent = nullptr);
     ~AppAccess() override;
+    bool storeChecked() const { return storeChecked_; }
+    bool storeAvailable() const { return storeAvailable_; }
+    QString storeError() const { return storeError_; }
     bool locked() const { return locked_; }
     bool enabled() const { return enabled_; }
     bool busy() const { return busy_; }
@@ -49,5 +55,7 @@ private:
     qint64 retryAt_ = 0;
     quint64 generation_ = 0;
     bool locked_ = true, enabled_ = true, busy_ = false, ready_ = false;
+    bool storeChecked_ = false, storeAvailable_ = false;
+    QString storeError_;
     QString error_, recoveryCode_;
 };

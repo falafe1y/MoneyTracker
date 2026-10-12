@@ -4,7 +4,6 @@ import QtQuick.Layouts
 
 ColumnLayout {
     spacing: 16
-    visible: databaseProtection.supported
     Text { text: qsTr("Шифрование базы"); color: "#031528"; font.pixelSize: 17; font.bold: true }
     Text {
         Layout.fillWidth: true
@@ -14,9 +13,20 @@ ColumnLayout {
         color: "#687483"
         wrapMode: Text.WordWrap
     }
+    Text {
+        visible: !appAccess.storeAvailable || !databaseProtection.supported
+        Layout.fillWidth: true
+        text: (!appAccess.storeAvailable
+               ? (!appAccess.storeChecked ? qsTr("Проверяем системное хранилище…")
+                  : (appAccess.storeError || qsTr("Системное хранилище недоступно."))) : "")
+              + ((!appAccess.storeAvailable && !databaseProtection.supported) ? "\n" : "")
+              + (!databaseProtection.supported ? qsTr("Шифрование базы на этой платформе пока не поддерживается.") : "")
+        color: "#687483"
+        wrapMode: Text.WordWrap
+    }
     StyledButton {
         text: databaseProtection.encrypted ? qsTr("Отключить шифрование") : qsTr("Включить шифрование")
-        enabled: databaseProtection.ready && !databaseProtection.busy
+        enabled: databaseProtection.supported && appAccess.storeChecked && appAccess.storeAvailable && databaseProtection.ready && !databaseProtection.busy
         onClicked: confirmation.open()
     }
     Dialog {
@@ -46,6 +56,7 @@ ColumnLayout {
                 StyledButton {
                     text: qsTr("Продолжить")
                     primary: true
+                    enabled: databaseProtection.supported && appAccess.storeAvailable && databaseProtection.ready && !databaseProtection.busy
                     onClicked: { confirmation.close(); databaseProtection.requestChange(!databaseProtection.encrypted) }
                 }
             }
