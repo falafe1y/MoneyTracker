@@ -79,6 +79,11 @@ public:
     QVariantList loadAllPositionHistory();
     QString loadPerformanceInflation() const;
     bool savePerformanceInflation(const QString& value);
+    QVariantMap loadBenchmarkSelection() const;
+    bool saveBenchmarkSelection(const QVariantMap& descriptor);
+    QVariantList loadBenchmarkPrices(const QString& key);
+    bool benchmarkHistoryCovered(const QString& key,const QDate& from,const QDate& to);
+    bool saveBenchmarkHistory(const QVariantMap& descriptor,const QVariantList& prices,const QDate& from,const QDate& to);
     QVariant investmentCostBasis(const QString& positionId) const;
     QVector<CapitalSnapshot> loadCapitalSnapshots();
     bool saveCapitalSnapshot(const CapitalSnapshot& snapshot);

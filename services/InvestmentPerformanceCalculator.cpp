@@ -262,6 +262,7 @@ QVariantMap Calculation::run(){
     std::optional<qint64> gain,gainBase,netFlow,fx,unrealizedChange;
     std::optional<long double> period,annual,inflationAdjusted;
     InvestmentRisk risk;
+    QVariantList performanceSeries;
     bool valuationsComplete=opening && closing && opening->total && closing->total && closing->at>opening->at;
     bool consecutive=valuationsComplete;
     if(valuationsComplete){
@@ -278,6 +279,7 @@ QVariantMap Calculation::run(){
         if(gain && gainBase)fx=checked(__int128_t(*gain)- *gainBase);
         long double factor=1;bool fundedDay=false;
         std::vector<InvestmentReturnDay> dailyReturns;
+        QVariantList candidateSeries{QVariantMap{{"date",opening->date.toString(Qt::ISODate)},{"percent",0.0}}};
         auto previous=points.find(opening->date);
         for(auto it=std::next(previous);it!=points.end() && it->date<=closing->date;++it){
             if(previous->date.daysTo(it->date)!=1 || !previous->total || !it->total){consecutive=false;break;}
@@ -289,15 +291,15 @@ QVariantMap Calculation::run(){
             const long double denominator=static_cast<long double>(*previous->total)+static_cast<long double>(inflow);
             const long double numerator=static_cast<long double>(*it->total)+static_cast<long double>(outflow);
             if(!consecutive || numerator<0){consecutive=false;break;}
-            if(denominator==0 && numerator==0){dailyReturns.push_back({it->date.toString(Qt::ISODate).toStdString(),1,false});previous=it;continue;}
+            if(denominator==0 && numerator==0){dailyReturns.push_back({it->date.toString(Qt::ISODate).toStdString(),1,false});candidateSeries.append(QVariantMap{{"date",it->date.toString(Qt::ISODate)},{"percent",double((factor-1)*100)}});previous=it;continue;}
             if(denominator<=0){consecutive=false;break;}
             fundedDay=true;
             const auto dailyFactor=numerator/denominator;
             dailyReturns.push_back({it->date.toString(Qt::ISODate).toStdString(),dailyFactor,true});
-            factor*=dailyFactor;previous=it;
+            factor*=dailyFactor;candidateSeries.append(QVariantMap{{"date",it->date.toString(Qt::ISODate)},{"percent",double((factor-1)*100)}});previous=it;
         }
         if(consecutive && fundedDay && flowsComplete && std::isfinite(factor)){
-            period=(factor-1)*100;
+            period=(factor-1)*100;performanceSeries=candidateSeries;
             risk=calculateInvestmentRisk(opening->date.toString(Qt::ISODate).toStdString(),dailyReturns);
             const long double days=(closing->at-opening->at)/86400000.0L;
             const long double yearly=std::pow(factor,365.25L/days)-1;
@@ -314,6 +316,7 @@ QVariantMap Calculation::run(){
     int count=0;for(const auto& p:points)if(p.date>=baseDate && p.date<=to)++count;
     result["observationCount"]=count;
     result["inflationPercent"]=in.annualInflationPercent?QVariant(*in.annualInflationPercent):QVariant();
+    result["performanceSeries"]=performanceSeries;
     QVariantList drawdowns;
     for(const auto& p:risk.drawdowns)drawdowns.append(QVariantMap{{"date",QString::fromStdString(p.date)},{"percent",double(p.percent)}});
     result["risk"]=QVariantMap{

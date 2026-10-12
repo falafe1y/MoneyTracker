@@ -17,6 +17,7 @@ public:
     void cancelAll();
 
     void search(const QString& query);
+    void searchFunds(const QString& query);
     void requestQuote(const InvestmentMarketInstrument& instrument);
 
 signals:
@@ -28,7 +29,7 @@ signals:
 
 private:
     void searchPage(const QString& query, int start, quint64 generation,
-                    QVector<InvestmentMarketInstrument> collected);
+                    QVector<InvestmentMarketInstrument> collected, bool fundsOnly = false);
     void requestMarketQuote(const InvestmentMarketInstrument& instrument);
     quint64 searchGeneration_ = 0;
     QNetworkAccessManager network_;

@@ -434,6 +434,7 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
             }
             check.finish();
             const QStringList tables{
+                QStringLiteral("benchmark_daily_prices"), QStringLiteral("benchmark_history_ranges"),
                 QStringLiteral("accounts"), QStringLiteral("categories"), QStringLiteral("projects"),
                 QStringLiteral("budgets"), QStringLiteral("financial_goals"),
                 QStringLiteral("investment_instruments"), QStringLiteral("crypto_wallets"),
@@ -568,6 +569,8 @@ bool FinanceRepository::clearAllUserData()
         return false;
     }
     const QStringList statements{
+        QStringLiteral("DELETE FROM benchmark_daily_prices"),
+        QStringLiteral("DELETE FROM benchmark_history_ranges"),
         QStringLiteral("DELETE FROM fiat_daily_snapshots"),
         QStringLiteral("DELETE FROM crypto_daily_snapshots"),
         QStringLiteral("DELETE FROM investment_daily_snapshots"),

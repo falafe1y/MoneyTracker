@@ -165,6 +165,15 @@ private slots:
         const auto risk=InvestmentPerformanceCalculator::calculate(i).value("risk").toMap();
         QVERIFY(risk.value("available").toBool());QVERIFY(risk.value("annualVolatilityPercent").isNull());QCOMPARE(risk.value("maximumDrawdownPercent").toDouble(),0.0);
     }
+    void comparisonSeriesSharesTheReturnChain(){
+        auto i=input();i.valuations={row(1,"cash:a",10000),row(2,"cash:a",16500)};
+        i.transactions.append({"deposit","a","top-up",Money(5000,Currency::RUB),TransactionType::Income,time(2).addSecs(-3600)});
+        auto r=InvestmentPerformanceCalculator::calculate(i);const auto points=r.value("performanceSeries").toList();
+        QCOMPARE(points.size(),2);QCOMPARE(points.first().toMap().value("percent").toDouble(),0.0);
+        QVERIFY(std::abs(points.last().toMap().value("percent").toDouble()-r.value("periodPercent").toDouble())<1e-9);
+        auto bad=i.valuations.last().toMap();bad["issues"]="history_changed";i.valuations.last()=bad;
+        QVERIFY(InvestmentPerformanceCalculator::calculate(i).value("performanceSeries").toList().isEmpty());
+    }
     void firstDayIsNotAnInventedZeroReturn(){
         auto i=input();i.from={};i.to={};i.now=time(1);i.valuations={row(1,"cash:a",10000)};
         const auto r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(r.value("periodPercent").isNull());QVERIFY(r.value("gainMinor").isNull());

@@ -6,6 +6,7 @@
 #include "../services/BankCsvImporter.h"
 #include "../services/CapitalHistoryCalculator.h"
 #include "../services/InvestmentValuation.h"
+#include "../services/InvestmentBenchmarkProvider.h"
 #include "../services/CbrCurrencyRateProvider.h"
 #include "../services/CurrencyConverter.h"
 #include "../services/CryptoProvider.h"
@@ -177,6 +178,14 @@ class FinanceController final : public QObject
                 NOTIFY accountsChanged
         )
 
+    Q_PROPERTY(QVariantList benchmarkIndices READ benchmarkIndices CONSTANT)
+    Q_PROPERTY(QVariantMap benchmarkSelection READ benchmarkSelection NOTIFY benchmarkChanged)
+    Q_PROPERTY(QVariantMap benchmarkComparison READ benchmarkComparison NOTIFY benchmarkChanged)
+    Q_PROPERTY(QVariantList benchmarkSearchResults READ benchmarkSearchResults NOTIFY benchmarkChanged)
+    Q_PROPERTY(bool benchmarkSearchBusy READ benchmarkSearchBusy NOTIFY benchmarkChanged)
+    Q_PROPERTY(bool benchmarkBusy READ benchmarkBusy NOTIFY benchmarkChanged)
+    Q_PROPERTY(QString benchmarkError READ benchmarkError NOTIFY benchmarkChanged)
+    Q_PROPERTY(QString benchmarkSearchError READ benchmarkSearchError NOTIFY benchmarkChanged)
     Q_PROPERTY(QVariantMap investmentPerformance READ investmentPerformance NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList performanceAccounts READ performanceAccounts NOTIFY performanceChanged)
     Q_PROPERTY(QString performanceAccountId READ performanceAccountId NOTIFY performanceChanged)
@@ -409,6 +418,18 @@ public:
     QVariantList cryptoTransactions() const;
     QVariantList investmentAccounts() const;
     QVariantList investmentPositions() const;
+    QVariantList benchmarkIndices() const;
+    QVariantMap benchmarkSelection() const { return benchmarkSelection_; }
+    QVariantMap benchmarkComparison() const { return benchmarkComparison_; }
+    QVariantList benchmarkSearchResults() const;
+    bool benchmarkSearchBusy() const { return benchmarkSearchBusy_; }
+    bool benchmarkBusy() const { return benchmarkBusy_; }
+    QString benchmarkError() const { return benchmarkError_; }
+    QString benchmarkSearchError() const { return benchmarkSearchError_; }
+    Q_INVOKABLE void selectBenchmarkIndex(const QString& key);
+    Q_INVOKABLE void selectBenchmarkFund(int index);
+    Q_INVOKABLE void searchBenchmarkFunds(const QString& query);
+    Q_INVOKABLE void refreshBenchmark();
     QVariantMap investmentPerformance() const { return investmentPerformance_; }
     QVariantList performanceAccounts() const { return performanceAccounts_; }
     QString performanceAccountId() const { return performanceAccountId_; }
@@ -662,6 +683,7 @@ signals:
     void capitalHistoryChanged();
     void analyticsChanged();
     void performanceChanged();
+    void benchmarkChanged();
     void bankCsvProfilesChanged();
     void bankCsvInspectionFinished(int requestId, const QVariantMap& result);
     void scheduledTransactionsChanged();
@@ -801,6 +823,17 @@ private:
     QVector<GoalAssetValue> goalAssetValues() const;
     void captureCapitalSnapshot(bool overwriteToday = true);
     void rebuildInvestmentPerformance();
+    void initializeBenchmark();
+    void cancelBenchmarkRequests();
+    void rebuildBenchmarkComparison();
+    QVariantList benchmarkPortfolioDates() const;
+    QVariantMap benchmarkSelection_,benchmarkComparison_;
+    QVector<InvestmentMarketInstrument> benchmarkSearchResults_;
+    MoexInvestmentProvider benchmarkSearchProvider_;
+    InvestmentBenchmarkProvider benchmarkHistoryProvider_;
+    bool benchmarkBusy_=false,benchmarkSearchBusy_=false;
+    QString benchmarkError_,benchmarkSearchError_,benchmarkRequest_;
+    QDate benchmarkRequestedFrom_,benchmarkRequestedTo_;
     QVariantMap investmentPerformance_;
     QVariantList performanceAccounts_;
     QString performanceAccountId_, performanceInflation_;

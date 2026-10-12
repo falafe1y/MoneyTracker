@@ -817,6 +817,7 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
     rebuildCapitalHistory();
     valuationHistoryReady_ = true;
     captureCapitalSnapshot();
+    initializeBenchmark();
     scheduleRecurringMaterialization();
     QTimer::singleShot(
         0,
@@ -844,6 +845,7 @@ void FinanceController::cancelPendingAssetRequests()
     recurringMaterializationScheduled_ = false;
     cryptoProvider_.cancelAll();
     investmentProvider_.cancelAll();
+    cancelBenchmarkRequests();
     for (const auto& account : cryptoExchanges_)
         bybitProvider_.cancel(account.toMap().value("id").toString());
     loadingExchangeCredentials_.clear();

@@ -98,6 +98,8 @@ bool FinanceRepository::migrateAnalyticsHistorySchema() {
     q.prepare("INSERT OR IGNORE INTO investment_price_history(asset_id,quoted_at,source,price_micros,currency,observed_at,terms_json) "
               "SELECT q.instrument_id,q.quoted_at,'legacy',q.price_micros,i.currency,?,q.terms_json FROM investment_quotes q JOIN investment_instruments i ON i.id=q.instrument_id WHERE NOT EXISTS (SELECT 1 FROM investment_price_history h WHERE h.asset_id=q.instrument_id)");q.addBindValue(now);
     if(!q.exec()){setLastError(q.lastError().text());return false;}
+    if(!exec("CREATE TABLE IF NOT EXISTS benchmark_daily_prices(benchmark_key TEXT NOT NULL,price_date TEXT NOT NULL,price_micros INTEGER CHECK(price_micros>0),currency TEXT NOT NULL,issues TEXT NOT NULL,observed_at INTEGER NOT NULL,PRIMARY KEY(benchmark_key,price_date))")
+        || !exec("CREATE TABLE IF NOT EXISTS benchmark_history_ranges(benchmark_key TEXT NOT NULL,from_date TEXT NOT NULL,to_date TEXT NOT NULL,observed_at INTEGER NOT NULL,PRIMARY KEY(benchmark_key,from_date,to_date))"))return false;
     return atomic.commit();
 }
 
@@ -308,4 +310,37 @@ QString FinanceRepository::loadPerformanceInflation() const {
 bool FinanceRepository::savePerformanceInflation(const QString& value) {
     QSqlQuery q(database_);q.prepare("INSERT INTO settings(key,value) VALUES('performance_annual_inflation',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");q.addBindValue(value.isNull()?QStringLiteral(""):value);
     if(q.exec())return true;setLastError(q.lastError().text());return false;
+}
+
+QVariantMap FinanceRepository::loadBenchmarkSelection() const {
+    QSqlQuery q(database_);q.prepare("SELECT value FROM settings WHERE key='investment_benchmark'");
+    return q.exec() && q.next()?QJsonDocument::fromJson(q.value(0).toString().toUtf8()).object().toVariantMap():QVariantMap();
+}
+bool FinanceRepository::saveBenchmarkSelection(const QVariantMap& descriptor) {
+    QSqlQuery q(database_);q.prepare("INSERT INTO settings(key,value) VALUES('investment_benchmark',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+    q.addBindValue(QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(descriptor)).toJson(QJsonDocument::Compact)));
+    if(q.exec())return true;setLastError(q.lastError().text());return false;
+}
+QVariantList FinanceRepository::loadBenchmarkPrices(const QString& key) {
+    QVariantList rows;QSqlQuery q(database_);q.prepare("SELECT * FROM benchmark_daily_prices WHERE benchmark_key=? ORDER BY price_date");q.addBindValue(key);
+    if(!q.exec()){setLastError(q.lastError().text());return rows;}while(q.next())rows.append(rowMap(q));return rows;
+}
+bool FinanceRepository::benchmarkHistoryCovered(const QString& key,const QDate& from,const QDate& to) {
+    QSqlQuery q(database_);q.prepare("SELECT 1 FROM benchmark_history_ranges WHERE benchmark_key=? AND from_date<=? AND to_date>=? LIMIT 1");
+    q.addBindValue(key);q.addBindValue(from.toString(Qt::ISODate));q.addBindValue(to.toString(Qt::ISODate));return q.exec() && q.next();
+}
+bool FinanceRepository::saveBenchmarkHistory(const QVariantMap& descriptor,const QVariantList& prices,const QDate& from,const QDate& to) {
+    const auto key=descriptor.value("key").toString();if(key.isEmpty() || !from.isValid() || !to.isValid() || from>to){setLastError(QStringLiteral("Некорректная история ориентира."));return false;}
+    HistorySavepoint atomic(database_);if(!atomic.active())return false;
+    QSqlQuery q(database_);q.prepare("DELETE FROM benchmark_daily_prices WHERE benchmark_key=? AND price_date>=? AND price_date<=?");q.addBindValue(key);q.addBindValue(from.toString(Qt::ISODate));q.addBindValue(to.toString(Qt::ISODate));
+    if(!q.exec()){setLastError(q.lastError().text());return false;}
+    for(const auto& v:prices){const auto r=v.toMap();const auto date=QDate::fromString(r.value("price_date").toString(),Qt::ISODate);
+        if(!date.isValid() || date<from || date>to){setLastError(QStringLiteral("Цена вне периода загрузки."));return false;}
+        q.prepare("INSERT INTO benchmark_daily_prices(benchmark_key,price_date,price_micros,currency,issues,observed_at) VALUES(?,?,?,?,?,?)");
+        q.addBindValue(key);q.addBindValue(date.toString(Qt::ISODate));q.addBindValue(r.value("price_micros"));q.addBindValue(r.value("currency").toString().isNull()?QStringLiteral(""):r.value("currency").toString());q.addBindValue(r.value("issues").toString().isNull()?QStringLiteral(""):r.value("issues").toString());q.addBindValue(QDateTime::currentMSecsSinceEpoch());
+        if(!q.exec()){setLastError(q.lastError().text());return false;}
+    }
+    q.prepare("INSERT OR REPLACE INTO benchmark_history_ranges(benchmark_key,from_date,to_date,observed_at) VALUES(?,?,?,?)");q.addBindValue(key);q.addBindValue(from.toString(Qt::ISODate));q.addBindValue(to.toString(Qt::ISODate));q.addBindValue(QDateTime::currentMSecsSinceEpoch());
+    if(!q.exec()){setLastError(q.lastError().text());return false;}
+    return saveBenchmarkSelection(descriptor) && atomic.commit();
 }

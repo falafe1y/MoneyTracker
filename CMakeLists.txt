@@ -28,6 +28,7 @@ qt_add_executable(appMoneyTracker
 qt_add_qml_module(appMoneyTracker
     URI MoneyTracker
     QML_FILES
+        InvestmentBenchmarkPanel.qml
         InvestmentRiskPanel.qml
         InvestmentPerformancePanel.qml
         Desktop.qml
@@ -85,6 +86,11 @@ qt_add_qml_module(appMoneyTracker
         SOURCES services/InvestmentValuation.h
         SOURCES services/InvestmentValuation.cpp
         SOURCES services/InvestmentPerformanceCalculator.cpp
+        SOURCES services/InvestmentBenchmark.h
+        SOURCES services/InvestmentBenchmark.cpp
+        SOURCES services/InvestmentBenchmarkProvider.h
+        SOURCES services/InvestmentBenchmarkProvider.cpp
+        SOURCES interface/FinanceControllerBenchmark.cpp
         SOURCES services/InvestmentRiskCalculator.cpp
         SOURCES services/InvestmentRiskCalculator.h
         SOURCES services/InvestmentPerformanceCalculator.h
@@ -610,3 +616,17 @@ add_test(NAME InvestmentPerformanceControllerTest COMMAND InvestmentPerformanceC
 add_executable(InvestmentRiskTest tests/InvestmentRiskTest.cpp services/InvestmentRiskCalculator.cpp)
 target_compile_features(InvestmentRiskTest PRIVATE cxx_std_17)
 add_test(NAME InvestmentRiskTest COMMAND InvestmentRiskTest)
+
+add_executable(InvestmentBenchmarkTest tests/InvestmentBenchmarkTest.cpp services/InvestmentBenchmark.cpp)
+target_link_libraries(InvestmentBenchmarkTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME InvestmentBenchmarkTest COMMAND InvestmentBenchmarkTest)
+
+add_executable(InvestmentBenchmarkRepositoryTest tests/InvestmentBenchmarkRepositoryTest.cpp persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp services/InvestmentBenchmark.cpp core/Currency.cpp)
+target_link_libraries(InvestmentBenchmarkRepositoryTest PRIVATE vexa_storage Qt6::Test Qt6::Sql)
+add_test(NAME InvestmentBenchmarkRepositoryTest COMMAND InvestmentBenchmarkRepositoryTest)
+add_executable(InvestmentBenchmarkControllerTest tests/InvestmentBenchmarkControllerTest.cpp ${investment_controller_test_sources} services/BankRecipients.qrc)
+target_link_libraries(InvestmentBenchmarkControllerTest PRIVATE vexa_storage Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
+if(WIN32)
+    target_link_libraries(InvestmentBenchmarkControllerTest PRIVATE crypt32)
+endif()
+add_test(NAME InvestmentBenchmarkControllerTest COMMAND InvestmentBenchmarkControllerTest)

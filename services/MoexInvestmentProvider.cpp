@@ -63,25 +63,30 @@ void MoexInvestmentProvider::search(const QString& query)
     searchPage(query.trimmed(), 0, ++searchGeneration_, {});
 }
 
+void MoexInvestmentProvider::searchFunds(const QString& query)
+{
+    searchPage(query.trimmed(), 0, ++searchGeneration_, {}, true);
+}
+
 void MoexInvestmentProvider::searchPage(const QString& query, int start, quint64 generation,
-    QVector<InvestmentMarketInstrument> collected)
+    QVector<InvestmentMarketInstrument> collected, bool fundsOnly)
 {
     QUrl url(QStringLiteral("https://iss.moex.com/iss/securities.json")); QUrlQuery p;
     p.addQueryItem("q",query); p.addQueryItem("lang","ru"); p.addQueryItem("iss.meta","off");
     p.addQueryItem("iss.only","securities"); p.addQueryItem("limit","100"); p.addQueryItem("start",QString::number(start));
     p.addQueryItem("securities.columns","secid,shortname,name,isin,type,group,primary_boardid,is_traded"); url.setQuery(p);
     auto* reply=network_.get(requestFor(url));
-    connect(reply,&QNetworkReply::finished,this,[this,reply,query,start,generation,collected]() mutable {
+    connect(reply,&QNetworkReply::finished,this,[this,reply,query,start,generation,collected,fundsOnly]() mutable {
         const auto message=replyError(reply,QStringLiteral("Не удалось выполнить поиск"));
         const auto payload=reply->readAll(); reply->deleteLater(); if(generation!=searchGeneration_)return;
         if(!message.isEmpty()){emit searchFailed(message);return;}
         QVector<InvestmentMarketInstrument> page; QString error;
         if(!parseMoexInvestmentSearch(payload,page,&error)){emit searchFailed(error);return;}
         QSet<QString> seen;for(const auto& i:collected)seen.insert(i.id());
-        for(const auto& i:page)if(!seen.contains(i.id())){collected.append(i);seen.insert(i.id());}
+        for(const auto& i:page)if((!fundsOnly || i.type()==InvestmentInstrumentType::Etf || i.type()==InvestmentInstrumentType::Fund) && !seen.contains(i.id())){collected.append(i);seen.insert(i.id());}
         const int rows=QJsonDocument::fromJson(payload).object().value("securities").toObject().value("data").toArray().size();
         // Search all returned pages: reference indices must not crowd out assets.
-        if(rows==100 && collected.size()<100 && start<1900){searchPage(query,start+100,generation,collected);return;}
+        if(rows==100 && collected.size()<100 && start<1900){searchPage(query,start+100,generation,collected,fundsOnly);return;}
         emit searchSucceeded(collected);
     });
 }
