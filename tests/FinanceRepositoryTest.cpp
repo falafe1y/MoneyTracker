@@ -14,6 +14,7 @@
 #include <QTimeZone>
 #include <QUuid>
 #include <QtTest>
+#include "storage/CipherDriver.h"
 
 #include <algorithm>
 
@@ -81,7 +82,7 @@ void FinanceRepositoryTest::cnyMigrationPreservesData()
     }
     const auto connection=QUuid::createUuid().toString();
     {
-        auto db=QSqlDatabase::addDatabase("QSQLITE",connection);
+        auto db=addCipherDatabase(connection);
         db.setDatabaseName(path); QVERIFY(db.open());
         QSqlQuery query(db);
         QVERIFY(query.exec("CREATE INDEX test_cny_account_name ON accounts(name)"));
@@ -106,7 +107,7 @@ void FinanceRepositoryTest::cnyMigrationPreservesData()
             QVERIFY(!failed.lastError().isEmpty());
         }
         {
-            auto db=QSqlDatabase::addDatabase("QSQLITE",connection);
+            auto db=addCipherDatabase(connection);
             db.setDatabaseName(path); QVERIFY(db.open());
             QSqlQuery query(db);
             query.prepare("SELECT count(*) FROM sqlite_master WHERE type='table' AND instr(sql,?)>0");
@@ -147,7 +148,7 @@ void FinanceRepositoryTest::cnyMigrationPreservesData()
     QCOMPARE(migrated.loadCapitalSnapshots().first().currency,Currency::CNY);
     QCOMPARE(migrated.loadInvestmentInstruments().first().currency(),Currency::CNY);
     {
-        auto db=QSqlDatabase::addDatabase("QSQLITE",connection);
+        auto db=addCipherDatabase(connection);
         db.setDatabaseName(path); QVERIFY(db.open());
         QSqlQuery query(db);
         QVERIFY(query.exec("PRAGMA foreign_key_check")); QVERIFY(!query.next()); query.finish();
@@ -267,7 +268,7 @@ void FinanceRepositoryTest::restoreRejectsInvalidFilesAndRollsBackSchemaConflict
     QVERIFY(source.backupDatabase(backup));
     const QString connection = QStringLiteral("incompatible-restore-test");
     {
-        auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        auto database = addCipherDatabase(connection);
         database.setDatabaseName(backup);
         QVERIFY(database.open());
         QSqlQuery query(database);
@@ -346,7 +347,7 @@ void FinanceRepositoryTest::restoresEveryBackupTableExactly()
         return rows;
     };
     {
-        auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        auto database = addCipherDatabase(connection);
         database.setDatabaseName(backup); QVERIFY(database.open());
         QSqlQuery query(database);
         QVERIFY(query.exec(QStringLiteral("PRAGMA foreign_keys = ON")));
@@ -385,7 +386,7 @@ void FinanceRepositoryTest::restoresEveryBackupTableExactly()
     QSqlDatabase::removeDatabase(connection);
     // Existing natural keys must be replaced along with the old rows.
     {
-        auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        auto database = addCipherDatabase(connection);
         database.setDatabaseName(currentPath); QVERIFY(database.open());
         QSqlQuery query(database);
         QVERIFY(query.exec(QStringLiteral("INSERT INTO investment_instruments(id,symbol,isin,name,type,currency,created_at) VALUES('existing','OLD','RU-TEST','Текущая',0,'RUB',1)")));
@@ -395,7 +396,7 @@ void FinanceRepositoryTest::restoresEveryBackupTableExactly()
     QVERIFY2(current.restoreDatabase(backup, &added), qPrintable(current.lastError()));
     QVERIFY(added > 20);
     {
-        auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        auto database = addCipherDatabase(connection);
         database.setDatabaseName(currentPath); QVERIFY(database.open());
         for (auto it = expected.cbegin(); it != expected.cend(); ++it) {
             QCOMPARE(readRows(database, it.key()), it.value());
@@ -420,7 +421,7 @@ void FinanceRepositoryTest::restoresOlderCopyWithOptionalColumnsMissing()
     QVERIFY(source.backupDatabase(backup));
     const QString connection = QStringLiteral("older-restore-test");
     {
-        auto database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        auto database = addCipherDatabase(connection);
         database.setDatabaseName(backup); QVERIFY(database.open());
         QSqlQuery query(database);
         QVERIFY(query.exec(QStringLiteral("ALTER TABLE accounts DROP COLUMN is_archived")));
@@ -592,8 +593,7 @@ void FinanceRepositoryTest::migratesLegacyProjectTable()
         QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     {
-        QSqlDatabase database = QSqlDatabase::addDatabase(
-            QStringLiteral("QSQLITE"), connectionName);
+        QSqlDatabase database = addCipherDatabase(connectionName);
         database.setDatabaseName(databasePath);
         QVERIFY(database.open());
         QSqlQuery query(database);
@@ -687,8 +687,7 @@ void FinanceRepositoryTest::migratesProjectAssignmentForExistingDatabase()
         QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     {
-        QSqlDatabase database = QSqlDatabase::addDatabase(
-            QStringLiteral("QSQLITE"), connectionName);
+        QSqlDatabase database = addCipherDatabase(connectionName);
         database.setDatabaseName(databasePath);
         QVERIFY(database.open());
         QSqlQuery query(database);
@@ -1081,8 +1080,7 @@ void FinanceRepositoryTest::migratesLegacyCryptoSchema()
         + QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     {
-        QSqlDatabase database = QSqlDatabase::addDatabase(
-            QStringLiteral("QSQLITE"), connectionName);
+        QSqlDatabase database = addCipherDatabase(connectionName);
         database.setDatabaseName(databasePath);
         QVERIFY(database.open());
         QSqlQuery query(database);
@@ -1222,8 +1220,7 @@ void FinanceRepositoryTest::migratesCreditLimitForExistingDatabase()
         + QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     {
-        QSqlDatabase database = QSqlDatabase::addDatabase(
-            QStringLiteral("QSQLITE"), connectionName);
+        QSqlDatabase database = addCipherDatabase(connectionName);
         database.setDatabaseName(databasePath);
         QVERIFY(database.open());
         QSqlQuery query(database);
@@ -1278,8 +1275,7 @@ void FinanceRepositoryTest::migratesSavingsAccountsWithoutLosingTransactions()
         + QUuid::createUuid().toString(QUuid::WithoutBraces);
 
     {
-        QSqlDatabase database = QSqlDatabase::addDatabase(
-            QStringLiteral("QSQLITE"), connectionName);
+        QSqlDatabase database = addCipherDatabase(connectionName);
         database.setDatabaseName(databasePath);
         QVERIFY(database.open());
         QSqlQuery query(database);
@@ -1909,7 +1905,7 @@ void FinanceRepositoryTest::storesAndMaterializesDepositInterest()
     const QString connection = QStringLiteral("missing-interest-category-")
         + QUuid::createUuid().toString(QUuid::WithoutBraces);
     {
-        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        QSqlDatabase db = addCipherDatabase(connection);
         db.setDatabaseName(databasePath);
         QVERIFY(db.open());
         QSqlQuery remove(db);

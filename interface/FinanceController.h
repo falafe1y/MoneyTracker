@@ -350,7 +350,10 @@ public:
     QVariantMap financialTrajectory();
     Q_INVOKABLE QVariantMap saveFinancialTrajectorySettings(const QVariantMap& values);
 
-    explicit FinanceController(QObject* parent = nullptr, const QString& databasePath = {});
+    explicit FinanceController(QObject* parent = nullptr, const QString& databasePath = {},
+                               const QByteArray& databaseKey = {});
+    bool storageReady() const;
+    QString storageError() const;
     ~FinanceController() override;
 
     QString notesText() const;

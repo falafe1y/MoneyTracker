@@ -440,9 +440,9 @@ QString investmentTypeName(const InvestmentInstrumentType type)
 }
 }
 
-FinanceController::FinanceController(QObject* parent, const QString& databasePath)
+FinanceController::FinanceController(QObject* parent, const QString& databasePath, const QByteArray& databaseKey)
     : QObject(parent)
-    , repository_(databasePath)
+    , repository_(databasePath, databaseKey)
     , currencyConverter_(rateProvider_)
     , balanceCalculator_(currencyConverter_)
 {
@@ -825,6 +825,9 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
         QTimer::singleShot(0, this, &FinanceController::refreshInvestmentQuotes);
     }
 }
+
+bool FinanceController::storageReady() const { return repository_.isOpen(); }
+QString FinanceController::storageError() const { return repository_.lastError(); }
 
 FinanceController::~FinanceController()
 {

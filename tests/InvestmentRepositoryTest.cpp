@@ -1,3 +1,4 @@
+#include "storage/CipherDriver.h"
 #include "../persistence/FinanceRepository.h"
 
 #include <QTemporaryDir>
@@ -260,8 +261,7 @@ void InvestmentRepositoryTest::migratesMoexRoutingColumns()
     const QString connectionName = QUuid::createUuid().toString(
         QUuid::WithoutBraces);
     {
-        QSqlDatabase database = QSqlDatabase::addDatabase(
-            QStringLiteral("QSQLITE"), connectionName);
+        QSqlDatabase database = addCipherDatabase(connectionName);
         database.setDatabaseName(databasePath);
         QVERIFY(database.open());
         QSqlQuery query(database);
@@ -306,8 +306,7 @@ void InvestmentRepositoryTest::migratesLegacyInvestmentAccountTypes()
     const QString connectionName = QUuid::createUuid().toString(
         QUuid::WithoutBraces);
     {
-        QSqlDatabase database = QSqlDatabase::addDatabase(
-            QStringLiteral("QSQLITE"), connectionName);
+        QSqlDatabase database = addCipherDatabase(connectionName);
         database.setDatabaseName(databasePath);
         QVERIFY(database.open());
         QSqlQuery query(database);

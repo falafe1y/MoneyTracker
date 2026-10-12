@@ -4549,6 +4549,10 @@ ApplicationWindow {
                     x: 28
                     y: 28
                     width: Math.max(0, settingsScroll.availableWidth - 56)
+                    DatabaseEncryptionSettings {
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 24
+                    }
                     PasswordSettings {
                         Layout.fillWidth: true
                         Layout.bottomMargin: 24

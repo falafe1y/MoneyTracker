@@ -10,6 +10,7 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network Concurrent LinguistTools Svg)
 find_package(ZLIB REQUIRED)
 add_subdirectory(security)
+add_subdirectory(storage)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -31,6 +32,8 @@ qt_add_qml_module(appMoneyTracker
         Mobile.qml
         AccessWindow.qml
         PasswordSettings.qml
+        DatabaseEncryptionSettings.qml
+        DatabaseWindow.qml
         InvestmentPositionDialog.qml
         InvestmentOperationDialog.qml
         InvestmentPositionsPanel.qml
@@ -547,4 +550,19 @@ if(NOT ANDROID)
     add_executable(AppAccessTest tests/AppAccessTest.cpp)
     target_link_libraries(AppAccessTest PRIVATE vexa_access Qt6::Test)
     add_test(NAME AppAccessTest COMMAND AppAccessTest)
+endif()
+
+get_property(vexa_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(vexa_target IN LISTS vexa_targets)
+    get_target_property(vexa_target_type ${vexa_target} TYPE)
+    if(vexa_target_type STREQUAL "EXECUTABLE")
+        target_link_libraries(${vexa_target} PRIVATE vexa_storage)
+    endif()
+endforeach()
+
+if(NOT ANDROID)
+    add_executable(DatabaseEncryptionTest tests/DatabaseEncryptionTest.cpp
+        persistence/FinanceRepository.cpp core/Currency.cpp)
+    target_link_libraries(DatabaseEncryptionTest PRIVATE vexa_storage Qt6::Test)
+    add_test(NAME DatabaseEncryptionTest COMMAND DatabaseEncryptionTest)
 endif()

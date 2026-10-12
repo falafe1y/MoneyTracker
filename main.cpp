@@ -14,6 +14,8 @@
 #include <QQuickWindow>
 #include <QQuickItem>
 #include <QTimer>
+#include <QProcess>
+#include "storage/DatabaseProtection.h"
 #include <memory>
 #include "security/AppAccess.h"
 #include "security/SystemLockMonitor.h"
@@ -55,12 +57,18 @@ int main(int argc, char *argv[])
     }
     app.setQuitOnLastWindowClosed(false);
     AppAccess appAccess(dataDirectory);
+    DatabaseProtection databaseProtection(QDir(dataDirectory).filePath("moneytracker.sqlite3"));
     SystemLockMonitor systemLock;
     QObject::connect(&systemLock, &SystemLockMonitor::lockRequested, &appAccess, &AppAccess::systemLock);
     WindowScrollInput windowScrollInput;
     QTranslator translator;
     std::unique_ptr<FinanceController> financeController;
     std::unique_ptr<QQmlApplicationEngine> financeEngine;
+    QQmlApplicationEngine databaseEngine;
+    databaseEngine.rootContext()->setContextProperty("appAccess", &appAccess);
+    databaseEngine.rootContext()->setContextProperty("databaseProtection", &databaseProtection);
+    databaseEngine.loadFromModule("MoneyTracker", "DatabaseWindow");
+    if (databaseEngine.rootObjects().isEmpty()) return 1;
     QQmlApplicationEngine accessEngine;
     accessEngine.rootContext()->setContextProperty("appAccess", &appAccess);
     QObject::connect(&accessEngine, &QQmlApplicationEngine::objectCreationFailed,
@@ -76,17 +84,39 @@ int main(int argc, char *argv[])
         if (english && translator.load(QStringLiteral(":/i18n/qml_en.qm")))
             QCoreApplication::installTranslator(&translator);
         accessEngine.retranslate();
+        databaseEngine.retranslate();
         if (financeEngine) financeEngine->retranslate();
         if (financeController) financeController->retranslate();
     };
-    const auto rebuildSession = [&] {
+    const auto closeFinance = [&] {
+        financeEngine.reset();
+        financeController.reset();
+    };
+    const auto hideFinance = [&] {
+        if (!financeEngine) return;
+        for (auto* object : financeEngine->rootObjects()) {
+            if (auto* window = qobject_cast<QQuickWindow*>(object)) {
+                window->setVisible(false);
+                window->contentItem()->setEnabled(false);
+            }
+        }
+    };
+    const auto openFinance = [&] {
         // Destroy QML first so destruction handlers can still flush notes.
         financeEngine.reset();
         financeController.reset();
-        if (appAccess.locked()) return;
-        financeController = std::make_unique<FinanceController>();
+        if (appAccess.locked() || !databaseProtection.ready() || databaseProtection.busy()) return;
+        const auto access = databaseProtection.access();
+        financeController = std::make_unique<FinanceController>(nullptr, access.path, access.key);
+        if (!financeController->storageReady()) {
+            const auto error = financeController->storageError();
+            financeController.reset();
+            databaseProtection.storageFailed(error);
+            return;
+        }
         financeEngine = std::make_unique<QQmlApplicationEngine>();
         financeEngine->rootContext()->setContextProperty("appAccess", &appAccess);
+        financeEngine->rootContext()->setContextProperty("databaseProtection", &databaseProtection);
         financeEngine->rootContext()->setContextProperty("windowScrollInput", &windowScrollInput);
         financeEngine->rootContext()->setContextProperty("financeController", financeController.get());
         QObject::connect(financeController.get(), &FinanceController::uiLanguageChanged,
@@ -100,21 +130,33 @@ int main(int argc, char *argv[])
         financeEngine->loadFromModule("MoneyTracker", "Desktop");
 #endif
     };
+    QObject::connect(&databaseProtection, &DatabaseProtection::available, &app, openFinance);
+    QObject::connect(&databaseProtection, &DatabaseProtection::maintenanceRequested, &app, [&](bool encrypted) {
+        hideFinance();
+        QTimer::singleShot(0, &app, [&, encrypted] {
+            closeFinance();
+            databaseProtection.beginChange(encrypted);
+        });
+    });
     QObject::connect(&appAccess, &AppAccess::admissionChanged, &app, [&] {
-        // Immediately withdraw the financial UI; teardown runs after the QML callback.
-        if (appAccess.locked() && financeEngine) {
-            for (auto* object : financeEngine->rootObjects()) {
-                if (auto* window = qobject_cast<QQuickWindow*>(object)) {
-                    window->setVisible(false);
-                    window->contentItem()->setEnabled(false);
-                }
-            }
-        }
-        QTimer::singleShot(0, &app, rebuildSession);
+        databaseProtection.setAdmitted(!appAccess.locked());
+        if (appAccess.locked()) hideFinance();
+        QTimer::singleShot(0, &app, [&] {
+            closeFinance();
+            databaseProtection.releaseSession();
+            if (!appAccess.locked()) databaseProtection.prepare();
+        });
     });
     appAccess.start();
-    const int exitCode = app.exec();
-    financeEngine.reset();
-    financeController.reset();
-    return exitCode;
+    for (;;) {
+        const int exitCode = app.exec();
+        closeFinance();
+        if (exitCode != 42) return exitCode;
+        // The converted database is closed and durable before starting a new process.
+        installationLock.unlock();
+        if (QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1)))
+            return 0;
+        if (!installationLock.tryLock()) return 1;
+        databaseProtection.storageFailed(QStringLiteral("Не удалось перезапустить Vexa. Повторите попытку или откройте приложение вручную."));
+    }
 }

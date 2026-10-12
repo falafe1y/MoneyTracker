@@ -1,3 +1,4 @@
+#include "storage/CipherDriver.h"
 #include "../interface/FinanceController.h"
 #include <QFile>
 #include <QTemporaryDir>
@@ -124,7 +125,7 @@ void BankImportControllerTest::migratesAndRestoresOlderSchema() {
     {FinanceRepository r(old);QVERIFY(r.insertTransactions({Transaction("legacy","bank","groceries",Money(100,Currency::RUB),TransactionType::Expense,QDateTime::currentDateTimeUtc(),"Старое описание")},
         {{"пятерочка","exact","groceries",CategoryType::Expense}}));}
     const QString connection="bank-old-schema";
-    {auto db=QSqlDatabase::addDatabase("QSQLITE",connection);db.setDatabaseName(old);QVERIFY(db.open());QSqlQuery q(db);
+    {auto db=addCipherDatabase(connection);db.setDatabaseName(old);QVERIFY(db.open());QSqlQuery q(db);
         QVERIFY(q.exec("DROP TABLE bank_recipient_rules"));QVERIFY(q.exec("ALTER TABLE transactions DROP COLUMN recipient_json"));
         QVERIFY(q.exec("ALTER TABLE bank_category_rules DROP COLUMN match_field"));db.close();}
     QSqlDatabase::removeDatabase(connection);

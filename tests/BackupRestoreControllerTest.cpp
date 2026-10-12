@@ -1,3 +1,4 @@
+#include "storage/CipherDriver.h"
 #include "../interface/FinanceController.h"
 #include <QFile>
 #include <QSqlQuery>
@@ -73,7 +74,7 @@ void BackupRestoreControllerTest::oldBackupClearsNotesWithoutReimport() {
     QVERIFY(seed(path)); QVERIFY(seed(source));
     { FinanceRepository r(source); QVERIFY(r.backupDatabase(backup)); }
     const QString connection="old-backup-notes";
-    { auto db=QSqlDatabase::addDatabase("QSQLITE",connection); db.setDatabaseName(backup); QVERIFY(db.open());
+    { auto db=addCipherDatabase(connection); db.setDatabaseName(backup); QVERIFY(db.open());
       QSqlQuery query(db); QVERIFY(query.exec("DROP TABLE notes")); }
     QSqlDatabase::removeDatabase(connection);
     { FinanceController c(nullptr,path); c.setNotesText("Текущий текст"); QVERIFY(writeLegacy(dir.filePath("notes.txt"),"obsolete"));

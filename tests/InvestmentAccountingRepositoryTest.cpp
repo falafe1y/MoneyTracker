@@ -1,3 +1,4 @@
+#include "storage/CipherDriver.h"
 #include "../persistence/FinanceRepository.h"
 #include "../services/InvestmentValuation.h"
 #include <QTemporaryDir>
@@ -59,7 +60,7 @@ void InvestmentAccountingRepositoryTest::migratesExistingPositionsWithoutLosingD
      QVERIFY(r.insertInvestmentInstrument(i));QVERIFY(r.insertInvestmentPosition({"stock-position","broker","stock",5'000'000,120'000'000}));
      QVERIFY(r.saveInvestmentQuote({"stock",281'440'000,QDateTime::currentDateTimeUtc()}));}
     const auto connection=QStringLiteral("legacy-investment");
-    {auto db=QSqlDatabase::addDatabase("QSQLITE",connection);db.setDatabaseName(path);QVERIFY(db.open());QSqlQuery q(db);
+    {auto db=addCipherDatabase(connection);db.setDatabaseName(path);QVERIFY(db.open());QSqlQuery q(db);
      const QStringList sql{
         "PRAGMA foreign_keys=OFF",
         "CREATE TABLE legacy_instruments(id TEXT PRIMARY KEY,symbol TEXT NOT NULL,isin TEXT NOT NULL DEFAULT '',name TEXT NOT NULL,type INTEGER CHECK(type IN (0,1,2,3,4)),currency TEXT NOT NULL,market_code TEXT NOT NULL DEFAULT '',primary_board_id TEXT NOT NULL DEFAULT '',is_archived INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL)",

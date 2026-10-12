@@ -1,4 +1,5 @@
 #pragma once
+#include "storage/DatabaseEncryption.h"
 
 #include "../core/Transaction.h"
 #include "../services/BankCategoryMatcher.h"
@@ -88,7 +89,8 @@ public:
         qint64 limitMinor
         );
 
-    explicit FinanceRepository(const QString& databasePath = {});
+    explicit FinanceRepository(const QString& databasePath = {}, const QByteArray& databaseKey = {},
+                               std::shared_ptr<DatabaseKeyStore> keyStore = {});
     ~FinanceRepository();
 
     FinanceRepository(const FinanceRepository&) = delete;
@@ -261,6 +263,8 @@ private:
     bool seedDefaults();
     void setLastError(const QString& error);
 
+    DatabaseAccess access_;
+    std::shared_ptr<DatabaseKeyStore> keyStore_;
     QString connectionName_;
     QSqlDatabase database_;
     QString lastError_;

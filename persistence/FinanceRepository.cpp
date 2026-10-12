@@ -1,4 +1,5 @@
 #include "FinanceRepository.h"
+#include "storage/CipherDriver.h"
 
 #include "../core/Currency.h"
 
@@ -231,9 +232,12 @@ bool deleteOperationRows(
 }
 }
 
-FinanceRepository::FinanceRepository(const QString& databasePath)
-    : connectionName_(QUuid::createUuid().toString(QUuid::WithoutBraces))
-    , database_(QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName_))
+FinanceRepository::FinanceRepository(const QString& databasePath, const QByteArray& databaseKey,
+                                     std::shared_ptr<DatabaseKeyStore> keyStore)
+    : access_{databasePath, databaseKey}
+    , keyStore_(keyStore ? std::move(keyStore) : nativeDatabaseKeyStore())
+    , connectionName_(QUuid::createUuid().toString(QUuid::WithoutBraces))
+    , database_(addCipherDatabase(connectionName_, databaseKey))
 {
     const QString resolvedDatabasePath = databasePath.isEmpty()
         ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
@@ -246,6 +250,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath)
         return;
     }
 
+    access_.path = resolvedDatabasePath;
     database_.setDatabaseName(resolvedDatabasePath);
     if (!database_.open()) {
         setLastError(database_.lastError().text());
@@ -333,46 +338,12 @@ bool FinanceRepository::backupDatabase(const QString& destinationPath)
         return false;
     }
 
-    const QString temporaryPath = path + QStringLiteral(".tmp-")
-        + QUuid::createUuid().toString(QUuid::WithoutBraces);
-    QString escapedPath = temporaryPath;
-    escapedPath.replace(QLatin1Char('\''), QStringLiteral("''"));
-    QSqlQuery query(database_);
-    if (!query.exec(QStringLiteral("VACUUM INTO '%1'").arg(escapedPath))) {
-        setLastError(query.lastError().text());
-        QFile::remove(temporaryPath);
+    QString error;
+    if (!DatabaseEncryption::snapshot(access_, path, error)) {
+        setLastError(error);
         return false;
     }
-    query.finish();
-
-    QFile source(temporaryPath);
-    QSaveFile destination(path);
-    if (!source.open(QIODevice::ReadOnly) || !destination.open(QIODevice::WriteOnly)) {
-        setLastError(source.errorString().isEmpty()
-                         ? destination.errorString() : source.errorString());
-        source.close();
-        QFile::remove(temporaryPath);
-        return false;
-    }
-    QByteArray buffer;
-    while (!(buffer = source.read(1024 * 1024)).isEmpty()) {
-        if (destination.write(buffer) != buffer.size()) {
-            setLastError(destination.errorString());
-            source.close();
-            destination.cancelWriting();
-            QFile::remove(temporaryPath);
-            return false;
-        }
-    }
-    if (source.error() != QFileDevice::NoError || !destination.commit()) {
-        setLastError(source.error() != QFileDevice::NoError
-                         ? source.errorString() : destination.errorString());
-        source.close();
-        QFile::remove(temporaryPath);
-        return false;
-    }
-    source.close();
-    QFile::remove(temporaryPath);
+    setLastError({});
     return true;
 }
 
@@ -392,12 +363,22 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
         return false;
     }
 
+    if (QFileInfo(sourcePath + QStringLiteral("-wal")).size() > 0) {
+        setLastError(QStringLiteral("Копия содержит отдельный журнал WAL. Нужен самостоятельный файл резервной копии."));
+        return false;
+    }
+    const auto sourceAccess = DatabaseEncryption::openSnapshot(sourcePath, *keyStore_);
+    if (!sourceAccess.ok) { setLastError(sourceAccess.error); return false; }
+    QString integrityError;
+    if (!DatabaseEncryption::validate(sourceAccess.access, integrityError)) {
+        setLastError(integrityError); return false;
+    }
     const QString connection = QUuid::createUuid().toString(QUuid::WithoutBraces);
     bool restored = false;
     qint64 inserted = 0;
     QString safetyCopy;
     {
-        QSqlDatabase source = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+        QSqlDatabase source = addCipherDatabase(connection, sourceAccess.access.key);
         source.setDatabaseName(file.absoluteFilePath());
         source.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
         // All source queries and database handles are destroyed before removing the connection.
