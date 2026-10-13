@@ -54,7 +54,7 @@ bool isSupportedWallet(const CryptoWallet& wallet)
 
 void addTronGridApiKey(QNetworkRequest& request)
 {
-    const QByteArray apiKey = qgetenv("LEDGERA_TRONGRID_API_KEY").trimmed();
+    const QByteArray apiKey = qgetenv("VEXA_TRONGRID_API_KEY").trimmed();
     if (!apiKey.isEmpty()) {
         request.setRawHeader(QByteArrayLiteral("TRON-PRO-API-KEY"), apiKey);
     }
@@ -72,7 +72,7 @@ QNetworkRequest CryptoProvider::makeRequest(const QUrl& url) const
     QNetworkRequest request(url);
     request.setHeader(
         QNetworkRequest::UserAgentHeader,
-        QStringLiteral("MoneyTracker/0.1"));
+        QStringLiteral("vexa/0.1"));
     request.setRawHeader(
         QByteArrayLiteral("Accept"),
         QByteArrayLiteral("application/json"));
@@ -86,7 +86,7 @@ QUrl CryptoProvider::ethereumApiUrl(
     const bool includeHistoryParameters
     ) const
 {
-    const QString apiKey = qEnvironmentVariable("LEDGERA_BLOCKSCOUT_API_KEY")
+    const QString apiKey = qEnvironmentVariable("VEXA_BLOCKSCOUT_API_KEY")
         .trimmed();
     QUrl url(apiKey.isEmpty()
         ? QStringLiteral("https://eth.blockscout.com/api")
@@ -183,9 +183,9 @@ bool CryptoProvider::requestPrices()
         return false;
     }
     const QByteArray proApiKey = qgetenv(
-        "LEDGERA_COINGECKO_PRO_API_KEY").trimmed();
+        "VEXA_COINGECKO_PRO_API_KEY").trimmed();
     const QByteArray demoApiKey = qgetenv(
-        "LEDGERA_COINGECKO_DEMO_API_KEY").trimmed();
+        "VEXA_COINGECKO_DEMO_API_KEY").trimmed();
     QUrl url(proApiKey.isEmpty()
         ? QStringLiteral("https://api.coingecko.com/api/v3/simple/price")
         : QStringLiteral("https://pro-api.coingecko.com/api/v3/simple/price"));

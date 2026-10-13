@@ -4817,7 +4817,7 @@ ApplicationWindow {
                 }
                 Text {
                     Layout.preferredWidth: 520
-                    text: qsTr("CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX и PDF-выписки Альфы и Сбера, сопоставление столбцов и сохранённые профили.")
+                    text: qsTr("CSV Vexa переносит операции. Банковский импорт поддерживает CSV, XLSX и PDF-выписки Альфы и Сбера, сопоставление столбцов и сохранённые профили.")
                     color: root.muted
                     wrapMode: Text.WordWrap
                 }
@@ -4838,7 +4838,7 @@ ApplicationWindow {
                     }
                     SoftButton {
                         neo: true
-                        text: qsTr("Импорт Ledgera")
+                        text: qsTr("Импорт Vexa")
                         implicitWidth: 160
                         onClicked: importCsvDialog.open()
                     }
@@ -5070,7 +5070,7 @@ ApplicationWindow {
 
     FileDialog {
         id: importCsvDialog
-        title: qsTr("Импорт резервной копии Ledgera")
+        title: qsTr("Импорт резервной копии Vexa")
         fileMode: FileDialog.OpenFile
         nameFilters: [qsTr("CSV-файлы (*.csv)")]
         onAccepted: {

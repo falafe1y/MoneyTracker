@@ -1173,7 +1173,7 @@ QVariantMap FinanceController::exportTransactionsCsv(const QUrl& fileUrl) const
     }
 
     const QStringList header{
-        QStringLiteral("ledgera_csv_version"), QStringLiteral("operation_id"),
+        QStringLiteral("vexa_csv_version"), QStringLiteral("operation_id"),
         QStringLiteral("date"), QStringLiteral("type"),
         QStringLiteral("source_account_id"), QStringLiteral("source_account_name"),
         QStringLiteral("target_account_id"), QStringLiteral("target_account_name"),
@@ -1543,7 +1543,7 @@ QVariantMap FinanceController::importTransactionsCsv(const QUrl& fileUrl)
         return result;
     }
     const QStringList expectedHeader{
-        QStringLiteral("ledgera_csv_version"), QStringLiteral("operation_id"),
+        QStringLiteral("vexa_csv_version"), QStringLiteral("operation_id"),
         QStringLiteral("date"), QStringLiteral("type"),
         QStringLiteral("source_account_id"), QStringLiteral("source_account_name"),
         QStringLiteral("target_account_id"), QStringLiteral("target_account_name"),
@@ -1552,7 +1552,7 @@ QVariantMap FinanceController::importTransactionsCsv(const QUrl& fileUrl)
         QStringLiteral("currency"), QStringLiteral("target_currency"),
         QStringLiteral("description")};
     if (csv.rows.isEmpty() || csv.rows.first() != expectedHeader) {
-        result["error"] = tr("Неверный формат CSV Ledgera");
+        result["error"] = tr("Неверный формат CSV Vexa");
         return result;
     }
 

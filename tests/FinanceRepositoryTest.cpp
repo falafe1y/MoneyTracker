@@ -588,7 +588,7 @@ void FinanceRepositoryTest::migratesLegacyProjectTable()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-project-table-migration.sqlite3"));
+        QStringLiteral("vexa-project-table-migration.sqlite3"));
     const QString connectionName = QStringLiteral("project-table-migration-") +
         QUuid::createUuid().toString(QUuid::WithoutBraces);
 
@@ -619,7 +619,7 @@ void FinanceRepositoryTest::storesUpdatesAndArchivesBudgets()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-budgets-test.sqlite3"));
+        QStringLiteral("vexa-budgets-test.sqlite3"));
     FinanceRepository repository(databasePath);
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
@@ -682,7 +682,7 @@ void FinanceRepositoryTest::migratesProjectAssignmentForExistingDatabase()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-project-migration.sqlite3"));
+        QStringLiteral("vexa-project-migration.sqlite3"));
     const QString connectionName = QStringLiteral("project-migration-") +
         QUuid::createUuid().toString(QUuid::WithoutBraces);
 
@@ -758,7 +758,7 @@ void FinanceRepositoryTest::storesProjectsAndTransactionAssignments()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-projects-test.sqlite3"));
+        QStringLiteral("vexa-projects-test.sqlite3"));
 
     {
         FinanceRepository repository(databasePath);
@@ -779,8 +779,8 @@ void FinanceRepositoryTest::storesProjectsAndTransactionAssignments()
             QStringLiteral("Project expense"),
             CategoryType::Expense);
         const Project firstProject(
-            QStringLiteral("moneytracker"),
-            QStringLiteral("MoneyTracker"));
+            QStringLiteral("vexa"),
+            QStringLiteral("Vexa"));
         const Project secondProject(
             QStringLiteral("proxy"),
             QStringLiteral("Proxy"));
@@ -818,12 +818,12 @@ void FinanceRepositoryTest::storesProjectsAndTransactionAssignments()
         QCOMPARE(transactions.at(1).projectId(), firstProject.id());
 
         QVERIFY(repository.updateProject(Project(
-            firstProject.id(), QStringLiteral("Ledgera"))));
+            firstProject.id(), QStringLiteral("Vexa"))));
         QVERIFY(repository.archiveProject(secondProject.id()));
         const QVector<Project> activeProjects = repository.loadProjects();
         QCOMPARE(activeProjects.size(), 1);
         QCOMPARE(activeProjects.constFirst().id(), firstProject.id());
-        QCOMPARE(activeProjects.constFirst().name(), QStringLiteral("Ledgera"));
+        QCOMPARE(activeProjects.constFirst().name(), QStringLiteral("Vexa"));
     }
 
     {
@@ -834,7 +834,7 @@ void FinanceRepositoryTest::storesProjectsAndTransactionAssignments()
             repository.loadTransactions();
         QCOMPARE(transactions.size(), 2);
         for (const Transaction& transaction : transactions) {
-            QCOMPARE(transaction.projectId(), QStringLiteral("moneytracker"));
+            QCOMPARE(transaction.projectId(), QStringLiteral("vexa"));
         }
     }
 }
@@ -844,7 +844,7 @@ void FinanceRepositoryTest::storesAndMaterializesRecurringTransactions()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     FinanceRepository repository(temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-recurring-test.sqlite3")));
+        QStringLiteral("vexa-recurring-test.sqlite3")));
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
     const Account account(
@@ -949,7 +949,7 @@ void FinanceRepositoryTest::storesBankCsvProfiles()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-bank-csv-profile-test.sqlite3"));
+        QStringLiteral("vexa-bank-csv-profile-test.sqlite3"));
 
     {
         FinanceRepository repository(databasePath);
@@ -986,7 +986,7 @@ void FinanceRepositoryTest::storesCryptoWalletAndPriceSnapshots()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-crypto-test.sqlite3"));
+        QStringLiteral("vexa-crypto-test.sqlite3"));
     const QDateTime balanceFetchedAt = QDateTime::fromMSecsSinceEpoch(
         1'788'100'000'000, QTimeZone::UTC);
     const QDateTime priceFetchedAt = balanceFetchedAt.addSecs(2);
@@ -1075,7 +1075,7 @@ void FinanceRepositoryTest::migratesLegacyCryptoSchema()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-crypto-migration.sqlite3"));
+        QStringLiteral("vexa-crypto-migration.sqlite3"));
     const QString connectionName = QStringLiteral("crypto-migration-")
         + QUuid::createUuid().toString(QUuid::WithoutBraces);
 
@@ -1148,7 +1148,7 @@ void FinanceRepositoryTest::storesCurrencyRateSettings()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-rate-settings-test.sqlite3"));
+        QStringLiteral("vexa-rate-settings-test.sqlite3"));
 
     {
         FinanceRepository repository(databasePath);
@@ -1174,7 +1174,7 @@ void FinanceRepositoryTest::storesCreditCardTerms()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     FinanceRepository repository(temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-credit-card-test.sqlite3")));
+        QStringLiteral("vexa-credit-card-test.sqlite3")));
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
     const Account creditCard(
@@ -1215,7 +1215,7 @@ void FinanceRepositoryTest::migratesCreditLimitForExistingDatabase()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-credit-limit-migration.sqlite3"));
+        QStringLiteral("vexa-credit-limit-migration.sqlite3"));
     const QString connectionName = QStringLiteral("credit-limit-migration-")
         + QUuid::createUuid().toString(QUuid::WithoutBraces);
 
@@ -1355,7 +1355,7 @@ void FinanceRepositoryTest::storesUiLanguage()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-language-test.sqlite3"));
+        QStringLiteral("vexa-language-test.sqlite3"));
 
     {
         FinanceRepository repository(databasePath);
@@ -1378,7 +1378,7 @@ void FinanceRepositoryTest::preservesSelectedAccountAfterReopen()
     QVERIFY(temporaryDirectory.isValid());
 
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-test.sqlite3")
+        QStringLiteral("vexa-test.sqlite3")
     );
     const QString accountId = QStringLiteral("test-debit-card");
     const QString categoryId = QStringLiteral("test-groceries");
@@ -1447,7 +1447,7 @@ void FinanceRepositoryTest::updatesAndDeletesTransaction()
     QVERIFY(temporaryDirectory.isValid());
 
     FinanceRepository repository(
-        temporaryDirectory.filePath(QStringLiteral("moneytracker-edit-test.sqlite3"))
+        temporaryDirectory.filePath(QStringLiteral("vexa-edit-test.sqlite3"))
     );
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
@@ -1538,7 +1538,7 @@ void FinanceRepositoryTest::storesTransferAtomicallyWithoutAffectingIncomeAndExp
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     FinanceRepository repository(
-        temporaryDirectory.filePath(QStringLiteral("moneytracker-transfer-test.sqlite3")));
+        temporaryDirectory.filePath(QStringLiteral("vexa-transfer-test.sqlite3")));
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
     const Account source(
@@ -1583,7 +1583,7 @@ void FinanceRepositoryTest::replacesIncomeWithTransferAtomically()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     FinanceRepository repository(temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-convert-to-transfer-test.sqlite3")));
+        QStringLiteral("vexa-convert-to-transfer-test.sqlite3")));
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
     const Account source(
@@ -1678,7 +1678,7 @@ void FinanceRepositoryTest::deletesWholeTransferFromEitherComponent()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     FinanceRepository repository(temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-delete-transfer-test.sqlite3")));
+        QStringLiteral("vexa-delete-transfer-test.sqlite3")));
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
     const Account source(
@@ -1727,7 +1727,7 @@ void FinanceRepositoryTest::replacesTransferWithTransactionAtomically()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     FinanceRepository repository(temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-convert-from-transfer-test.sqlite3")));
+        QStringLiteral("vexa-convert-from-transfer-test.sqlite3")));
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
     const Account source(
@@ -1776,7 +1776,7 @@ void FinanceRepositoryTest::updatesAccountAndProtectsTransactionCurrency()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     FinanceRepository repository(temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-update-account-test.sqlite3")));
+        QStringLiteral("vexa-update-account-test.sqlite3")));
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 
     const Account original(
@@ -1830,7 +1830,7 @@ void FinanceRepositoryTest::deletesAccountWithRelatedOperations()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-delete-account-test.sqlite3"));
+        QStringLiteral("vexa-delete-account-test.sqlite3"));
 
     {
         FinanceRepository repository(databasePath);
@@ -1897,7 +1897,7 @@ void FinanceRepositoryTest::storesAndMaterializesDepositInterest()
     QTemporaryDir temporaryDirectory;
     QVERIFY(temporaryDirectory.isValid());
     const QString databasePath = temporaryDirectory.filePath(
-        QStringLiteral("moneytracker-deposit-interest-test.sqlite3"));
+        QStringLiteral("vexa-deposit-interest-test.sqlite3"));
     FinanceRepository repository(databasePath);
     QVERIFY2(repository.isOpen(), qPrintable(repository.lastError()));
 

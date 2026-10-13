@@ -62,9 +62,9 @@ The network code is isolated in `CryptoProvider`, so requests can later be
 routed through an application server without changing the database or QML UI.
 For local MVP use, the provider can use the currently available keyless
 Blockscout endpoint and CoinGecko's IP-based access. For production, set
-`LEDGERA_BLOCKSCOUT_API_KEY` and `LEDGERA_TRONGRID_API_KEY`. CoinGecko Demo and
-Pro keys are supported separately through `LEDGERA_COINGECKO_DEMO_API_KEY` and
-`LEDGERA_COINGECKO_PRO_API_KEY`, so each key is sent to the correct host. Never
+`VEXA_BLOCKSCOUT_API_KEY` and `VEXA_TRONGRID_API_KEY`. CoinGecko Demo and
+Pro keys are supported separately through `VEXA_COINGECKO_DEMO_API_KEY` and
+`VEXA_COINGECKO_PRO_API_KEY`, so each key is sent to the correct host. Never
 commit these secrets to the repository.
 
 ## Storage
@@ -112,7 +112,7 @@ extend the same settings section with a choice of automatic rate provider.
 
 ## CSV import and export
 
-Settings provides import and export for all transactions. Ledgera writes
+Settings provides import and export for all transactions. Vexa writes
 UTF-8 CSV with a BOM and semicolon separators so the file opens correctly in
 spreadsheet applications configured for Russian locales. Amounts are stored as
 integer minor units, which avoids rounding money during a round trip.
@@ -132,7 +132,7 @@ and rows whose currency differs from the selected account. Rows without a bank
 identifier use a stable fingerprint based on date, amount, description and
 currency, so overlapping statement periods do not create duplicates.
 
-The Ledgera CSV is a portable operation exchange format, not a complete
+The Vexa CSV is a portable operation exchange format, not a complete
 application backup. Database backups include imported recipients and personal
 recipient/category rules. Older backups remain supported.
 

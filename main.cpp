@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     }
     app.setQuitOnLastWindowClosed(false);
     AppAccess appAccess(dataDirectory);
-    DatabaseProtection databaseProtection(QDir(dataDirectory).filePath("moneytracker.sqlite3"));
+    DatabaseProtection databaseProtection(QDir(dataDirectory).filePath("vexa.sqlite3"));
     databaseProtection.setBackupSchemaValidator(FinanceRepository::migrateBackup);
     SystemLockMonitor systemLock;
     QObject::connect(&systemLock, &SystemLockMonitor::lockRequested, &appAccess, &AppAccess::systemLock);
@@ -75,13 +75,13 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine databaseEngine;
     databaseEngine.rootContext()->setContextProperty("appAccess", &appAccess);
     databaseEngine.rootContext()->setContextProperty("databaseProtection", &databaseProtection);
-    databaseEngine.loadFromModule("MoneyTracker", "DatabaseWindow");
+    databaseEngine.loadFromModule("Vexa", "DatabaseWindow");
     if (databaseEngine.rootObjects().isEmpty()) return 1;
     QQmlApplicationEngine accessEngine;
     accessEngine.rootContext()->setContextProperty("appAccess", &appAccess);
     QObject::connect(&accessEngine, &QQmlApplicationEngine::objectCreationFailed,
                      &app, [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
-    accessEngine.loadFromModule("MoneyTracker", "AccessWindow");
+    accessEngine.loadFromModule("Vexa", "AccessWindow");
     if (accessEngine.rootObjects().isEmpty()) return 1;
 
     const auto applyUiLanguage = [&] {
@@ -133,9 +133,9 @@ int main(int argc, char *argv[])
         QObject::connect(financeEngine.get(), &QQmlApplicationEngine::objectCreationFailed,
                          &app, [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
-        financeEngine->loadFromModule("MoneyTracker", "Mobile");
+        financeEngine->loadFromModule("Vexa", "Mobile");
 #else
-        financeEngine->loadFromModule("MoneyTracker", "Desktop");
+        financeEngine->loadFromModule("Vexa", "Desktop");
 #endif
     };
     QObject::connect(&databaseProtection, &DatabaseProtection::available, &app, openFinance);

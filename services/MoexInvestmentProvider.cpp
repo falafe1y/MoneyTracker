@@ -18,7 +18,7 @@ QNetworkRequest requestFor(const QUrl& url)
     QNetworkRequest request(url);
     request.setHeader(
         QNetworkRequest::UserAgentHeader,
-        QStringLiteral("Ledgera/0.1 (personal finance tracker)"));
+        QStringLiteral("vexa/0.1 (personal finance tracker)"));
     request.setRawHeader("Accept", "application/json");
     request.setAttribute(
         QNetworkRequest::RedirectPolicyAttribute,

@@ -42,7 +42,7 @@ QPair<QString, QString> ExchangeCredentials::load(const QString& id) {
     bytes = QByteArray(reinterpret_cast<char*>(output.pbData), static_cast<int>(output.cbData));
     SecureZeroMemory(output.pbData, output.cbData); LocalFree(output.pbData);
 #else
-    bytes = secretTool({"lookup", "application", "Ledgera", "exchange", "Bybit", "account", id});
+    bytes = secretTool({"lookup", "application", "vexa", "exchange", "Bybit", "account", id});
 #endif
     const auto object = QJsonDocument::fromJson(bytes).object(); bytes.fill('\0');
     return {object.value("key").toString(), object.value("secret").toString()};
@@ -52,7 +52,7 @@ bool ExchangeCredentials::save(const QString& id, const QString& apiKey, const Q
     bool succeeded = false;
 #ifdef Q_OS_WIN
     DATA_BLOB source{static_cast<DWORD>(bytes.size()), reinterpret_cast<BYTE*>(bytes.data())}, output{};
-    if (CryptProtectData(&source, L"Ledgera Bybit", nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &output)) {
+    if (CryptProtectData(&source, L"Vexa Bybit", nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &output)) {
         QSaveFile file(path(id));
         succeeded = file.open(QIODevice::WriteOnly)
             && file.write(reinterpret_cast<char*>(output.pbData), output.cbData) == output.cbData && file.commit();
@@ -60,7 +60,7 @@ bool ExchangeCredentials::save(const QString& id, const QString& apiKey, const Q
         SecureZeroMemory(output.pbData, output.cbData); LocalFree(output.pbData);
     }
 #else
-    secretTool({"store", "--label=Ledgera Bybit", "application", "Ledgera", "exchange", "Bybit", "account", id}, bytes, &succeeded);
+    secretTool({"store", "--label=Vexa Bybit", "application", "vexa", "exchange", "Bybit", "account", id}, bytes, &succeeded);
 #endif
     bytes.fill('\0'); return succeeded;
 }
@@ -68,6 +68,6 @@ void ExchangeCredentials::remove(const QString& id) {
 #ifdef Q_OS_WIN
     QFile::remove(path(id));
 #else
-    secretTool({"clear", "application", "Ledgera", "exchange", "Bybit", "account", id});
+    secretTool({"clear", "application", "vexa", "exchange", "Bybit", "account", id});
 #endif
 }

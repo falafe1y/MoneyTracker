@@ -141,7 +141,7 @@ void CbrCurrencyRateProvider::requestRefresh()
         QUrl(QStringLiteral("https://www.cbr.ru/scripts/XML_daily_eng.asp"))};
     request.setHeader(
         QNetworkRequest::UserAgentHeader,
-        QStringLiteral("MoneyTracker/0.1"));
+        QStringLiteral("vexa/0.1"));
     request.setRawHeader(
         QByteArrayLiteral("Accept"),
         QByteArrayLiteral("application/xml,text/xml"));

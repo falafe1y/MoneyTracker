@@ -166,14 +166,14 @@
     <message><source>Экспортировать CSV</source><translation>Export CSV</translation></message>
     <message><source>Импортировать CSV</source><translation>Import CSV</translation></message>
     <message><source>Выписка банка</source><translation>Bank statement</translation></message>
-    <message><source>Импорт Ledgera</source><translation>Import Ledgera</translation></message>
+    <message><source>Импорт Vexa</source><translation>Import Vexa</translation></message>
     <message><source>Выберите банковский CSV</source><translation>Select a bank CSV</translation></message>
     <message><source>Выберите банковскую выписку</source><translation>Select a bank statement</translation></message>
     <message><source>Банковские выписки (*.csv *.xlsx)</source><translation>Bank statements (*.csv *.xlsx)</translation></message>
     <message><source>Все файлы (*)</source><translation>All files (*)</translation></message>
-    <message><source>Импорт резервной копии Ledgera</source><translation>Import Ledgera backup</translation></message>
-    <message><source>Экспорт Ledgera сохраняет полную резервную копию операций. Банковский импорт поддерживает сопоставление столбцов и сохранённые профили.</source><translation>Ledgera export creates a full transaction backup. Bank import supports column mapping and saved profiles.</translation></message>
-    <message><source>CSV Ledgera переносит операции. Банковский импорт поддерживает CSV, XLSX, сопоставление столбцов и сохранённые профили. Полный архив приложения будет отдельной функцией.</source><translation>Ledgera CSV transfers operations. Bank import supports CSV, XLSX, column mapping and saved profiles. A full application archive will be a separate feature.</translation></message>
+    <message><source>Импорт резервной копии Vexa</source><translation>Import Vexa backup</translation></message>
+    <message><source>Экспорт Vexa сохраняет полную резервную копию операций. Банковский импорт поддерживает сопоставление столбцов и сохранённые профили.</source><translation>Vexa export creates a full transaction backup. Bank import supports column mapping and saved profiles.</translation></message>
+    <message><source>CSV Vexa переносит операции. Банковский импорт поддерживает CSV, XLSX, сопоставление столбцов и сохранённые профили. Полный архив приложения будет отдельной функцией.</source><translation>Vexa CSV transfers operations. Bank import supports CSV, XLSX, column mapping and saved profiles. A full application archive will be a separate feature.</translation></message>
     <message><source>Импортировано: %1, пропущено дубликатов: %2, отклонено строк: %3</source><translation>Imported: %1, duplicates skipped: %2, rows rejected: %3</translation></message>
     <message><source>Экспорт операций в CSV</source><translation>Export transactions to CSV</translation></message>
     <message><source>Импорт операций из CSV</source><translation>Import transactions from CSV</translation></message>
@@ -453,7 +453,7 @@
     <message><source>Не выбран файл для экспорта</source><translation>No export file selected</translation></message>
     <message><source>Не выбран CSV-файл</source><translation>No CSV file selected</translation></message>
     <message><source>Не выбран файл выписки</source><translation>No statement file selected</translation></message>
-    <message><source>Неверный формат CSV Ledgera</source><translation>Invalid Ledgera CSV format</translation></message>
+    <message><source>Неверный формат CSV Vexa</source><translation>Invalid Vexa CSV format</translation></message>
     <message><source>Ошибка в строке %1: неверное число столбцов или версия</source><translation>Error on row %1: invalid column count or version</translation></message>
     <message><source>Ошибка в строке %1: неверная дата или сумма</source><translation>Error on row %1: invalid date or amount</translation></message>
     <message><source>Ошибка в строке %1: исходный счёт не найден</source><translation>Error on row %1: source account not found</translation></message>

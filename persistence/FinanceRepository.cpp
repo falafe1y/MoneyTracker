@@ -242,7 +242,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath, const QByteArr
 {
     const QString resolvedDatabasePath = databasePath.isEmpty()
         ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-            + QStringLiteral("/moneytracker.sqlite3")
+            + QStringLiteral("/vexa.sqlite3")
         : databasePath;
     const QString directory = QFileInfo(resolvedDatabasePath).absolutePath();
 
@@ -467,7 +467,7 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
             }
             check.finish();
             for (const auto& required : {QStringLiteral("accounts"), QStringLiteral("categories"), QStringLiteral("transactions"), QStringLiteral("settings")}) {
-                if (!sourceTables.contains(required)) return fail(QStringLiteral("Файл не является резервной копией Ledgera"));
+                if (!sourceTables.contains(required)) return fail(QStringLiteral("Файл не является резервной копией Vexa"));
             }
             safetyCopy = QFileInfo(database_.databaseName()).absolutePath()
                 + QStringLiteral("/before-restore-")

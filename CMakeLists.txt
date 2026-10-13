@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(MoneyTracker VERSION 0.1 LANGUAGES C CXX)
+project(vexa VERSION 0.1 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
@@ -19,14 +19,14 @@ if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/importedcontent/CMakeLists.txt")
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/importedcontent)
 endif()
 
-qt_add_executable(appMoneyTracker
+qt_add_executable(vexa
     main.cpp
     resources.qrc
     services/BankRecipients.qrc
 )
 
-qt_add_qml_module(appMoneyTracker
-    URI MoneyTracker
+qt_add_qml_module(vexa
+    URI Vexa
     QML_FILES
         ui/security/AccessWindow.qml
         ui/security/DatabaseWindow.qml
@@ -160,8 +160,8 @@ qt_add_qml_module(appMoneyTracker
 )
 
 qt_add_translations(
-    TARGETS appMoneyTracker
-    SOURCE_TARGETS appMoneyTracker
+    TARGETS vexa
+    SOURCE_TARGETS vexa
     TS_FILES translations/qml_en.ts
     RESOURCE_PREFIX /i18n
 )
@@ -169,15 +169,15 @@ qt_add_translations(
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
-set_target_properties(appMoneyTracker PROPERTIES
-#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.appMoneyTracker
+set_target_properties(vexa PROPERTIES
+#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.vexa
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
 
-target_link_libraries(appMoneyTracker
+target_link_libraries(vexa
     PRIVATE
         Qt6::Quick
         Qt6::QuickControls2
@@ -194,11 +194,11 @@ if(WIN32)
     enable_language(RC)
     configure_file(packaging/windows/vexa.rc.in
         "${CMAKE_CURRENT_BINARY_DIR}/vexa.rc" @ONLY)
-    target_sources(appMoneyTracker PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/vexa.rc")
-    target_link_libraries(appMoneyTracker PRIVATE crypt32)
+    target_sources(vexa PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/vexa.rc")
+    target_link_libraries(vexa PRIVATE crypt32)
 endif()
 
-install(TARGETS appMoneyTracker
+install(TARGETS vexa
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -599,7 +599,7 @@ if(NOT ANDROID)
     add_test(NAME DatabaseEncryptionTest COMMAND DatabaseEncryptionTest)
 endif()
 
-target_compile_definitions(appMoneyTracker PRIVATE VEXA_APP_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(vexa PRIVATE VEXA_APP_VERSION="${PROJECT_VERSION}")
 
 add_executable(PortableBackupTest tests/PortableBackupTest.cpp
     persistence/FinanceRepository.cpp persistence/FinanceRepositoryHistory.cpp core/Currency.cpp)
