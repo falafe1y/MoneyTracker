@@ -22,6 +22,29 @@ QVariantMap rowMap(const QSqlQuery& query) {
     for(int i=0;i<record.count();++i) row.insert(record.fieldName(i),query.value(i));
     return row;
 }
+const QString positionStateQuery = QStringLiteral(
+    "SELECT p.id,p.account_id,p.instrument_id,p.quantity_micros,p.average_price_micros,p.settings_json,p.is_archived,"
+    "a.currency,i.currency AS instrument_currency,i.symbol,i.type,i.terms_json,q.terms_json AS quote_terms "
+    "FROM investment_positions p JOIN accounts a ON a.id=p.account_id "
+    "JOIN investment_instruments i ON i.id=p.instrument_id LEFT JOIN investment_quotes q ON q.instrument_id=p.instrument_id");
+
+// An average acquisition price is useful only when it is a monetary unit price
+// in the account currency. Today's FX, nominal and accrued interest are not
+// evidence of the amount originally paid.
+QVariant averageAcquisitionCost(const QVariantMap& row) {
+    const int type=row.value("type").toInt();
+    if(type==int(InvestmentInstrumentType::Bond) || type==int(InvestmentInstrumentType::Future)
+       || type==int(InvestmentInstrumentType::Option) || type==int(InvestmentInstrumentType::Other))return {};
+    const auto settings=InvestmentPositionSettings::deserialize(row.value("settings_json").toString());
+    const auto terms=InvestmentTerms::deserialize(row.value("terms_json").toString());
+    const auto currency=terms.currencyCode.isEmpty()?row.value("instrument_currency").toString():terms.currencyCode;
+    const qint64 qty=row.value("quantity_micros").toLongLong(),price=row.value("average_price_micros").toLongLong();
+    if(settings.direction!=1 || qty<=0 || price<=0 || currency!=row.value("currency").toString()
+       || (terms.pricing!="unit" && terms.pricing!="manual") || terms.multiplierMicros!=1'000'000)return {};
+    const __int128_t minor=(__int128_t(qty)*price+5'000'000'000LL)/10'000'000'000LL;
+    if(minor>std::numeric_limits<qint64>::max())return {};
+    return QVariant(static_cast<qint64>(minor));
+}
 }
 
 bool FinanceRepository::migrateAnalyticsHistorySchema() {
@@ -86,11 +109,21 @@ bool FinanceRepository::migrateAnalyticsHistorySchema() {
         body+="UPDATE "+snapshotTable(kind)+" SET issues=CASE WHEN instr(issues,'history_changed')>0 THEN issues ELSE issues||';history_changed' END WHERE account_id=NEW.id;";
     if(!exec("CREATE TRIGGER IF NOT EXISTS history_account_basis AFTER UPDATE OF initial_balance_minor,currency ON accounts "
              "WHEN OLD.initial_balance_minor<>NEW.initial_balance_minor OR OLD.currency<>NEW.currency BEGIN "+body+" END"))return false;
-    // Existing records are evidence of an observed state, not evidence of past acquisitions.
+    // Baselines record the observed state, without creating past purchase operations.
     QStringList positions;
     if(!exec("SELECT id FROM investment_positions WHERE NOT EXISTS (SELECT 1 FROM investment_position_history h WHERE h.position_id=investment_positions.id)"))return false;
     while(q.next())positions.append(q.value(0).toString());q.finish();
     for(const auto& id:positions)if(!appendPositionState(id,"baseline"))return false;
+    // Repair the initial states recorded before average prices were used for
+    // acquisition cost. Append a correction; do not rewrite historical sales,
+    // explicit cost corrections or previously captured daily valuations.
+    positions.clear();
+    if(!exec(positionStateQuery+" WHERE p.is_archived=0 AND EXISTS (SELECT 1 FROM investment_position_history h "
+        "WHERE h.position_id=p.id AND h.sequence=(SELECT max(sequence) FROM investment_position_history WHERE position_id=p.id) "
+        "AND h.event IN ('opening','baseline') AND h.cost_basis_minor IS NULL) "
+        "AND NOT EXISTS (SELECT 1 FROM investment_operations o WHERE o.position_id=p.id)"))return false;
+    while(q.next())if(!averageAcquisitionCost(rowMap(q)).isNull())positions.append(q.value("id").toString());q.finish();
+    for(const auto& id:positions)if(!appendPositionState(id,"correction"))return false;
     const qint64 now=QDateTime::currentMSecsSinceEpoch();
     q.prepare("INSERT OR IGNORE INTO crypto_price_history(asset_id,quoted_at,source,price_micros,currency,observed_at) "
               "SELECT symbol,fetched_at,'legacy',price_usd_micros,'USD',? FROM crypto_prices c WHERE NOT EXISTS (SELECT 1 FROM crypto_price_history h WHERE h.asset_id=c.symbol)");q.addBindValue(now);
@@ -189,8 +222,7 @@ QVariant FinanceRepository::investmentCostBasis(const QString& id) const {
 }
 
 bool FinanceRepository::appendPositionState(const QString& id,const QString& event) {
-    QSqlQuery q(database_);q.prepare("SELECT p.account_id,p.instrument_id,p.quantity_micros,p.average_price_micros,p.settings_json,p.is_archived,"
-        "a.currency,i.symbol,i.type,i.terms_json,q.terms_json AS quote_terms FROM investment_positions p JOIN accounts a ON a.id=p.account_id JOIN investment_instruments i ON i.id=p.instrument_id LEFT JOIN investment_quotes q ON q.instrument_id=p.instrument_id WHERE p.id=?");
+    QSqlQuery q(database_);q.prepare(positionStateQuery+" WHERE p.id=?");
     q.addBindValue(id);if(!q.exec() || !q.next()){setLastError(QStringLiteral("Не удалось сохранить историю позиции"));return false;}
     const auto row=rowMap(q);const qint64 qty=row.value("quantity_micros").toLongLong();
     const bool closed=row.value("is_archived").toBool() || event=="delete";
@@ -202,16 +234,22 @@ bool FinanceRepository::appendPositionState(const QString& id,const QString& eve
         {"quantityMicros",QString::number(qty)}, {"settings",QJsonDocument::fromJson(settings.serialize().toUtf8()).object()},
         {"terms",QJsonDocument::fromJson(terms.serialize().toUtf8()).object()}};
     QVariant basis;QString issues=QStringLiteral("cost_unknown");
+    bool useAverage=event=="opening" || event=="baseline";
     if(event=="correction" || event=="archive" || event=="delete") {
-        QSqlQuery prior(database_);prior.prepare("SELECT account_id,instrument_id,quantity_micros,cost_basis_minor,state_json FROM investment_position_history WHERE position_id=? ORDER BY sequence DESC LIMIT 1");prior.addBindValue(id);
+        QSqlQuery prior(database_);prior.prepare("SELECT account_id,instrument_id,quantity_micros,cost_basis_minor,state_json,event,currency FROM investment_position_history WHERE position_id=? ORDER BY sequence DESC LIMIT 1");prior.addBindValue(id);
         if(!prior.exec()){setLastError(prior.lastError().text());return false;}
         if(prior.next()){
             const auto old=QJsonDocument::fromJson(prior.value(4).toString().toUtf8()).object();
-            if(prior.value(0)==row.value("account_id") && prior.value(1)==row.value("instrument_id")
+            const bool same=prior.value(0)==row.value("account_id") && prior.value(1)==row.value("instrument_id")
                && prior.value(2).toLongLong()==qty && old.value("averagePriceMicros")==state.value("averagePriceMicros")
-               && old.value("settings").toObject().value("direction").toInt()==settings.direction)basis=prior.value(3);
+               && old.value("settings").toObject().value("direction").toInt(1)==settings.direction
+               && prior.value(6)==row.value("currency");
+            if(same)basis=prior.value(3);
+            useAverage=event=="correction" && (!same || (basis.isNull()
+                && (prior.value(5)=="opening" || prior.value(5)=="baseline")));
         }
     }
+    if(basis.isNull() && useAverage && !closed)basis=averageAcquisitionCost(row);
     if(!basis.isNull())issues.clear();
     if(closed && !basis.isNull())basis=qint64(0);
     const auto now=QDateTime::currentMSecsSinceEpoch();q.finish();

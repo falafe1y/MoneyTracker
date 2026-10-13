@@ -6,6 +6,7 @@
 #include <QSqlError>
 #include <QTimeZone>
 #include <QtTest>
+#include <limits>
 
 class AnalyticsHistoryRepositoryTest : public QObject {
     Q_OBJECT
@@ -34,6 +35,75 @@ private:
         QSqlDatabase::removeDatabase(connection);return ok;
     }
 private slots:
+    void averagePriceSuppliesInitialCostAndSalesUseIt(){
+        QTemporaryDir dir;FinanceRepository r(dir.filePath("data.db"));QVERIFY(r.insertAccount(broker()));
+        QVERIFY(r.saveInvestmentBundle(stock(),position(),{},false));
+        QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(30000));
+        QVERIFY(r.loadInvestmentOperations().isEmpty());
+        const auto prior=r.loadInvestmentPositions().at(0);
+        QVERIFY(r.bookInvestmentOperation(operation("sale","sell",15000,-1'000'000),prior,position(2'000'000),false));
+        const auto row=r.loadPositionHistory("position").last().toMap();
+        QCOMPARE(row.value("released_cost_minor").toLongLong(),qint64(10000));
+        QCOMPARE(row.value("realized_net_minor").toLongLong(),qint64(5000));
+        QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(20000));
+    }
+    void explicitCostsAndNetPurchasesOverrideAverage(){
+        QTemporaryDir dir;const auto path=dir.filePath("data.db");
+        {FinanceRepository r(path);QVERIFY(r.insertAccount(broker()));
+         QVERIFY(r.saveInvestmentBundle(stock(),position(),{},false,{},30001));
+         QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(30001));
+         QVERIFY(r.updateInvestmentPosition(position()));
+         QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(30001));
+         QVERIFY(r.saveInvestmentBundle(stock(),position(),{},true,{},0));
+         QVERIFY(!r.investmentCostBasis("position").isNull());
+         QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(0));
+         QVERIFY(r.saveInvestmentBundle(stock(),position(),{},true,{},std::nullopt,true));
+         QVERIFY(r.investmentCostBasis("position").isNull());}
+        FinanceRepository r(path);QVERIFY(r.investmentCostBasis("position").isNull());
+        QVERIFY(r.updateInvestmentPosition(position()));QVERIFY(r.investmentCostBasis("position").isNull());
+    }
+    void ambiguousAveragePricesStayUnknown(){
+        QTemporaryDir dir;FinanceRepository r(dir.filePath("data.db"));QVERIFY(r.insertAccount(broker()));
+        const auto check=[&](const QString& id,InvestmentInstrumentType type,Currency currency,InvestmentTerms terms,qint64 average){
+            const InvestmentInstrument instrument(id,id,"",id,type,currency,"","",terms);
+            const InvestmentPosition p(id,"broker",id,1'000'000,average);
+            return r.saveInvestmentBundle(instrument,p,{},false) && r.investmentCostBasis(id).isNull();
+        };
+        QVERIFY(check("zero",InvestmentInstrumentType::Stock,Currency::RUB,{},0));
+        QVERIFY(check("foreign",InvestmentInstrumentType::Stock,Currency::USD,{},100'000'000));
+        InvestmentTerms t;t.currencyCode="USD";
+        QVERIFY(check("foreign-terms",InvestmentInstrumentType::Stock,Currency::RUB,t,100'000'000));
+        QVERIFY(check("bond",InvestmentInstrumentType::Bond,Currency::RUB,{},100'000'000));
+        QVERIFY(check("future",InvestmentInstrumentType::Future,Currency::RUB,{},100'000'000));
+        QVERIFY(check("option",InvestmentInstrumentType::Option,Currency::RUB,{},100'000'000));
+        t={};t.multiplierMicros=10'000'000;
+        QVERIFY(check("multiplier",InvestmentInstrumentType::Stock,Currency::RUB,t,100'000'000));
+    }
+    void averageCostRoundsOnceAndHandlesLargeIntegers(){
+        QTemporaryDir dir;FinanceRepository r(dir.filePath("data.db"));QVERIFY(r.insertAccount(broker()));
+        QVERIFY(r.saveInvestmentBundle(stock(),{"position","broker","stock",1'005'000,1'000'000},{},false));
+        QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(101));
+        const qint64 price=9'007'199'254'740'993LL;
+        QVERIFY(r.updateInvestmentPosition({"position","broker","stock",1'000'000,price}));
+        QCOMPARE(r.investmentCostBasis("position").toLongLong(),(price+5000)/10000);
+        QVERIFY(r.updateInvestmentPosition({"position","broker","stock",std::numeric_limits<qint64>::max(),std::numeric_limits<qint64>::max()}));
+        QVERIFY(r.investmentCostBasis("position").isNull());
+    }
+    void previousInitialStatesAreRepairedOnceWithoutRewritingSnapshots(){
+        QTemporaryDir dir;const auto path=dir.filePath("data.db");
+        {FinanceRepository r(path);QVERIFY(r.insertAccount(broker()));QVERIFY(r.saveInvestmentBundle(stock(),position(),{},false));
+         auto b=batch();b.assets.last().sourceId="position:position";b.assets.last().costBasisMinor.reset();b.assets.last().issues="cost_unknown";
+         QVERIFY(r.saveDailyValuations(b));}
+        QVERIFY(raw(path,{"UPDATE investment_position_history SET cost_basis_minor=NULL,issues='cost_unknown'"}));
+        {FinanceRepository r(path);QVERIFY2(r.isOpen(),qPrintable(r.lastError()));
+         QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(30000));
+         const auto history=r.loadPositionHistory("position");QCOMPARE(history.size(),2);
+         QVERIFY(history.first().toMap().value("cost_basis_minor").isNull());
+         QCOMPARE(history.last().toMap().value("event").toString(),QString("correction"));
+         QVERIFY(r.loadInvestmentOperations().isEmpty());
+         QVERIFY(r.loadDailyValuations(AssetDailyValuation::Investment).first().toMap().value("cost_basis_minor").isNull());}
+        FinanceRepository r(path);QCOMPARE(r.loadPositionHistory("position").size(),2);
+    }
     void dailySnapshotsAreSeparateNativeAndAtomic(){
         QTemporaryDir dir;FinanceRepository r(dir.filePath("data.db"));QVERIFY(r.isOpen());auto b=batch();
         QVERIFY2(r.saveDailyValuations(b),qPrintable(r.lastError()));
@@ -74,13 +144,13 @@ private slots:
     }
     void missingCostIsNotInventedAndCorrectionsAreRecorded(){
         QTemporaryDir dir;const auto path=dir.filePath("data.db");
-        {FinanceRepository r(path);QVERIFY(r.insertAccount(broker()));QVERIFY(r.saveInvestmentBundle(stock(),position(),{},false));
+        {FinanceRepository r(path);QVERIFY(r.insertAccount(broker()));InvestmentPosition unknown("position","broker","stock",3'000'000,0);QVERIFY(r.saveInvestmentBundle(stock(),unknown,{},false));
          QVERIFY(r.investmentCostBasis("position").isNull());auto old=r.loadInvestmentPositions().at(0);
          QVERIFY(r.bookInvestmentOperation(operation("sale","sell",5000,-1'000'000),old,position(2'000'000),false));
          QVERIFY(r.loadPositionHistory("position").last().toMap().value("realized_net_minor").isNull());
          QVERIFY(r.saveInvestmentBundle(stock(),position(2'000'000),{},true,{},9000));
          QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(9000));
-         QVERIFY(r.updateInvestmentPosition(position(1'000'000)));QVERIFY(r.investmentCostBasis("position").isNull());
+         QVERIFY(r.updateInvestmentPosition(position(1'000'000)));QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(10000));
          QVERIFY(r.deleteInvestmentPosition("position"));QVERIFY(r.loadInvestmentPositions().isEmpty());}
         FinanceRepository reopened(path);const auto history=reopened.loadPositionHistory("position");
         QCOMPARE(history.size(),5);QCOMPARE(history.last().toMap().value("event").toString(),QString("delete"));
@@ -121,7 +191,7 @@ private slots:
             "DROP TABLE investment_operations","ALTER TABLE old_operations RENAME TO investment_operations"}));
         {FinanceRepository r(path);QVERIFY2(r.isOpen(),qPrintable(r.lastError()));QCOMPARE(r.loadInvestmentOperations().size(),1);
          QVERIFY(!r.loadInvestmentOperations().at(0).feeMinor);QVERIFY(!r.loadInvestmentOperations().at(0).taxMinor);
-         QVERIFY(r.investmentCostBasis("position").isNull());QCOMPARE(r.loadPositionHistory("position").size(),1);}
+         QCOMPARE(r.investmentCostBasis("position").toLongLong(),qint64(30000));QCOMPARE(r.loadPositionHistory("position").size(),1);}
         FinanceRepository r(path);QCOMPARE(r.loadPositionHistory("position").size(),1);QCOMPARE(r.loadInvestmentPositions().at(0).quantityMicros(),qint64(3'000'000));
     }
     void amortizationReleasesProportionalCost(){

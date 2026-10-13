@@ -8,6 +8,29 @@ class InvestmentPerformanceControllerTest : public QObject {
     Q_OBJECT
 private slots:
     void initTestCase(){QStandardPaths::setTestModeEnabled(true);}
+    void manualAveragePriceFeedsSnapshotAndOpenProfit(){
+        QTemporaryDir dir;const auto path=dir.filePath("data.db");
+        {FinanceRepository r(path);QVERIFY(r.saveAutomaticCurrencyRates(false));
+         QVERIFY(r.insertAccount({"broker","Брокер",AssetType::Investment,AccountType::Brokerage,Currency::RUB,10000}));}
+        FinanceController c(nullptr,path);
+        c.setSelectedAsset("investment");
+        QVariantMap input{{"accountId","broker"},{"searchIndex",-2},{"instrumentType",0},
+            {"symbol","TEST"},{"name","Акция"},{"quantity","3"},{"averagePrice","100"},
+            {"manualValue","360"},{"costBasis",""}};
+        const auto saved=c.saveInvestmentPosition(input);QVERIFY2(saved.value("ok").toBool(),qPrintable(saved.value("error").toString()));
+        const auto report=c.investmentPerformance();
+        QCOMPARE(report.value("unrealizedMinor").toLongLong(),qint64(6000));
+        QVERIFY(!report.value("unrealizedMinor").isNull());
+        for(const auto& v:report.value("dataQuality").toMap().value("items").toList())
+            QVERIFY(v.toMap().value("code")!="cost_unknown");
+        FinanceRepository r(path);QVERIFY(r.loadInvestmentOperations().isEmpty());
+        const auto id=r.loadInvestmentPositions().first().id();
+        QCOMPARE(r.investmentCostBasis(id).toLongLong(),qint64(30000));
+        const auto rows=r.loadDailyValuations(AssetDailyValuation::Investment);
+        bool found=false;for(const auto& v:rows){const auto row=v.toMap();if(row.value("source_id")=="position:"+id){
+            found=true;QCOMPARE(row.value("cost_basis_minor").toLongLong(),qint64(30000));}}
+        QVERIFY(found);
+    }
     void accountsFilterAndInflationSetting(){
         QTemporaryDir dir;const auto path=dir.filePath("data.db");
         {

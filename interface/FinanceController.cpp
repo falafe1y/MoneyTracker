@@ -6601,7 +6601,6 @@ QVariantMap FinanceController::saveInvestmentPosition(const QVariantMap& v)
         && quantity%1'000'000!=0)return fail(tr("Для этого инструмента количество должно быть целым"));
     const auto avg=v.value("averagePrice").toString().trimmed();
     if(!avg.isEmpty() && (!parseSignedInvestmentNumber(avg,average) || average<0))return fail(tr("Введите корректную среднюю цену"));
-    if(avg.isEmpty() && !editing && quote)average=qMax<qint64>(0,quote->priceMicros());
     auto settings=editing?current->settings():InvestmentPositionSettings{};
     if(v.contains("direction"))settings.direction=v.value("direction").toInt();
     if(settings.direction!=1 && settings.direction!=-1)return fail(tr("Выберите направление позиции"));
@@ -6662,7 +6661,8 @@ QVariantMap FinanceController::saveInvestmentPosition(const QVariantMap& v)
     }
     const InvestmentInstrument instrument(instrumentId,symbol,isin,name,type,valuationCurrency,market,board,terms);
     if(!repository_.saveInvestmentBundle(instrument,position,quote,editing,operation,openingCost,
-        editing && v.contains("costBasis") && v.value("costBasis").toString().trimmed().isEmpty()))return fail(tr("Не удалось сохранить позицию: %1").arg(repository_.lastError()));
+        editing && v.contains("costBasis") && v.value("costBasis").toString().trimmed().isEmpty()
+        && !repository_.investmentCostBasis(id).isNull()))return fail(tr("Не удалось сохранить позицию: %1").arg(repository_.lastError()));
     reloadInvestments();return {{"ok",true}};
 }
 
