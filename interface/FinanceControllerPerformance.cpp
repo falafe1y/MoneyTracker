@@ -33,6 +33,15 @@ void FinanceController::rebuildInvestmentPerformance()
     performanceInflation_=repository_.loadPerformanceInflation();
     bool valid=false;const auto inflation=performanceInflation_.toDouble(&valid);
     if(valid && std::isfinite(inflation) && inflation>-100)input.annualInflationPercent=inflation;
+    performanceDeposit_=repository_.loadPerformanceDeposit();
+    QString depositRate=performanceDeposit_.value("rate").toString();
+    static const QRegularExpression depositPattern(QStringLiteral("^[0-9]+\\.[0-9]{4}$"));
+    const auto mode=performanceDeposit_.value("capitalization",QStringLiteral("monthly")).toString();
+    if(depositPattern.match(depositRate).hasMatch() && (mode=="none" || mode=="monthly" || mode=="daily")){
+        depositRate.remove('.');bool ok=false;const auto units=depositRate.toLongLong(&ok);
+        if(ok && units>=0 && units<=10'000'000)input.depositAnnualRateUnits=units;
+    }
+    input.depositCapitalization=mode;
     investmentPerformance_=InvestmentPerformanceCalculator::calculate(input);
     emit performanceChanged();
 }
@@ -51,5 +60,19 @@ bool FinanceController::setPerformanceInflation(const QString& percent)
         text=QString::number(n,'f',4);
     }
     if(!repository_.savePerformanceInflation(text))return false;
+    rebuildInvestmentPerformance();return true;
+}
+
+bool FinanceController::setPerformanceDeposit(const QString& percent,const QString& capitalization)
+{
+    if(capitalization!="none" && capitalization!="monthly" && capitalization!="daily")return false;
+    QString text=percent.trimmed();text.replace(',', '.');
+    if(!text.isEmpty()){
+        static const QRegularExpression pattern(QStringLiteral("^[0-9]+(?:\\.[0-9]{1,4})?$"));
+        bool ok=false;const auto n=text.toDouble(&ok);
+        if(!pattern.match(text).hasMatch() || !ok || !std::isfinite(n) || n<0 || n>1000)return false;
+        text=QString::number(n,'f',4);
+    }
+    if(!repository_.savePerformanceDeposit({{"rate",text},{"capitalization",capitalization}}))return false;
     rebuildInvestmentPerformance();return true;
 }

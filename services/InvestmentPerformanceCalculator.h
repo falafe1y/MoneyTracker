@@ -18,6 +18,9 @@ struct InvestmentPerformanceInput {
     QDate from, to;
     QDateTime now;
     std::optional<double> annualInflationPercent;
+    // Percentage with four fractional digits: 16% = 160000.
+    std::optional<qint64> depositAnnualRateUnits;
+    QString depositCapitalization = QStringLiteral("monthly");
 };
 
 // Returns are linked from daily observations; cash flows are never investment income.

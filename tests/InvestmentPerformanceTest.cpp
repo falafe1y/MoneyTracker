@@ -28,6 +28,91 @@ class InvestmentPerformanceTest : public QObject {
         for(const auto& item:report.value("dataQuality").toMap().value("items").toList())if(item.toMap().value("code")==code)return item.toMap();return {};
     }
 private slots:
+    void depositUsesSameFlowsAndShowsMoneyDifference(){
+        auto i=input();i.depositAnnualRateUnits=365000;i.depositCapitalization="none";
+        i.valuations={row(1,"cash:a",10000),row(2,"cash:a",16500)};
+        i.transactions.append({"topup","a","topup",Money(5000,Currency::RUB),TransactionType::Income,time(2).addSecs(-3600)});
+        const auto report=InvestmentPerformanceCalculator::calculate(i),r=report.value("depositComparison").toMap();
+        QVERIFY2(r.value("available").toBool(),qPrintable(r.value("reason").toString()));
+        QCOMPARE(r.value("depositClosingMinor").toLongLong(),qint64(15015));
+        QCOMPARE(r.value("depositGainMinor").toLongLong(),qint64(15));
+        QCOMPARE(r.value("portfolioGainMinor"),report.value("gainMinor"));
+        QCOMPARE(r.value("differenceMinor").toLongLong(),qint64(1485));
+        QCOMPARE(r.value("series").toList().size(),2);
+        i.transactions[0]=Transaction("withdraw","a","withdraw",Money(5000,Currency::RUB),TransactionType::Expense,time(2).addSecs(-3600));
+        i.valuations[1]=row(2,"cash:a",6000);const auto withdrawn=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QCOMPARE(withdrawn.value("depositClosingMinor").toLongLong(),qint64(5010));
+        QCOMPARE(withdrawn.value("depositGainMinor").toLongLong(),qint64(10));
+    }
+    void depositAccrualHandlesLeapYearsAndMonthlyAnniversary(){
+        auto i=input();i.from={};i.to=QDate(2025,3,1);i.now=QDateTime(i.to.addDays(1),QTime(12,0),QTimeZone::UTC);
+        i.depositAnnualRateUnits=365000;i.depositCapitalization="monthly";i.valuations.clear();
+        for(auto d=QDate(2025,1,31);d<=i.to;d=d.addDays(1)){
+            auto p=row(1,"cash:a",100000);p["snapshot_date"]=d.toString(Qt::ISODate);p["observed_at"]=QDateTime(d,QTime(12,0),QTimeZone::UTC).toMSecsSinceEpoch();i.valuations.append(p);
+        }
+        auto r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QVERIFY(r.value("available").toBool());QCOMPARE(r.value("depositGainMinor").toLongLong(),qint64(2903));
+        i.depositCapitalization="none";r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QCOMPARE(r.value("depositGainMinor").toLongLong(),qint64(2900));
+        i.depositCapitalization="daily";r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QVERIFY(r.value("depositGainMinor").toLongLong()>2903);
+        i.depositCapitalization="monthly";i.to=QDate(2025,3,31);i.now=QDateTime(i.to.addDays(1),QTime(12,0),QTimeZone::UTC);
+        for(auto d=QDate(2025,3,2);d<=i.to;d=d.addDays(1)){
+            auto p=row(1,"cash:a",100000);p["snapshot_date"]=d.toString(Qt::ISODate);p["observed_at"]=QDateTime(d,QTime(12,0),QTimeZone::UTC).toMSecsSinceEpoch();i.valuations.append(p);
+        }
+        r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QCOMPARE(r.value("depositGainMinor").toLongLong(),qint64(5987));
+        i.to=QDate(2024,3,1);i.now=QDateTime(i.to.addDays(1),QTime(12,0),QTimeZone::UTC);i.depositAnnualRateUnits=366000;i.depositCapitalization="none";i.valuations.clear();
+        for(auto d=QDate(2024,2,28);d<=i.to;d=d.addDays(1)){
+            auto p=row(1,"cash:a",100000);p["snapshot_date"]=d.toString(Qt::ISODate);p["observed_at"]=QDateTime(d,QTime(12,0),QTimeZone::UTC).toMSecsSinceEpoch();i.valuations.append(p);
+        }
+        r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QCOMPARE(r.value("depositGainMinor").toLongLong(),qint64(200));
+    }
+    void depositDoesNotInventMissingDataOrFinanceImpossibleWithdrawal(){
+        auto i=input();i.valuations={row(1,"cash:a",10000),row(2,"cash:a",11000)};
+        auto r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();QVERIFY(!r.value("configured").toBool());
+        i.depositAnnualRateUnits=0;r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QVERIFY(r.value("available").toBool());QCOMPARE(r.value("depositGainMinor").toLongLong(),qint64(0));
+        i.to=time(3).date();i.valuations={row(1,"cash:a",10000),row(3,"cash:a",11000)};
+        r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();QVERIFY(!r.value("available").toBool());
+        QVERIFY(r.value("series").toList().isEmpty());
+        i.to=time(2).date();i.valuations={row(1,"cash:a",10000),row(2,"cash:a",0)};
+        i.transactions.append({"out","a","out",Money(11000,Currency::RUB),TransactionType::Expense,time(2).addSecs(-3600)});
+        r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();QVERIFY(!r.value("available").toBool());
+        QVERIFY(r.value("reason").toString().contains(QStringLiteral("Вывод")));
+        i.transactions.clear();i.valuations[0]=row(1,"cash:a",-1);
+        QVERIFY(!InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap().value("available").toBool());
+    }
+    void depositConvertsFlowsOnTheirDatesAndIgnoresInternalTransfers(){
+        auto i=input();i.depositAnnualRateUnits=365000;i.accounts[0].currency="USD";
+        i.valuations={row(1,"cash:a",10000,{},"a","USD"),row(2,"cash:a",15500,{},"a","USD")};
+        i.rates={QVariantMap{{"currency","USD"},{"rate_date","2025-01-01"},{"source","manual"},{"rub_per_unit_micros",100'000'000},{"observed_at",0}}};
+        i.transactions.append({"in","a","in",Money(5000,Currency::USD),TransactionType::Income,time(2).addSecs(-3600)});
+        auto r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QVERIFY(r.value("available").toBool());QCOMPARE(r.value("depositClosingMinor").toLongLong(),qint64(1501500));
+        i.rates.clear();QVERIFY(!InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap().value("available").toBool());
+        i=input();i.depositAnnualRateUnits=365000;i.accounts.append({"b","Другой","RUB",0,0});
+        i.valuations={row(1,"cash:a",10000),row(1,"cash:b",10000,{},"b"),row(2,"cash:a",5000),row(2,"cash:b",15000,{},"b")};
+        i.transactions={{"move-out","a","transfer-out",Money(5000,Currency::RUB),TransactionType::Expense,time(2).addSecs(-3600)},
+            {"move-in","b","transfer-in",Money(5000,Currency::RUB),TransactionType::Income,time(2).addSecs(-3600)}};
+        r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QVERIFY(r.value("available").toBool());QCOMPARE(r.value("depositClosingMinor").toLongLong(),qint64(20020));
+        i.accountId="a";r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QCOMPARE(r.value("depositClosingMinor").toLongLong(),qint64(5010));
+    }
+    void depositRejectsOverflowAndUnpaidInterestCannotFundWithdrawal(){
+        auto i=input();i.depositAnnualRateUnits=10'000'000;i.depositCapitalization="daily";
+        i.valuations={row(1,"cash:a",std::numeric_limits<qint64>::max()-100),row(2,"cash:a",std::numeric_limits<qint64>::max()-100)};
+        auto r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QVERIFY(!r.value("available").toBool());QVERIFY(r.value("series").toList().isEmpty());
+        i.valuations={row(1,"cash:a",10000),row(2,"cash:a",0)};i.depositAnnualRateUnits=365000;i.depositCapitalization="monthly";
+        i.transactions.append({"out","a","out",Money(10010,Currency::RUB),TransactionType::Expense,time(2).addSecs(-3600)});
+        r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();QVERIFY(!r.value("available").toBool());
+        i.depositCapitalization="none";r=InvestmentPerformanceCalculator::calculate(i).value("depositComparison").toMap();
+        QVERIFY(r.value("available").toBool());QCOMPARE(r.value("depositClosingMinor").toLongLong(),qint64(0));
+        QCOMPARE(r.value("depositGainMinor").toLongLong(),qint64(10));
+    }
     void qualitySeparatesMissingBasisFromMissingPrice(){
         auto i=input();i.valuations={row(1,"cash:a",0),row(1,"position:p",10000),row(2,"cash:a",0),row(2,"position:p",11000)};
         auto r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(!r.value("periodPercent").isNull());

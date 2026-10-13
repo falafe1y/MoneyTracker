@@ -128,6 +128,12 @@ Rectangle {
             accent: panel.positive
         }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
+        InvestmentDepositPanel {
+            Layout.fillWidth: true
+            controller: panel.controller
+            ink: panel.ink; muted: panel.muted; line: panel.line; accent: panel.positive
+        }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
         InvestmentRiskPanel {
             Layout.fillWidth: true
             risk: panel.report.risk || ({})

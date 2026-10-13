@@ -29,6 +29,7 @@ qt_add_qml_module(appMoneyTracker
     URI MoneyTracker
     QML_FILES
         InvestmentBenchmarkPanel.qml
+        InvestmentDepositPanel.qml
         InvestmentRiskPanel.qml
         InvestmentStructurePanel.qml
         InvestmentPaymentsPanel.qml

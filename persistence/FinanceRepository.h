@@ -79,6 +79,8 @@ public:
     QVariantList loadAllPositionHistory();
     QString loadPerformanceInflation() const;
     bool savePerformanceInflation(const QString& value);
+    QVariantMap loadPerformanceDeposit() const;
+    bool savePerformanceDeposit(const QVariantMap& value);
     QVariantMap loadBenchmarkSelection() const;
     bool saveBenchmarkSelection(const QVariantMap& descriptor);
     QVariantList loadBenchmarkPrices(const QString& key);

@@ -66,6 +66,7 @@ private:
                               const std::optional<qint64>& gain,const std::optional<qint64>& fx);
     QVariantMap payments(qint64 endAt,const QDate& to);
     QVariantMap dataQuality(const Point* opening,const Point* closing,const QDate& to,const QVariantMap& report);
+    QVariantMap depositComparison(const Point* opening,const Point* closing);
 };
 
 std::optional<qint64> Calculation::rate(const QString& code,const QDate& date,const QString& preferred)const {
@@ -461,9 +462,82 @@ QVariantMap Calculation::dataQuality(const Point* opening,const Point* closing,c
     return {{"checkedRows",checkedRows},{"errors",errors},{"warnings",notices},{"notes",notes},{"items",items},{"from",first.toString(Qt::ISODate)},{"to",to.toString(Qt::ISODate)}};
 }
 
+QVariantMap Calculation::depositComparison(const Point* opening,const Point* closing){
+    QVariantMap result{{"available",false},{"configured",bool(in.depositAnnualRateUnits)},
+        {"capitalization",in.depositCapitalization},{"currency",in.currency},{"series",QVariantList()}};
+    const auto fail=[&](const char* reason){result["reason"]=tr(reason);return result;};
+    if(!in.depositAnnualRateUnits)return fail("Укажите годовую ставку для сравнения с вкладом.");
+    const auto rateUnits=*in.depositAnnualRateUnits;
+    if(rateUnits<0 || rateUnits>10'000'000 || (in.depositCapitalization!="none"
+       && in.depositCapitalization!="monthly" && in.depositCapitalization!="daily"))return fail("Некорректная ставка или капитализация.");
+    if(!opening || !closing || !opening->total || !closing->total || opening->date>=closing->date)
+        return fail("Нужны достоверные оценки на начало и конец периода как минимум на две даты.");
+    if(*opening->total<0)return fail("Отрицательный начальный капитал нельзя разместить на вкладе.");
+    if(!flowsComplete)return fail("Для сравнения должны быть известны пополнения, выводы и их валютные курсы.");
+    // Accrual stays exact across leap years. Fractional kopecks are carried;
+    // only whole kopecks enter the interest-bearing principal.
+    constexpr qint64 denominator=365LL*366*1'000'000;
+    qint64 principal=*opening->total,paid=0;
+    __int128_t accrued=0,netFlow=0;
+    int paymentMonth=1;
+    QDate paymentDate=opening->date.addMonths(paymentMonth);
+    QVariantList series{QVariantMap{{"date",opening->date.toString(Qt::ISODate)},
+        {"portfolioMinor",*opening->total},{"depositMinor",principal}}};
+    auto previous=points.constFind(opening->date);
+    auto event=std::upper_bound(flows.cbegin(),flows.cend(),opening->at,[](qint64 at,const Event& e){return at<e.at;});
+    qint64 closingTotal=principal;
+    for(auto it=std::next(previous);it!=points.cend() && it->date<=closing->date;++it){
+        if(previous->date.daysTo(it->date)!=1 || it->at<=previous->at || !it->total)
+            return fail("Для графика нужна непрерывная история достоверных дневных оценок.");
+        __int128_t inflow=0,outflow=0;
+        for(;event!=flows.cend() && event->at<=it->at;++event){
+            const auto n=convert(event->amount,event->currency,day(event->at));
+            if(!n)return fail("Не найден исторический курс пополнения или вывода.");
+            if(*n>=0)inflow+=*n;else outflow-=__int128_t(*n);
+        }
+        const auto funded=checked(__int128_t(principal)+inflow);
+        if(!funded)return fail("Сумма условного вклада выходит за допустимый диапазон.");
+        principal=*funded;netFlow+=inflow-outflow;
+        accrued+=__int128_t(principal)*rateUnits*(QDate::isLeapYear(it->date.year())?365:366);
+        const bool monthly=in.depositCapitalization=="monthly" && it->date==paymentDate;
+        if(in.depositCapitalization=="daily" || in.depositCapitalization=="none" || monthly){
+            const auto interest=checked(accrued/denominator);
+            if(!interest)return fail("Проценты условного вклада выходят за допустимый диапазон.");
+            accrued-=__int128_t(*interest)*denominator;
+            auto total=checked(__int128_t(in.depositCapitalization=="none"?paid:principal)+*interest);
+            if(!total)return fail("Сумма условного вклада выходит за допустимый диапазон.");
+            if(in.depositCapitalization=="none")paid=*total;else principal=*total;
+            if(monthly)paymentDate=opening->date.addMonths(++paymentMonth);
+        }
+        // Withdraw paid-out interest first; unpaid monthly interest cannot fund
+        // a withdrawal. Never silently turn the hypothetical deposit into debt.
+        const auto fromPaid=qMin<__int128_t>(paid,outflow);paid-=static_cast<qint64>(fromPaid);outflow-=fromPaid;
+        if(outflow>principal)return fail("Вывод превысил доступные деньги условного вклада. Такой сценарий без кредита невозможен.");
+        principal-=static_cast<qint64>(outflow);
+        const auto total=checked(__int128_t(principal)+paid+(accrued+denominator/2)/denominator);
+        if(!total)return fail("Сумма условного вклада выходит за допустимый диапазон.");
+        closingTotal=*total;
+        series.append(QVariantMap{{"date",it->date.toString(Qt::ISODate)},
+            {"portfolioMinor",*it->total},{"depositMinor",closingTotal}});
+        previous=it;
+    }
+    const auto gain=checked(__int128_t(closingTotal)-*opening->total-netFlow);
+    const auto actual=checked(__int128_t(*closing->total)-*opening->total-netFlow);
+    const auto difference=checked(__int128_t(*closing->total)-closingTotal);
+    if(!gain || !actual || !difference)return fail("Результат сравнения выходит за допустимый диапазон.");
+    result["available"]=true;result["series"]=series;
+    result["from"]=opening->date.toString(Qt::ISODate);result["to"]=closing->date.toString(Qt::ISODate);
+    result["openingMinor"]=*opening->total;result["depositClosingMinor"]=closingTotal;
+    result["portfolioClosingMinor"]=*closing->total;result["depositGainMinor"]=*gain;
+    result["liveDay"]=closing->date==in.now.toLocalTime().date();
+    result["portfolioGainMinor"]=*actual;result["differenceMinor"]=*difference;
+    return result;
+}
+
 QVariantMap Calculation::run(){
     QVariantMap result{{"currency",in.currency},{"warnings",QStringList()},{"accountCount",accounts.size()}};
     if(accounts.isEmpty()){
+        result["depositComparison"]=depositComparison(nullptr,nullptr);
         result["warnings"]=QStringList{tr("Добавьте инвестиционный счёт.")};
         result["dataQuality"]=QVariantMap{{"checkedRows",0},{"errors",0},{"warnings",0},{"notes",1},
             {"items",QVariantList{QVariantMap{{"code","no_accounts"},{"severity","info"},{"label",tr("Нет инвестиционных счетов")},
@@ -615,6 +689,7 @@ QVariantMap Calculation::run(){
     result["allocation"]=allocation(closing);
     result["contributions"]=contributions(opening,closing,baseDate,gain,fx);
     result["payments"]=payments(endAt,to);
+    result["depositComparison"]=depositComparison(opening,closing);
     result["breakdown"]=breakdown;result["warnings"]=warnings;result["quality"]=warnings.isEmpty()?"complete":"partial";
     result["dataQuality"]=dataQuality(opening,closing,to,result);
     return result;

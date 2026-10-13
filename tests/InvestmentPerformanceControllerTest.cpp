@@ -57,18 +57,55 @@ private slots:
         }
         FinanceRepository r(path);QVERIFY(r.loadPerformanceInflation().isEmpty());
     }
+    void depositSettingsPersistAndComparisonFollowsSelectedScope(){
+        QTemporaryDir dir;const auto path=dir.filePath("data.db");const auto today=QDate::currentDate();
+        {
+            FinanceRepository r(path);QVERIFY(r.saveAutomaticCurrencyRates(false));
+            QVERIFY(r.insertAccount({"a","Первый",AssetType::Investment,AccountType::Brokerage,Currency::RUB,10000}));
+            QVERIFY(r.insertAccount({"b","Второй",AssetType::Investment,AccountType::Brokerage,Currency::RUB,20000}));
+            for(int offset:{2,1}){
+                DailyValuationBatch batch;batch.date=today.addDays(-offset);batch.observedAtUtc=QDateTime(batch.date,QTime(12,0)).toUTC();
+                for(const auto& id:{QStringLiteral("a"),QStringLiteral("b")}){
+                    AssetDailyValuation row;row.kind=AssetDailyValuation::Investment;row.sourceId="cash:"+id;row.accountId=id;row.currency="RUB";
+                    row.valueMinor=id=="a"?(offset==2?10000:11000):20000;row.valuedAtUtc=batch.observedAtUtc;row.source="ledger";batch.assets.append(row);
+                }
+                QVERIFY(r.saveDailyValuations(batch));
+            }
+        }
+        {
+            FinanceController c(nullptr,path);
+            QVERIFY(c.setPerformanceDeposit("36,5","monthly"));
+            QCOMPARE(c.performanceDeposit().value("rate").toString(),QString("36.5000"));
+            for(const auto& bad:{"-1","NaN","1001","1.23456","1e2"})QVERIFY(!c.setPerformanceDeposit(bad,"monthly"));
+            QVERIFY(!c.setPerformanceDeposit("10","invalid"));
+            c.setDateFilter(QDateTime(today.addDays(-1),QTime(0,0)),QDateTime(today.addDays(-1),QTime(23,59)));
+            auto report=c.investmentPerformance().value("depositComparison").toMap();
+            QVERIFY2(report.value("available").toBool(),qPrintable(report.value("reason").toString()));
+            QCOMPARE(report.value("portfolioGainMinor").toLongLong(),qint64(1000));
+            c.setPerformanceAccount("a");report=c.investmentPerformance().value("depositComparison").toMap();
+            QCOMPARE(report.value("openingMinor").toLongLong(),qint64(10000));
+            c.setPerformanceAccount("b");report=c.investmentPerformance().value("depositComparison").toMap();
+            QCOMPARE(report.value("openingMinor").toLongLong(),qint64(20000));
+            QCOMPARE(report.value("portfolioGainMinor").toLongLong(),qint64(0));
+        }
+        FinanceController c(nullptr,path);QCOMPARE(c.performanceDeposit().value("capitalization").toString(),QString("monthly"));
+        QVERIFY(c.setPerformanceDeposit("0","daily"));QCOMPARE(c.performanceDeposit().value("rate").toString(),QString("0.0000"));
+        QVERIFY(c.setPerformanceDeposit("","none"));QVERIFY(!c.investmentPerformance().value("depositComparison").toMap().value("configured").toBool());
+    }
     void restoreAndClearRefreshReport(){
         QTemporaryDir dir;const auto path=dir.filePath("data.db"),saved=dir.filePath("saved.db");
         {
             FinanceRepository r(path);QVERIFY(r.saveAutomaticCurrencyRates(false));
             QVERIFY(r.insertAccount({"broker","Брокер",AssetType::Investment,AccountType::Brokerage,Currency::RUB,12345}));
         }
-        FinanceController c(nullptr,path);QVERIFY(c.setPerformanceInflation("4.5"));
+        FinanceController c(nullptr,path);QVERIFY(c.setPerformanceInflation("4.5"));QVERIFY(c.setPerformanceDeposit("16","daily"));
         QVERIFY(c.backupDatabase(QUrl::fromLocalFile(saved)).value("ok").toBool());
-        QVERIFY(c.setPerformanceInflation("9"));QVERIFY(c.restoreDatabase(QUrl::fromLocalFile(saved)).value("ok").toBool());
+        QVERIFY(c.setPerformanceInflation("9"));QVERIFY(c.setPerformanceDeposit("10","none"));QVERIFY(c.restoreDatabase(QUrl::fromLocalFile(saved)).value("ok").toBool());
+        QCOMPARE(c.performanceDeposit().value("rate").toString(),QString("16.0000"));QCOMPARE(c.performanceDeposit().value("capitalization").toString(),QString("daily"));
         QCOMPARE(c.performanceInflation(),QString("4.5000"));QCOMPARE(c.investmentPerformance().value("closingMinor").toLongLong(),qint64(12345));
         c.setPerformanceAccount("broker");QVERIFY(c.clearAllData().value("ok").toBool());
         QVERIFY(c.performanceAccountId().isEmpty());QVERIFY(c.performanceAccounts().isEmpty());QVERIFY(c.performanceInflation().isEmpty());QVERIFY(c.investmentPerformance().value("closingMinor").isNull());
+        QVERIFY(c.performanceDeposit().isEmpty());
     }
     void structureAndPaymentsFollowAccountAndDateSelection(){
         QTemporaryDir dir;const auto path=dir.filePath("data.db");

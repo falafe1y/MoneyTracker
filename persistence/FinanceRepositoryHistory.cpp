@@ -350,6 +350,16 @@ bool FinanceRepository::savePerformanceInflation(const QString& value) {
     if(q.exec())return true;setLastError(q.lastError().text());return false;
 }
 
+QVariantMap FinanceRepository::loadPerformanceDeposit() const {
+    QSqlQuery q(database_);q.prepare("SELECT value FROM settings WHERE key='performance_deposit'");
+    return q.exec() && q.next()?QJsonDocument::fromJson(q.value(0).toString().toUtf8()).object().toVariantMap():QVariantMap();
+}
+bool FinanceRepository::savePerformanceDeposit(const QVariantMap& value) {
+    QSqlQuery q(database_);q.prepare("INSERT INTO settings(key,value) VALUES('performance_deposit',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+    q.addBindValue(QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(value)).toJson(QJsonDocument::Compact)));
+    if(q.exec())return true;setLastError(q.lastError().text());return false;
+}
+
 QVariantMap FinanceRepository::loadBenchmarkSelection() const {
     QSqlQuery q(database_);q.prepare("SELECT value FROM settings WHERE key='investment_benchmark'");
     return q.exec() && q.next()?QJsonDocument::fromJson(q.value(0).toString().toUtf8()).object().toVariantMap():QVariantMap();

@@ -190,6 +190,7 @@ class FinanceController final : public QObject
     Q_PROPERTY(QVariantList performanceAccounts READ performanceAccounts NOTIFY performanceChanged)
     Q_PROPERTY(QString performanceAccountId READ performanceAccountId NOTIFY performanceChanged)
     Q_PROPERTY(QString performanceInflation READ performanceInflation NOTIFY performanceChanged)
+    Q_PROPERTY(QVariantMap performanceDeposit READ performanceDeposit NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList investmentOperations READ investmentOperations NOTIFY investmentPositionsChanged)
     Q_PROPERTY(bool investmentValuationIncomplete READ investmentValuationIncomplete NOTIFY balanceChanged)
     Q_PROPERTY(
@@ -434,6 +435,8 @@ public:
     QVariantList performanceAccounts() const { return performanceAccounts_; }
     QString performanceAccountId() const { return performanceAccountId_; }
     QString performanceInflation() const { return performanceInflation_; }
+    QVariantMap performanceDeposit() const { return performanceDeposit_; }
+    Q_INVOKABLE bool setPerformanceDeposit(const QString& percent, const QString& capitalization);
     Q_INVOKABLE void setPerformanceAccount(const QString& id);
     Q_INVOKABLE bool setPerformanceInflation(const QString& percent);
     QVariantList investmentOperations() const;
@@ -838,6 +841,7 @@ private:
     QVariantMap investmentPerformance_;
     QVariantList performanceAccounts_;
     QString performanceAccountId_, performanceInflation_;
+    QVariantMap performanceDeposit_;
     bool captureDailyAssetValuations();
     bool valuationHistoryReady_ = false;
     FinancialTrajectorySettings trajectorySettings_;
