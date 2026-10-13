@@ -190,6 +190,12 @@ target_link_libraries(vexa
         vexa_storage
 )
 
+if(ANDROID AND OPENSSL_ROOT_DIR)
+    set_property(TARGET vexa APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
+        "${OPENSSL_ROOT_DIR}/${ANDROID_ABI}/libcrypto_3.so"
+        "${OPENSSL_ROOT_DIR}/${ANDROID_ABI}/libssl_3.so")
+endif()
+
 if(WIN32)
     enable_language(RC)
     configure_file(packaging/windows/vexa.rc.in
