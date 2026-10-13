@@ -212,6 +212,15 @@ if(UNIX AND NOT APPLE AND NOT ANDROID)
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps)
 endif()
 
+# Tests are slow to build on low-end machines. They are ON everywhere except Linux,
+# where they are OFF by default. Override with -DVEXA_BUILD_TESTS=ON|OFF.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(VEXA_BUILD_TESTS_DEFAULT OFF)
+else()
+    set(VEXA_BUILD_TESTS_DEFAULT ON)
+endif()
+option(VEXA_BUILD_TESTS "Build unit and QML tests" ${VEXA_BUILD_TESTS_DEFAULT})
+if(VEXA_BUILD_TESTS)
 enable_testing()
 
 if (NOT ANDROID)
@@ -648,4 +657,5 @@ if(TARGET Qt6::QuickTest)
     target_compile_definitions(UiNavigationTest PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
     add_test(NAME UiNavigationTest COMMAND UiNavigationTest)
     set_tests_properties(UiNavigationTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+endif()
 endif()

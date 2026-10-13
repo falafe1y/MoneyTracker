@@ -10,6 +10,8 @@ Item {
     property real pointerX: 0
     property real pointerY: 0
     property bool active: false
+    // Pixels scrolled per mouse-wheel notch, close to Chrome/Firefox defaults.
+    property real wheelStep: 100
     readonly property var windowOverlay: Overlay.overlay
     anchors.fill: parent
     visible: false
@@ -29,7 +31,7 @@ Item {
             if (item.clip && !inside) return null;
             const target = inside && controller.canScroll(item) ? item : inherited;
             const children = Array.from(item.children).filter(function(child) {
-                return child && child !== controller && child !== scrollOverlay && child !== controller.windowOverlay && child.middleScrollViewport !== true && child.visible !== undefined;
+                return child && child !== controller && child !== scrollOverlay && child !== wheelCatcher && child !== controller.windowOverlay && child.middleScrollViewport !== true && child.visible !== undefined;
             }).map(function(child, index) { return {item: child, index: index}; });
             children.sort(function(a, b) { return b.item.z - a.item.z || b.index - a.index; });
             for (let i = 0; i < children.length; ++i) {
@@ -59,6 +61,21 @@ Item {
         active = true;
     }
     function stop() { active = false; scrollTarget = null; }
+
+    // Wheel: scroll the scrollable under the pointer by wheelStep per notch.
+    // Qt's built-in wheel speed is much slower than browsers, so the event is accepted here.
+    function wheelScroll(event) {
+        const target = targetAt(event.x, event.y, null);
+        if (!canScroll(target)) return;
+        const dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 120 * wheelStep;
+        const dx = event.pixelDelta.x !== 0 ? event.pixelDelta.x : event.angleDelta.x / 120 * wheelStep;
+        event.accepted = true;
+        target.cancelFlick();
+        if (target.contentHeight > target.height)
+            target.contentY = Math.max(target.originY, Math.min(target.originY + target.contentHeight - target.height, target.contentY - dy));
+        if (target.contentWidth > target.width)
+            target.contentX = Math.max(target.originX, Math.min(target.originX + target.contentWidth - target.width, target.contentX - dx));
+    }
     function track(source, x, y) {
         const point = source.mapToItem(controller, x, y);
         pointerX = point.x; pointerY = point.y;
@@ -77,6 +94,16 @@ Item {
         function onCancelled() { controller.stop(); }
     }
 
+    // Visible catcher for wheel events. The controller itself stays invisible.
+    Item {
+        id: wheelCatcher
+        parent: controller.parent
+        anchors.fill: parent
+        WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: function(event) { controller.wheelScroll(event) }
+        }
+    }
     Item {
         id: scrollOverlay
         parent: controller.windowOverlay && controller.windowOverlay.visible
