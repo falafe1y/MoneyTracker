@@ -33,6 +33,8 @@ qt_add_qml_module(appMoneyTracker
         InvestmentStructurePanel.qml
         InvestmentPaymentsPanel.qml
         InvestmentPerformancePanel.qml
+        InvestmentDataQualityPanel.qml
+        InvestmentMetricHelp.qml
         Desktop.qml
         Mobile.qml
         AccessWindow.qml

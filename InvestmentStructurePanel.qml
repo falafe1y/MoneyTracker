@@ -36,7 +36,11 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             spacing: 10
-            Label { text: qsTr("Структура вложений"); color: panel.ink; font.pixelSize: 17; font.bold: true }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("Структура вложений"); color: panel.ink; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
+                InvestmentMetricHelp { metric: "structure"; displayValue: panel.amount(panel.allocation.capitalMinor); ink: panel.ink; muted: panel.muted }
+            }
             ComboBox { id: group; Layout.fillWidth: true; model: [qsTr("По активам"), qsTr("По типам активов"), qsTr("По счетам"), qsTr("По валютам счетов")] }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: panel.muted; text: qsTr("На конец выбранного периода · Стоимость: %1").arg(panel.amount(panel.allocation.capitalMinor)) }
             Canvas {
@@ -99,7 +103,11 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             spacing: 10
-            Label { text: qsTr("Вклад активов в результат"); color: panel.ink; font.pixelSize: 17; font.bold: true }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("Вклад активов в результат"); color: panel.ink; font.pixelSize: 17; font.bold: true; Layout.fillWidth: true }
+                InvestmentMetricHelp { metric: "contribution"; displayValue: panel.amount(panel.contributions.totalMinor); ink: panel.ink; muted: panel.muted }
+            }
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: panel.muted; text: qsTr("За выбранный период, включая закрытые позиции, выплаты и учтённые расходы. Пополнения и выводы исключены.") }
             Label { visible: !panel.contributions.available; Layout.fillWidth: true; wrapMode: Text.WordWrap; color: panel.muted; text: qsTr("Нужны достоверные начальная и конечная оценки, денежные потоки и курсы валют.") }
             Repeater {

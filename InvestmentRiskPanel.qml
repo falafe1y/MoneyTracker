@@ -43,8 +43,9 @@ Item {
                 ]
                 delegate: Rectangle {
                     required property var modelData
+                    required property int index
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 128
+                    Layout.preferredHeight: 152
                     color: "transparent"
                     border.color: panel.line
                     radius: 8
@@ -52,7 +53,11 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 6
-                        Label { Layout.fillWidth: true; text: modelData.title; color: panel.muted; wrapMode: Text.WordWrap }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { Layout.fillWidth: true; text: modelData.title; color: panel.muted; wrapMode: Text.WordWrap }
+                            InvestmentMetricHelp { metric: ["volatility","maximum_drawdown","current_drawdown","best_day","worst_day","risk_days"][index]; displayValue: modelData.value; ink: panel.ink; muted: panel.muted }
+                        }
                         Label { Layout.fillWidth: true; text: modelData.value; color: panel.ink; font.pixelSize: 22; font.bold: true; elide: Text.ElideRight }
                         Label { Layout.fillWidth: true; Layout.fillHeight: true; text: modelData.hint; color: panel.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
                     }

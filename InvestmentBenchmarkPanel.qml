@@ -70,6 +70,14 @@ Item {
         }
         Label { visible: !panel.comparison.available; text: panel.comparison.reason || qsTr("Выберите ориентир для сравнения."); color: panel.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         Label {
+            visible: !!panel.selection.key && !!panel.comparison.canRefresh
+            Layout.fillWidth: true; wrapMode: Text.WordWrap; color: panel.muted; font.pixelSize: 12
+            text: qsTr("История ориентира: %1 — %2 · %3").arg(panel.date(panel.comparison.historyFrom)).arg(panel.date(panel.comparison.historyTo))
+                .arg(panel.comparison.historyLoaded ? qsTr("сохранена в базе") : qsTr("можно загрузить заранее"))
+                + (panel.comparison.historyFallback ? "\n" + qsTr("В выбранном фильтре ещё нет завершённых дней. Для предварительной загрузки используется последний год до вчерашнего дня.") : "")
+                + (!panel.comparison.available ? "\n" + qsTr("Котировки можно загрузить без оценок портфеля. Сравнение появится, когда накопится достаточная непрерывная история. Без фильтра и прошлых оценок загружается последний год.") : "")
+        }
+        Label {
             visible: !!panel.comparison.available
             Layout.fillWidth: true
             color: panel.muted
@@ -86,14 +94,19 @@ Item {
                     {title:qsTr("Разница результатов"),value:panel.available(panel.comparison.differencePoints)?Number(panel.comparison.differencePoints).toLocaleString(Qt.locale(),'f',2)+qsTr(" п.п."):"—"}]
                 delegate: Rectangle {
                     required property var modelData
+                    required property int index
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 86
+                    Layout.preferredHeight: 104
                     color: "transparent"
                     radius: 8
                     border.color: panel.line
                     ColumnLayout {
                         anchors.fill: parent; anchors.margins: 12
-                        Label { text:modelData.title; color:panel.muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text:modelData.title; color:panel.muted; wrapMode:Text.WordWrap; Layout.fillWidth:true }
+                            InvestmentMetricHelp { metric: ["benchmark_portfolio","benchmark","benchmark_difference"][index]; displayValue: modelData.value; ink: panel.ink; muted: panel.muted }
+                        }
                         Label { text:modelData.value; color:panel.ink; font.pixelSize:22; font.bold:true; elide:Text.ElideRight; Layout.fillWidth:true }
                     }
                 }

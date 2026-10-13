@@ -35,10 +35,15 @@ ColumnLayout {
                 {label: qsTr("Удержания выплат"), value: panel.amount(panel.payments.taxMinor)}]
             delegate: Rectangle {
                 required property var modelData
-                Layout.fillWidth: true; implicitHeight: 85; radius: 8; color: "transparent"; border.color: panel.line
+                required property int index
+                Layout.fillWidth: true; implicitHeight: 104; radius: 8; color: "transparent"; border.color: panel.line
                 ColumnLayout {
                     anchors.fill: parent; anchors.margins: 10
-                    Label { Layout.fillWidth: true; text: modelData.label; color: panel.muted }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { Layout.fillWidth: true; text: modelData.label; color: panel.muted }
+                        InvestmentMetricHelp { metric: ["payments_net","payments_gross","payments_fees","payments_tax"][index]; displayValue: modelData.value; ink: panel.ink; muted: panel.muted }
+                    }
                     Label { Layout.fillWidth: true; text: modelData.value; color: panel.ink; font.bold: true; font.pixelSize: 18; elide: Text.ElideRight }
                 }
             }
@@ -55,7 +60,11 @@ ColumnLayout {
             Label { text: panel.amount(modelData.netMinor); color: panel.positive; font.bold: true }
         }
     }
-    Label { visible: panel.months.length > 0; text: qsTr("Получено по месяцам"); color: panel.ink; font.bold: true }
+    RowLayout {
+        visible: panel.months.length > 0; Layout.fillWidth: true
+        Label { text: qsTr("Получено по месяцам"); color: panel.ink; font.bold: true; Layout.fillWidth: true }
+        InvestmentMetricHelp { metric: "payments_months"; ink: panel.ink; muted: panel.muted }
+    }
     Repeater {
         model: panel.months
         delegate: RowLayout {

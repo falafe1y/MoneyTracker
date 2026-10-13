@@ -24,7 +24,62 @@ class InvestmentPerformanceTest : public QObject {
     static QVariantMap realized(QString id,qint64 profit){return {{"sequence",1},{"position_id","p"},{"account_id","a"},{"operation_id",id},{"recorded_at",time(2).addSecs(-3600).toMSecsSinceEpoch()},{"quantity_micros",500000},{"realized_net_minor",profit},{"state_json","{}"}};}
     static qint64 part(const QVariantMap& report,QString code){for(const auto& r:report.value("breakdown").toList())if(r.toMap().value("code")==code)return r.toMap().value("amountMinor").toLongLong();return -1234567;}
     static void reconciles(const QVariantMap& r){qint64 sum=0;for(const auto& p:r.value("breakdown").toList())sum+=p.toMap().value("amountMinor").toLongLong();QCOMPARE(sum,r.value("gainMinor").toLongLong());}
+    static QVariantMap qualityIssue(const QVariantMap& report,const QString& code){
+        for(const auto& item:report.value("dataQuality").toMap().value("items").toList())if(item.toMap().value("code")==code)return item.toMap();return {};
+    }
 private slots:
+    void qualitySeparatesMissingBasisFromMissingPrice(){
+        auto i=input();i.valuations={row(1,"cash:a",0),row(1,"position:p",10000),row(2,"cash:a",0),row(2,"position:p",11000)};
+        auto r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(!r.value("periodPercent").isNull());
+        QCOMPARE(qualityIssue(r,"cost_unknown").value("severity").toString(),QString("warning"));
+        QCOMPARE(r.value("dataQuality").toMap().value("errors").toInt(),0);
+        auto broken=row(2,"position:p",11000);broken["value_minor"]=QVariant();i.valuations[3]=broken;r=InvestmentPerformanceCalculator::calculate(i);
+        QVERIFY(r.value("periodPercent").isNull());QCOMPARE(qualityIssue(r,"missing_valuation").value("severity").toString(),QString("error"));
+    }
+    void qualityGroupsRepeatedProblemsAndRespectsScope(){
+        auto i=input();i.now=time(3);i.to=QDate(2025,1,3);i.accounts.append({"b","Другой","RUB",0,0});
+        for(int d=1;d<=3;++d){auto p=row(d,"position:p",10000,8000);p["issues"]="stale_valuation;stale_valuation";
+            i.valuations.append(row(d,"cash:a",0));i.valuations.append(p);i.valuations.append(row(d,"cash:b",10000,{},"b"));}
+        auto r=InvestmentPerformanceCalculator::calculate(i);const auto issue=qualityIssue(r,"stale_valuation");
+        QCOMPARE(issue.value("count").toInt(),3);QCOMPARE(issue.value("dateFrom").toString(),QString("2025-01-01"));
+        QCOMPARE(issue.value("dateTo").toString(),QString("2025-01-03"));QCOMPARE(issue.value("account").toString(),QString("Счёт"));
+        QCOMPARE(issue.value("dates").toStringList().size(),3);
+        i.accountId="b";r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(qualityIssue(r,"stale_valuation").isEmpty());
+        QCOMPARE(r.value("dataQuality").toMap().value("checkedRows").toInt(),3);
+    }
+    void qualityFindsMissingDaysAndMissingAccountCash(){
+        auto i=input();i.now=time(3);i.to=QDate(2025,1,3);i.valuations={row(1,"cash:a",10000),row(3,"cash:a",11000)};
+        auto r=InvestmentPerformanceCalculator::calculate(i);auto gap=qualityIssue(r,"missing_days");
+        QCOMPARE(gap.value("count").toInt(),1);QCOMPARE(gap.value("dateFrom").toString(),QString("2025-01-02"));
+        QCOMPARE(gap.value("dateTo").toString(),QString("2025-01-02"));
+        i.accounts.append({"b","Без оценки","RUB",0,0});r=InvestmentPerformanceCalculator::calculate(i);
+        QCOMPARE(qualityIssue(r,"missing_cash").value("accountId").toString(),QString("b"));
+    }
+    void qualityDoesNotTreatUnknownChargesAsZero(){
+        auto i=input();i.valuations={row(1,"cash:a",10000),row(2,"cash:a",10500)};
+        auto payout=op("dividend",500);payout.feeMinor.reset();payout.taxMinor.reset();i.operations={payout};
+        auto r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(!qualityIssue(r,"unknown_fee").isEmpty());QVERIFY(!qualityIssue(r,"unknown_tax").isEmpty());
+        i.operations[0].feeMinor=0;i.operations[0].taxMinor=0;r=InvestmentPerformanceCalculator::calculate(i);
+        QVERIFY(qualityIssue(r,"unknown_fee").isEmpty());QVERIFY(qualityIssue(r,"unknown_tax").isEmpty());
+        QCOMPARE(r.value("dataQuality").toMap().value("errors").toInt(),0);
+        QCOMPARE(r.value("dataQuality").toMap().value("warnings").toInt(),0);
+    }
+    void qualityChecksHistoricalQuoteCurrencyAndEmptyHistory(){
+        auto i=input();auto p=row(2,"position:p",10000,8000);p["details_json"]="{\"quoteCurrency\":\"USD\"}";
+        i.valuations={row(1,"cash:a",0),row(2,"cash:a",0),p};auto r=InvestmentPerformanceCalculator::calculate(i);
+        QVERIFY(!qualityIssue(r,"missing_quote_fx").isEmpty());
+        i.valuations.clear();r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(!qualityIssue(r,"missing_opening").isEmpty());QVERIFY(!qualityIssue(r,"missing_closing").isEmpty());
+        i.accounts.clear();r=InvestmentPerformanceCalculator::calculate(i);QVERIFY(!qualityIssue(r,"no_accounts").isEmpty());
+    }
+    void qualityDoesNotRequestOrdinaryCostBasisForContracts(){
+        auto i=input();auto first=row(1,"position:p",500),last=row(2,"position:p",600);
+        first["issues"]=last["issues"]="cost_unknown";first["details_json"]=last["details_json"]="{\"terms\":{\"pricing\":\"future\"}}";
+        i.valuations={row(1,"cash:a",10000),first,row(2,"cash:a",10000),last};auto r=InvestmentPerformanceCalculator::calculate(i);
+        QVERIFY(qualityIssue(r,"cost_unknown").isEmpty());QVERIFY(!r.value("unrealizedMinor").isNull());
+        first["details_json"]=last["details_json"]="{}";first["instrument_id"]=last["instrument_id"]="option";
+        i.instruments={QVariantMap{{"id","option"},{"symbol","OPT"},{"type",10}}};i.valuations={row(1,"cash:a",10000),first,row(2,"cash:a",10000),last};r=InvestmentPerformanceCalculator::calculate(i);
+        QVERIFY(qualityIssue(r,"cost_unknown").isEmpty());QCOMPARE(qualityIssue(r,"unsupported_basis").value("severity").toString(),QString("info"));
+    }
     void cashFlowIsNotProfit(){
         auto i=input();i.valuations={row(1,"cash:a",10000),row(2,"cash:a",16500)};
         i.transactions.append({"tx","a","top-up",Money(5000,Currency::RUB),TransactionType::Income,time(2).addSecs(-3600)});

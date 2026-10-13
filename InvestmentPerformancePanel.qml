@@ -71,8 +71,9 @@ Rectangle {
                 ]
                 delegate: Rectangle {
                     required property var modelData
+                    required property int index
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 140
+                    Layout.preferredHeight: 152
                     color: "transparent"
                     border.color: panel.line
                     radius: 8
@@ -80,7 +81,11 @@ Rectangle {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 6
-                        Label { Layout.fillWidth: true; text: modelData.title; color: panel.muted; wrapMode: Text.WordWrap }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { Layout.fillWidth: true; text: modelData.title; color: panel.muted; wrapMode: Text.WordWrap }
+                            InvestmentMetricHelp { metric: ["gain","period","annual","realized","unrealized","inflation"][index]; displayValue: modelData.value; ink: panel.ink; muted: panel.muted }
+                        }
                         Label { Layout.fillWidth: true; text: modelData.value; color: panel.ink; font.pixelSize: 24; font.bold: true; elide: Text.ElideRight }
                         Label { Layout.fillWidth: true; Layout.fillHeight: true; text: modelData.hint; color: panel.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
                     }
@@ -107,6 +112,12 @@ Rectangle {
         }
         Label { id: inflationError; visible: text.length > 0; color: panel.negative; wrapMode: Text.WordWrap; Layout.fillWidth: true }
         Label { Layout.fillWidth: true; text: qsTr("Ставка — ваше допущение, одинаковое на весь период. Это не исторический индекс потребительских цен."); color: panel.muted; font.pixelSize: 12; wrapMode: Text.WordWrap }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
+        InvestmentDataQualityPanel {
+            Layout.fillWidth: true
+            quality: panel.report.dataQuality || ({})
+            ink: panel.ink; muted: panel.muted; line: panel.line; negative: panel.negative
+        }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
         InvestmentBenchmarkPanel {
             Layout.fillWidth: true
@@ -151,6 +162,12 @@ Rectangle {
             wrapMode: Text.WordWrap
             color: panel.muted
         }
+        RowLayout {
+            InvestmentMetricHelp { metric: "flow"; displayValue: panel.amount(panel.report.externalFlowMinor); ink: panel.ink; muted: panel.muted }
+            Label { text: qsTr("Пополнения и выводы"); color: panel.muted }
+            InvestmentMetricHelp { metric: "unrealized_change"; displayValue: panel.amount(panel.report.unrealizedChangeMinor); ink: panel.ink; muted: panel.muted }
+            Label { text: qsTr("Изменение открытой прибыли"); color: panel.muted }
+        }
         Repeater {
             model: panel.available(panel.report.gainMinor) ? (panel.report.breakdown || []) : []
             delegate: RowLayout {
@@ -158,6 +175,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Label { text: modelData.label + (modelData.complete ? "" : qsTr(" · известная часть")); color: panel.ink; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                 Label { text: panel.amount(modelData.amountMinor); color: modelData.amountMinor < 0 ? panel.negative : panel.positive; font.bold: true }
+                InvestmentMetricHelp { metric: "part_" + modelData.code; displayValue: panel.amount(modelData.amountMinor); ink: panel.ink; muted: panel.muted }
             }
         }
         Label {

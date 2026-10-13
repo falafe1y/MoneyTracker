@@ -827,6 +827,7 @@ private:
     void cancelBenchmarkRequests();
     void rebuildBenchmarkComparison();
     QVariantList benchmarkPortfolioDates() const;
+    QPair<QDate,QDate> benchmarkHistoryPeriod() const;
     QVariantMap benchmarkSelection_,benchmarkComparison_;
     QVector<InvestmentMarketInstrument> benchmarkSearchResults_;
     MoexInvestmentProvider benchmarkSearchProvider_;
