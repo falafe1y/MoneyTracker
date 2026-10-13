@@ -23,6 +23,12 @@
 #include "interface/FinanceController.h"
 #include "ui/computer/common/WindowScrollInput.h"
 
+// VEXA_APP_VERSION is normally defined by CMake (target_compile_definitions).
+// Fallback keeps the build working when a stale build directory lacks the define.
+#ifndef VEXA_APP_VERSION
+#define VEXA_APP_VERSION "0.1"
+#endif
+
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);

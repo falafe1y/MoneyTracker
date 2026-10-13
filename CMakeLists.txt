@@ -187,6 +187,7 @@ target_link_libraries(appMoneyTracker
         Qt6::Svg
         ZLIB::ZLIB
         vexa_access
+        vexa_storage
 )
 
 if(WIN32)

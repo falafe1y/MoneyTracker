@@ -1,5 +1,11 @@
 # SQLCipher is built into the application; the stock QSQLITE plugin is not used.
-set(OPENSSL_USE_STATIC_LIBS TRUE)
+# Arch Linux's openssl package ships only shared libcrypto.so (no libcrypto.a),
+# so static linking is used only on platforms where static OpenSSL is provided.
+if(UNIX AND NOT APPLE)
+    set(OPENSSL_USE_STATIC_LIBS FALSE)
+else()
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+endif()
 find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
 find_package(Threads REQUIRED)
 add_library(vexa_sqlcipher STATIC ../third_party/sqlcipher/sqlite3.c)
