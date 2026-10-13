@@ -1376,20 +1376,23 @@ ApplicationWindow {
                     onActivated: financeController.appCurrency = currentText
                 }
             }
-            Loader {
+            CachedPages {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                sourceComponent: page === "overview" ? overviewPage
-                               : page === "accounts" ? accountsPage
-                               : page === "categories" ? categoriesPage
-                               : page === "operations" ? operationsPage
-                               : page === "budgets" ? budgetsPage
-                               : page === "goals" ? goalsPage
-                               : page === "notes" ? notesPage
-                               : page === "trajectory" ? trajectoryPage
-                               : page === "projects" ? projectsPage
-                               : page === "analytics" ? analyticsPage
-                               : settingsPage
+                currentKey: root.page
+                pages: [
+                    { key: "overview", component: overviewPage },
+                    { key: "accounts", component: accountsPage },
+                    { key: "categories", component: categoriesPage },
+                    { key: "operations", component: operationsPage },
+                    { key: "budgets", component: budgetsPage },
+                    { key: "goals", component: goalsPage },
+                    { key: "notes", component: notesPage },
+                    { key: "trajectory", component: trajectoryPage },
+                    { key: "projects", component: projectsPage },
+                    { key: "analytics", component: analyticsPage },
+                    { key: "settings", component: settingsPage }
+                ]
             }
         }
     }

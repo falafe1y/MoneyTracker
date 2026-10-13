@@ -53,6 +53,7 @@ qt_add_qml_module(appMoneyTracker
         StyledCheckBox.qml
         StyledComboBox.qml
         AutoScrollController.qml
+        CachedPages.qml
         MiddleScrollArea.qml
         SurfaceShadow.qml
         HardShadow.qml
@@ -636,3 +637,12 @@ if(WIN32)
     target_link_libraries(InvestmentBenchmarkControllerTest PRIVATE crypt32)
 endif()
 add_test(NAME InvestmentBenchmarkControllerTest COMMAND InvestmentBenchmarkControllerTest)
+
+find_package(Qt6 QUIET COMPONENTS QuickTest)
+if(TARGET Qt6::QuickTest)
+    add_executable(UiNavigationTest tests/UiNavigationTest.cpp)
+    target_link_libraries(UiNavigationTest PRIVATE Qt6::QuickTest Qt6::QuickControls2)
+    target_compile_definitions(UiNavigationTest PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
+    add_test(NAME UiNavigationTest COMMAND UiNavigationTest)
+    set_tests_properties(UiNavigationTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+endif()

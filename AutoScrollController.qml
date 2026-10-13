@@ -22,24 +22,26 @@ Item {
     // Follow the topmost visual branch, then use its nearest scrollable ancestor.
     // Popup contents and nested lists take priority over the page underneath.
     function targetAt(x, y, fallback) {
-        function visit(item, inherited) {
+        function visit(item, inherited, skipSelf) {
             if (!item || !item.visible || !item.enabled || item.opacity <= 0) return null;
             const point = controller.mapToItem(item, x, y);
             const inside = point.x >= 0 && point.y >= 0 && point.x < item.width && point.y < item.height;
             if (item.clip && !inside) return null;
             const target = inside && controller.canScroll(item) ? item : inherited;
             const children = Array.from(item.children).filter(function(child) {
-                return child && child !== controller && child !== scrollOverlay && child.middleScrollViewport !== true && child.visible !== undefined;
+                return child && child !== controller && child !== scrollOverlay && child !== controller.windowOverlay && child.middleScrollViewport !== true && child.visible !== undefined;
             }).map(function(child, index) { return {item: child, index: index}; });
             children.sort(function(a, b) { return b.item.z - a.item.z || b.index - a.index; });
             for (let i = 0; i < children.length; ++i) {
                 const hit = visit(children[i].item, target);
                 if (hit) return hit;
             }
-            return inside ? {target: target} : null;
+            return inside && !skipSelf ? {target: target} : null;
         }
+        // An empty popup overlay can stay visible after a list closes. Only its
+        // visible children may block the page; the transparent overlay itself cannot.
         if (controller.windowOverlay && controller.windowOverlay.visible) {
-            const popupHit = visit(controller.windowOverlay, null);
+            const popupHit = visit(controller.windowOverlay, null, true);
             if (popupHit) return popupHit.target;
         }
         const hit = visit(controller.parent, null);
