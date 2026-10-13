@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtTest
-import "../.."
+import "../../ui/computer/analytics"
 
 Item {
     id: scene

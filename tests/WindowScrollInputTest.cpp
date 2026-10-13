@@ -1,4 +1,4 @@
-#include "../ui/WindowScrollInput.h"
+#include "../ui/computer/common/WindowScrollInput.h"
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>

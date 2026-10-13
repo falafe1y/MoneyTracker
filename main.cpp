@@ -21,7 +21,7 @@
 #include "security/SystemLockMonitor.h"
 
 #include "interface/FinanceController.h"
-#include "ui/WindowScrollInput.h"
+#include "ui/computer/common/WindowScrollInput.h"
 
 int main(int argc, char *argv[])
 {

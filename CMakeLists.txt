@@ -28,44 +28,44 @@ qt_add_executable(appMoneyTracker
 qt_add_qml_module(appMoneyTracker
     URI MoneyTracker
     QML_FILES
-        InvestmentBenchmarkPanel.qml
-        InvestmentDepositPanel.qml
-        InvestmentRiskPanel.qml
-        InvestmentStructurePanel.qml
-        InvestmentPaymentsPanel.qml
-        InvestmentPerformancePanel.qml
-        InvestmentDataQualityPanel.qml
-        InvestmentMetricHelp.qml
-        Desktop.qml
-        Mobile.qml
-        AccessWindow.qml
-        PasswordSettings.qml
-        DatabaseEncryptionSettings.qml
-        DatabaseWindow.qml
-        BackupDialogs.qml
-        InvestmentPositionDialog.qml
-        InvestmentOperationDialog.qml
-        InvestmentPositionsPanel.qml
-        BankCsvImportDialog.qml
-        RecurringTransactionsDialog.qml
-        BudgetDialog.qml
-        FinancialGoalsPage.qml
-        FinancialGoalDialog.qml
-        FinancialTrajectoryPage.qml
-        StyledTextField.qml
-        StyledCheckBox.qml
-        StyledComboBox.qml
-        AutoScrollController.qml
-        CachedPages.qml
-        MiddleScrollArea.qml
-        SurfaceShadow.qml
-        HardShadow.qml
-        StyledButton.qml
-        StyledScrollBar.qml
+        ui/security/AccessWindow.qml
+        ui/security/DatabaseWindow.qml
+        ui/mobile/Mobile.qml
+        ui/computer/common/AutoScrollController.qml
+        ui/computer/common/CachedPages.qml
+        ui/computer/common/HardShadow.qml
+        ui/computer/common/MiddleScrollArea.qml
+        ui/computer/common/StyledButton.qml
+        ui/computer/common/StyledCheckBox.qml
+        ui/computer/common/StyledComboBox.qml
+        ui/computer/common/StyledScrollBar.qml
+        ui/computer/common/StyledTextField.qml
+        ui/computer/common/SurfaceShadow.qml
+        ui/computer/Desktop.qml
+        ui/computer/accounts/InvestmentPositionDialog.qml
+        ui/computer/accounts/InvestmentPositionsPanel.qml
+        ui/computer/operations/BankCsvImportDialog.qml
+        ui/computer/operations/InvestmentOperationDialog.qml
+        ui/computer/operations/RecurringTransactionsDialog.qml
+        ui/computer/budgets/BudgetDialog.qml
+        ui/computer/goals/FinancialGoalDialog.qml
+        ui/computer/goals/FinancialGoalsPage.qml
+        ui/computer/trajectory/FinancialTrajectoryPage.qml
+        ui/computer/analytics/InvestmentBenchmarkPanel.qml
+        ui/computer/analytics/InvestmentDataQualityPanel.qml
+        ui/computer/analytics/InvestmentDepositPanel.qml
+        ui/computer/analytics/InvestmentMetricHelp.qml
+        ui/computer/analytics/InvestmentPaymentsPanel.qml
+        ui/computer/analytics/InvestmentPerformancePanel.qml
+        ui/computer/analytics/InvestmentRiskPanel.qml
+        ui/computer/analytics/InvestmentStructurePanel.qml
+        ui/computer/settings/BackupDialogs.qml
+        ui/computer/settings/DatabaseEncryptionSettings.qml
+        ui/computer/settings/PasswordSettings.qml
         # BankComboBox.qml
         # CategoryPicker.qml
-        SOURCES ui/WindowScrollInput.h
-        SOURCES ui/WindowScrollInput.cpp
+        SOURCES ui/computer/common/WindowScrollInput.h
+        SOURCES ui/computer/common/WindowScrollInput.cpp
         SOURCES core/Account.h
         SOURCES core/Asset.h
         SOURCES core/Category.h
@@ -557,7 +557,7 @@ if(WIN32)
 endif()
 add_test(NAME BankImportControllerTest COMMAND BankImportControllerTest)
 
-add_executable(WindowScrollInputTest tests/WindowScrollInputTest.cpp ui/WindowScrollInput.cpp)
+add_executable(WindowScrollInputTest tests/WindowScrollInputTest.cpp ui/computer/common/WindowScrollInput.cpp)
 target_link_libraries(WindowScrollInputTest PRIVATE Qt6::Gui Qt6::Test)
 add_test(NAME WindowScrollInputTest COMMAND WindowScrollInputTest)
 set_tests_properties(WindowScrollInputTest PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
