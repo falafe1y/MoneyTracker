@@ -22,27 +22,32 @@ SystemLockMonitor::SystemLockMonitor(QObject* parent) : QObject(parent)
     QCoreApplication::instance()->installEventFilter(this);
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
     auto bus = QDBusConnection::systemBus();
-    if (!bus.connect("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
-                     "PrepareForSleep", this, SLOT(prepareForSleep(bool))))
-        qWarning() << "Vexa: logind sleep notifications unavailable";
     QDBusInterface manager("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", bus);
     auto* watcher = new QDBusPendingCallWatcher(manager.asyncCall("GetSessionByPID", uint(QCoreApplication::applicationPid())), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, bus, watcher]() mutable {
         QDBusPendingReply<QDBusObjectPath> reply = *watcher;
-        if (!reply.isError()) {
-            const auto path = reply.value().path();
-            bus.connect("org.freedesktop.login1", path, "org.freedesktop.login1.Session", "Lock", this, SLOT(sessionLocked()));
-            bus.connect("org.freedesktop.login1", path, "org.freedesktop.DBus.Properties", "PropertiesChanged",
-                        this, SLOT(propertiesChanged(QString,QVariantMap,QStringList)));
-        } else qWarning() << "Vexa: logind session notifications unavailable";
         watcher->deleteLater();
+        if (reply.isError()) {
+            qWarning() << "Vexa: logind session notifications unavailable";
+            return;
+        }
+        if (!bus.connect("org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+                         "PrepareForSleep", this, SLOT(prepareForSleep(bool)))) {
+            qWarning() << "Vexa: logind sleep notifications unavailable";
+            return;
+        }
+        const auto path = reply.value().path();
+        bus.connect("org.freedesktop.login1", path, "org.freedesktop.login1.Session", "Lock", this, SLOT(sessionLocked()));
+        bus.connect("org.freedesktop.login1", path, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                    this, SLOT(propertiesChanged(QString,QVariantMap,QStringList)));
+        acquireInhibitor();
     });
-    acquireInhibitor();
 #endif
 }
 SystemLockMonitor::~SystemLockMonitor()
 {
     QCoreApplication::instance()->removeNativeEventFilter(this);
+    QCoreApplication::instance()->removeEventFilter(this);
 }
 void SystemLockMonitor::acquireInhibitor()
 {

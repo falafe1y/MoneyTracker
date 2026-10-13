@@ -13,7 +13,7 @@ AppAccess::AppAccess(std::shared_ptr<PasswordLock> manager, QObject* parent)
     QCoreApplication::instance()->installEventFilter(this);
     timer_.setInterval(1000);
     connect(&timer_, &QTimer::timeout, this, [this] {
-        if (!locked_ && enabled_ && idle_.isValid() && idle_.elapsed() >= 5 * 60 * 1000) lock();
+        if (!locked_ && enabled_ && idle_.isValid() && idle_.elapsed() >= 10 * 60 * 1000) lock();
         if (retryAt_) { if (!retryAfter()) retryAt_ = 0; emit changed(); }
     });
     timer_.start();
@@ -119,7 +119,7 @@ bool AppAccess::eventFilter(QObject* object, QEvent* event)
 {
     if (!locked_) {
         // Expiry is checked before accepting input, including a late timer after sleep.
-        if (enabled_ && idle_.isValid() && idle_.elapsed() >= 5 * 60 * 1000) {
+        if (enabled_ && idle_.isValid() && idle_.elapsed() >= 10 * 60 * 1000) {
             lock();
             if (event->isInputEvent()) return true;
         } else if (event->spontaneous()) {

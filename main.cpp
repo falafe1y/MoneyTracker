@@ -66,8 +66,17 @@ int main(int argc, char *argv[])
     AppAccess appAccess(dataDirectory);
     DatabaseProtection databaseProtection(QDir(dataDirectory).filePath("vexa.sqlite3"));
     databaseProtection.setBackupSchemaValidator(FinanceRepository::migrateBackup);
-    SystemLockMonitor systemLock;
-    QObject::connect(&systemLock, &SystemLockMonitor::lockRequested, &appAccess, &AppAccess::systemLock);
+    std::unique_ptr<SystemLockMonitor> systemLock;
+    const auto syncSystemLock = [&] {
+        if (!appAccess.storeAvailable()) {
+            systemLock.reset();
+            return;
+        }
+        if (systemLock) return;
+        systemLock = std::make_unique<SystemLockMonitor>();
+        QObject::connect(systemLock.get(), &SystemLockMonitor::lockRequested, &appAccess, &AppAccess::systemLock);
+    };
+    QObject::connect(&appAccess, &AppAccess::changed, &app, syncSystemLock);
     WindowScrollInput windowScrollInput;
     QTranslator translator;
     std::unique_ptr<FinanceController> financeController;

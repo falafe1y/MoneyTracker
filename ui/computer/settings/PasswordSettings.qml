@@ -8,7 +8,7 @@ ColumnLayout {
     Text { text: qsTr("Защита паролем"); color: "#031528"; font.pixelSize: 17; font.bold: true }
     Text {
         Layout.fillWidth: true
-        text: appAccess.enabled ? qsTr("Пароль включён. Автоблокировка через 5 минут бездействия.")
+        text: appAccess.enabled ? qsTr("Пароль включён. Автоблокировка через 10 минут бездействия.")
                                 : qsTr("Пароль необязателен. Можно использовать от 1 до 1024 символов.")
         color: "#687483"
         wrapMode: Text.WordWrap
