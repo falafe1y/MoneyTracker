@@ -26,7 +26,7 @@ QJsonObject json(const QVariant& v){return QJsonDocument::fromJson(v.toString().
 qint64 millis(const QVariantMap& row,const char* key){return row.value(QString::fromLatin1(key)).toLongLong();}
 QDate day(qint64 at){return QDateTime::fromMSecsSinceEpoch(at,QTimeZone::UTC).toLocalTime().date();}
 struct Point {QDate date; qint64 at=0; QMap<QString,QVariantMap> rows; std::optional<qint64> total;};
-struct Event {qint64 at=0, amount=0;QString account,currency;bool income=false;};
+struct Event {qint64 at=0, amount=0;QString account,currency;bool income=false;QString source;};
 
 class Calculation {
 public:
@@ -59,6 +59,12 @@ private:
     void buildPoints();void buildFlows();
     std::optional<qint64> sumPoint(const Point& p,const QDate& conversionDate,bool validate=true);
     std::optional<qint64> unrealized(const Point& p,const QDate& conversionDate,bool& complete);
+    QVariantMap assetInfo(const QVariantMap& row)const;
+    QVariantMap operationAsset(const InvestmentOperation& op)const;
+    QVariantMap allocation(const Point* closing);
+    QVariantMap contributions(const Point* opening,const Point* closing,const QDate& baseDate,
+                              const std::optional<qint64>& gain,const std::optional<qint64>& fx);
+    QVariantMap payments(qint64 endAt,const QDate& to);
 };
 
 std::optional<qint64> Calculation::rate(const QString& code,const QDate& date,const QString& preferred)const {
@@ -154,7 +160,7 @@ std::optional<qint64> Calculation::sumPoint(const Point& p,const QDate& conversi
 void Calculation::buildFlows(){
     QHash<QString,const Transaction*> txs;for(const auto& tx:in.transactions)txs.insert(tx.id(),&tx);
     for(const auto& tx:in.transactions){if(!accounts.contains(tx.accountId()))continue;
-        Event e{tx.date().toMSecsSinceEpoch(),tx.type()==TransactionType::Income?tx.money().minorUnits():-tx.money().minorUnits(),tx.accountId(),currencyCode(tx.money().currency()),tx.categoryId()=="deposit_interest"};
+        Event e{tx.date().toMSecsSinceEpoch(),tx.type()==TransactionType::Income?tx.money().minorUnits():-tx.money().minorUnits(),tx.accountId(),currencyCode(tx.money().currency()),tx.categoryId()=="deposit_interest",{}};
         if(tx.categoryId()=="transfer-in" || tx.categoryId()=="transfer-out"){
             const bool incoming=tx.categoryId()=="transfer-in";const auto suffix=incoming?QStringLiteral("-in"):QStringLiteral("-out");
             const auto other=tx.id().endsWith(suffix)?txs.value(tx.id().left(tx.id().size()-suffix.size())+(incoming?"-out":"-in"),nullptr):nullptr;
@@ -163,7 +169,7 @@ void Calculation::buildFlows(){
         }
         (e.income?incomes:flows).append(e);
     }
-    for(const auto& a:accounts)if(a.initialMinor!=0)flows.append({a.createdAt,a.initialMinor,a.id,a.currency,false});
+    for(const auto& a:accounts)if(a.initialMinor!=0)flows.append({a.createdAt,a.initialMinor,a.id,a.currency,false,{}});
     for(auto it=histories.cbegin();it!=histories.cend();++it){
         QVariantMap previous;
         for(const auto& h:it.value()){
@@ -171,7 +177,7 @@ void Calculation::buildFlows(){
             if(accounts.contains(h.value("account_id").toString()) && !linked && (kind=="opening" || kind=="archive" || kind=="delete")){
                 const auto amount=importedValue(h);
                 const auto signedAmount=amount?((kind=="opening")?amount:checked(-__int128_t(*amount))):std::nullopt;
-                if(signedAmount)flows.append({millis(h,"recorded_at"),*signedAmount,h.value("account_id").toString(),h.value("currency").toString(),false});
+                if(signedAmount)flows.append({millis(h,"recorded_at"),*signedAmount,h.value("account_id").toString(),h.value("currency").toString(),false,"position:"+it.key()});
                 else unknownFlows.append({millis(h,"recorded_at"),tr("Неизвестна стоимость переноса или удаления позиции.")});
             }else if(!linked && kind=="correction" && !previous.isEmpty()
                 && (accounts.contains(h.value("account_id").toString()) || accounts.contains(previous.value("account_id").toString()))
@@ -196,6 +202,135 @@ std::optional<qint64> Calculation::unrealized(const Point& p,const QDate& conver
         if(!converted){complete=false;continue;}sum+=*converted;
     }
     return checked(sum);
+}
+
+QVariantMap Calculation::assetInfo(const QVariantMap& row)const {
+    const auto source=row.value("source_id").toString(),account=row.value("account_id").toString();
+    if(source.startsWith("cash:"))return {{"id",source},{"label",tr("Деньги · ")+accounts.value(account).name},{"type",tr("Деньги")}};
+    const auto h=stateAt(source.mid(9),millis(row,"observed_at"));
+    const auto state=json(h.value("state_json"));
+    auto id=row.value("instrument_id").toString();if(id.isEmpty())id=h.value("instrument_id").toString();
+    QString label=state.value("symbol").toString();int type=state.value("type").toInt(-1);
+    for(const auto& item:in.instruments){const auto instrument=item.toMap();if(instrument.value("id").toString()!=id)continue;
+        if(label.isEmpty())label=instrument.value("symbol").toString();
+        if(label.isEmpty())label=instrument.value("name").toString();
+        if(type<0)type=instrument.value("type").toInt();
+        break;
+    }
+    if(label.isEmpty())label=id.isEmpty()?tr("Позиция · ")+source.mid(9):id;
+    const QStringList types{tr("Акции"),tr("Биржевые фонды"),tr("Облигации"),tr("Фонды"),tr("Другие активы"),
+        tr("Привилегированные акции"),tr("Депозитарные расписки"),tr("Металлы"),tr("Валюта"),tr("Фьючерсы"),tr("Опционы")};
+    return {{"id",id.isEmpty()?source:"instrument:"+id},{"label",label},{"type",type>=0 && type<types.size()?types[type]:tr("Тип не указан")}};
+}
+QVariantMap Calculation::operationAsset(const InvestmentOperation& op)const {
+    const auto h=byOperation.value(op.id);
+    auto instrument=op.instrumentId;if(instrument.isEmpty())instrument=h.value("instrument_id").toString();
+    auto position=op.positionId;if(position.isEmpty())position=h.value("position_id").toString();
+    if(position.isEmpty() && instrument.isEmpty())return {{"id","unassigned:"+op.accountId},
+        {"label",tr("Операции без привязки · ")+accounts.value(op.accountId).name},{"type",tr("Без привязки")}};
+    return assetInfo({{"source_id","position:"+position},{"account_id",op.accountId},{"instrument_id",instrument},
+                      {"observed_at",qMax(op.occurredAtUtc.toMSecsSinceEpoch(),millis(h,"recorded_at"))}});
+}
+
+QVariantMap Calculation::allocation(const Point* closing){
+    QVariantMap result{{"available",false},{"pieAvailable",false},{"items",QVariantList()},{"adjustments",QVariantList()}};
+    if(!closing)return result;
+    struct Holding {QVariantMap info;__int128_t amount=0;bool complete=true;};
+    QMap<QString,Holding> holdings,adjustments;
+    QMap<QString,__int128_t> types,accountTotals,currencies;
+    __int128_t capital=0,adjustment=0;bool positive=true;
+    for(const auto& row:closing->rows){const auto info=assetInfo(row);const auto currency=row.value("currency").toString();
+        const auto native=integer(row.value("value_minor"));
+        std::optional<qint64> money;
+        if(native)money=convert(*native,currency,closing->date,json(row.value("details_json")).value("fxSource").toString());
+        const bool margin=row.value("source_id").toString().startsWith("position:") && margined(row);
+        auto& item=(margin?adjustments:holdings)[info.value("id").toString()];item.info=info;
+        if(!money){item.complete=false;continue;}
+        item.amount+=*money;
+        if(margin){adjustment+=*money;continue;}
+        capital+=*money;positive=positive && *money>=0;
+        types[info.value("type").toString()]+=*money;
+        accountTotals[row.value("account_id").toString()]+=*money;
+        currencies[currency]+=*money;
+    }
+    const auto denominator=checked(capital);const bool complete=bool(closing->total) && bool(denominator) && bool(checked(adjustment));
+    const bool pie=complete && positive && *denominator>0;
+    const auto rows=[&](const QMap<QString,Holding>& source,bool percentages){QVariantList list;
+        for(const auto& item:source){auto row=item.info;const auto n=item.complete?checked(item.amount):std::nullopt;
+            row["amountMinor"]=value(n);row["percent"]=percentages && n?QVariant(double(static_cast<long double>(*n)/ *denominator*100)):QVariant();
+            list.append(row);}
+        std::sort(list.begin(),list.end(),[](const auto& a,const auto& b){return a.toMap().value("amountMinor").toLongLong()>b.toMap().value("amountMinor").toLongLong();});return list;};
+    const auto groups=[&](const QMap<QString,__int128_t>& source,bool accountNames=false){QVariantList list;for(auto it=source.cbegin();it!=source.cend();++it){const auto n=checked(it.value());
+        list.append(QVariantMap{{"id",it.key()},{"label",accountNames?accounts.value(it.key()).name:it.key()},{"amountMinor",complete?value(n):QVariant()},
+            {"percent",pie && n?QVariant(double(static_cast<long double>(*n)/ *denominator*100)):QVariant()}});}return list;};
+    result["available"]=complete;result["pieAvailable"]=pie;result["date"]=closing->date.toString(Qt::ISODate);
+    result["capitalMinor"]=complete?value(denominator):QVariant();result["adjustmentMinor"]=complete?value(checked(adjustment)):QVariant();
+    result["totalMinor"]=value(closing->total);result["items"]=rows(holdings,pie);result["adjustments"]=rows(adjustments,false);
+    result["types"]=groups(types);result["accounts"]=groups(accountTotals,true);result["currencies"]=groups(currencies);return result;
+}
+
+QVariantMap Calculation::contributions(const Point* opening,const Point* closing,const QDate& baseDate,
+                                      const std::optional<qint64>& gain,const std::optional<qint64>& fx){
+    QVariantMap result{{"available",false},{"items",QVariantList()}};
+    if(!opening || !closing || !opening->total || !closing->total || closing->at<=opening->at || !flowsComplete || !gain || !fx)return result;
+    struct Contribution {QVariantMap info;__int128_t amount=0;};QMap<QString,Contribution> assets;bool complete=true;
+    const auto add=[&](const QVariantMap& info,const std::optional<qint64>& amount,int sign=1){
+        auto& item=assets[info.value("id").toString()];item.info=info;if(amount)item.amount+=__int128_t(*amount)*sign;else complete=false;};
+    for(const auto* point:{opening,closing})for(const auto& row:point->rows){
+        if(!row.value("source_id").toString().startsWith("position:"))continue;
+        const auto n=integer(row.value("value_minor"));add(assetInfo(row),n?convert(*n,row.value("currency").toString(),baseDate):std::nullopt,point==opening?-1:1);
+    }
+    for(const auto& op:in.operations)if(accounts.contains(op.accountId) && op.occurredAtUtc.toMSecsSinceEpoch()>opening->at && op.occurredAtUtc.toMSecsSinceEpoch()<=closing->at)
+        add(operationAsset(op),convert(op.cashDeltaMinor,accounts.value(op.accountId).currency,baseDate));
+    // Transfers of positions are external flows, just like cash deposits; they are not profit.
+    for(const auto& e:flows)if(!e.source.isEmpty() && e.at>opening->at && e.at<=closing->at){
+        const auto h=stateAt(e.source.mid(9),e.at);
+        add(assetInfo({{"source_id",e.source},{"account_id",e.account},{"instrument_id",h.value("instrument_id")},{"observed_at",e.at}}),convert(e.amount,e.currency,baseDate),-1);
+    }
+    for(const auto& e:incomes)if(e.at>opening->at && e.at<=closing->at)
+        add(assetInfo({{"source_id","cash:"+e.account},{"account_id",e.account}}),convert(e.amount,e.currency,baseDate));
+    if(!complete)return result;
+    QVariantList list;__int128_t sum=0;
+    for(const auto& item:assets){const auto n=checked(item.amount);if(!n)return result;auto row=item.info;row["amountMinor"]=*n;list.append(row);sum+=*n;}
+    std::sort(list.begin(),list.end(),[](const auto& a,const auto& b){return std::abs(a.toMap().value("amountMinor").toDouble())>std::abs(b.toMap().value("amountMinor").toDouble());});
+    const auto remainder=checked(__int128_t(*gain)- *fx-sum);if(!remainder)return result;
+    result["available"]=true;result["items"]=list;result["fxMinor"]=*fx;result["unexplainedMinor"]=*remainder;
+    result["totalMinor"]=*gain;return result;
+}
+
+QVariantMap Calculation::payments(qint64 endAt,const QDate& to){
+    struct Summary {__int128_t net=0,gross=0,fees=0,tax=0;bool netComplete=true,grossComplete=true,feesComplete=true,taxComplete=true;int count=0;QString label;};
+    Summary total;QMap<QString,Summary> kinds,assets,months;QVariantList events;
+    const auto add=[&](Summary& s,const std::optional<qint64>& n,const std::optional<qint64>& gross,
+                       const std::optional<qint64>& fee,const std::optional<qint64>& tax){
+        ++s.count;if(n)s.net+=*n;else s.netComplete=false;if(gross)s.gross+=*gross;else s.grossComplete=false;
+        if(fee)s.fees+=*fee;else s.feesComplete=false;if(tax)s.tax+=*tax;else s.taxComplete=false;};
+    const auto record=[&](QString id,QString kind,const QVariantMap& asset,const QString& account,const QString& currency,
+                          qint64 at,qint64 native,std::optional<qint64> fee,std::optional<qint64> tax){
+        const auto date=day(at);if(at>endAt || date>to || (in.from.isValid() && date<in.from))return;
+        const auto n=convert(native,currency,date),f=fee?convert(*fee,currency,date):std::nullopt,t=tax?convert(*tax,currency,date):std::nullopt;
+        const auto nativeGross=fee && tax?checked(__int128_t(native)+ *fee+ *tax):std::nullopt;
+        const auto g=nativeGross?convert(*nativeGross,currency,date):std::nullopt;
+        const auto key=asset.value("id").toString(),month=date.toString("yyyy-MM");
+        auto& byKind=kinds[kind];byKind.label=kind=="dividend"?tr("Дивиденды"):kind=="coupon"?tr("Купоны"):tr("Проценты по вкладам");
+        auto& byAsset=assets[key];byAsset.label=asset.value("label").toString();months[month].label=month;
+        for(auto* summary:{&total,&byKind,&byAsset,&months[month]})add(*summary,n,g,f,t);
+        events.append(QVariantMap{{"id",id},{"date",date.toString(Qt::ISODate)},{"at",at},{"kind",byKind.label},{"asset",byAsset.label},
+            {"account",accounts.value(account).name},{"currency",currency},{"nativeNetMinor",native},{"netMinor",value(n)},
+            {"grossMinor",value(g)},{"feesMinor",value(f)},{"taxMinor",value(t)}});
+    };
+    for(const auto& op:in.operations)if(accounts.contains(op.accountId) && (op.kind=="dividend" || op.kind=="coupon"))
+        record(op.id,op.kind,operationAsset(op),op.accountId,accounts.value(op.accountId).currency,op.occurredAtUtc.toMSecsSinceEpoch(),op.cashDeltaMinor,op.feeMinor,op.taxMinor);
+    for(const auto& tx:in.transactions)if(accounts.contains(tx.accountId()) && tx.categoryId()=="deposit_interest")
+        record(tx.id(),"interest",assetInfo({{"source_id","cash:"+tx.accountId()},{"account_id",tx.accountId()}}),tx.accountId(),currencyCode(tx.money().currency()),tx.date().toMSecsSinceEpoch(),
+            tx.type()==TransactionType::Income?tx.money().minorUnits():-tx.money().minorUnits(),{},{});
+    const auto summary=[](const Summary& s){return QVariantMap{{"label",s.label},{"count",s.count},
+        {"netMinor",s.netComplete?value(checked(s.net)):QVariant()},{"knownNetMinor",value(checked(s.net))},
+        {"grossMinor",s.grossComplete?value(checked(s.gross)):QVariant()},{"feesMinor",s.feesComplete?value(checked(s.fees)):QVariant()},
+        {"taxMinor",s.taxComplete?value(checked(s.tax)):QVariant()}};};
+    const auto list=[&](const QMap<QString,Summary>& source){QVariantList rows;for(auto it=source.cbegin();it!=source.cend();++it){auto row=summary(it.value());row["id"]=it.key();rows.append(row);}return rows;};
+    std::sort(events.begin(),events.end(),[](const auto& a,const auto& b){return a.toMap().value("at").toLongLong()>b.toMap().value("at").toLongLong();});
+    auto result=summary(total);result["kinds"]=list(kinds);result["assets"]=list(assets);result["months"]=list(months);result["events"]=events;return result;
 }
 
 QVariantMap Calculation::run(){
@@ -343,6 +478,9 @@ QVariantMap Calculation::run(){
     if(residual && std::abs(static_cast<long double>(*residual))>qMax<long double>(5,std::abs(static_cast<long double>(gain.value_or(0)))*0.000001L))
         warn(tr("Разложение результата неполное: часть изменения капитала не объяснена записями."));
     if(!chargesComplete)warn(tr("Часть комиссий и удержаний не указана отдельно."));
+    result["allocation"]=allocation(closing);
+    result["contributions"]=contributions(opening,closing,baseDate,gain,fx);
+    result["payments"]=payments(endAt,to);
     result["breakdown"]=breakdown;result["warnings"]=warnings;result["quality"]=warnings.isEmpty()?"complete":"partial";
     return result;
 }

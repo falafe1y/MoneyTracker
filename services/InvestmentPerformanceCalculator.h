@@ -13,7 +13,7 @@ struct InvestmentPerformanceInput {
     QVector<PerformanceAccount> accounts;
     QVector<Transaction> transactions;
     QVector<InvestmentOperation> operations;
-    QVariantList valuations, positionHistory, prices, rates;
+    QVariantList valuations, positionHistory, prices, rates, instruments;
     QString accountId, currency = QStringLiteral("RUB");
     QDate from, to;
     QDateTime now;

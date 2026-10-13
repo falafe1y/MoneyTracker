@@ -127,6 +127,23 @@ Rectangle {
             positive: panel.positive
         }
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
+        InvestmentStructurePanel {
+            Layout.fillWidth: true
+            allocation: panel.report.allocation || ({})
+            contributions: panel.report.contributions || ({})
+            currency: panel.report.currency || "RUB"
+            ink: panel.ink; muted: panel.muted; line: panel.line
+            positive: panel.positive; negative: panel.negative
+        }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
+        InvestmentPaymentsPanel {
+            Layout.fillWidth: true
+            payments: panel.report.payments || ({})
+            currency: panel.report.currency || "RUB"
+            ink: panel.ink; muted: panel.muted; line: panel.line
+            positive: panel.positive; negative: panel.negative
+        }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: panel.line }
         Label { text: qsTr("Разложение результата за период"); font.pixelSize: 17; font.bold: true; color: panel.ink }
         Label {
             Layout.fillWidth: true

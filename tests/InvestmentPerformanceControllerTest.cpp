@@ -47,6 +47,31 @@ private slots:
         c.setPerformanceAccount("broker");QVERIFY(c.clearAllData().value("ok").toBool());
         QVERIFY(c.performanceAccountId().isEmpty());QVERIFY(c.performanceAccounts().isEmpty());QVERIFY(c.performanceInflation().isEmpty());QVERIFY(c.investmentPerformance().value("closingMinor").isNull());
     }
+    void structureAndPaymentsFollowAccountAndDateSelection(){
+        QTemporaryDir dir;const auto path=dir.filePath("data.db");
+        const auto now=QDateTime::currentDateTimeUtc();
+        {
+            FinanceRepository r(path);QVERIFY(r.saveAutomaticCurrencyRates(false));
+            QVERIFY(r.insertAccount({"broker","Брокер",AssetType::Investment,AccountType::Brokerage,Currency::RUB,10000}));
+            QVERIFY(r.insertAccount({"deposit","Вклад",AssetType::Investment,AccountType::Deposit,Currency::RUB,20000}));
+            QVERIFY(r.insertTransaction({"interest","deposit","deposit_interest",Money(100,Currency::RUB),TransactionType::Income,now}));
+        }
+        FinanceController c(nullptr,path);
+        QCOMPARE(c.investmentPerformance().value("allocation").toMap().value("capitalMinor").toLongLong(),qint64(30100));
+        QCOMPARE(c.investmentPerformance().value("payments").toMap().value("netMinor").toLongLong(),qint64(100));
+        c.setPerformanceAccount("broker");
+        QCOMPARE(c.investmentPerformance().value("allocation").toMap().value("capitalMinor").toLongLong(),qint64(10000));
+        QCOMPARE(c.investmentPerformance().value("payments").toMap().value("count").toInt(),0);
+        c.setPerformanceAccount("deposit");
+        QCOMPARE(c.investmentPerformance().value("payments").toMap().value("count").toInt(),1);
+        const auto yesterday=now.toLocalTime().date().addDays(-1);
+        c.setDateFilter(QDateTime(yesterday,QTime(0,0)),QDateTime(yesterday,QTime(23,59)));
+        QVERIFY(!c.investmentPerformance().value("allocation").toMap().value("available").toBool());
+        QCOMPARE(c.investmentPerformance().value("payments").toMap().value("count").toInt(),0);
+        c.clearDateFilter();
+        QCOMPARE(c.investmentPerformance().value("allocation").toMap().value("capitalMinor").toLongLong(),qint64(20100));
+        QCOMPARE(c.investmentPerformance().value("payments").toMap().value("count").toInt(),1);
+    }
 };
 QTEST_GUILESS_MAIN(InvestmentPerformanceControllerTest)
 #include "InvestmentPerformanceControllerTest.moc"

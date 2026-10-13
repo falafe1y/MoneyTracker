@@ -19,6 +19,9 @@ void FinanceController::rebuildInvestmentPerformance()
     input.accountId=performanceAccountId_;input.currency=currencyCode(appCurrency_);
     input.from=dateFilterActive()?dateFilterFrom_:QDate();input.to=dateFilterActive()?dateFilterTo_:QDate();input.now=QDateTime::currentDateTimeUtc();
     input.transactions=transactions_;input.operations=investmentOperations_;
+    for(const auto& instrument:investmentInstruments_)
+        input.instruments.append(QVariantMap{{"id",instrument.id()},{"symbol",instrument.symbol()},
+                                            {"name",instrument.name()},{"type",int(instrument.type())}});
     input.valuations=repository_.loadDailyValuations(AssetDailyValuation::Investment, input.from.isValid()?input.from.addDays(-1):QDate(),input.to);
     input.positionHistory=repository_.loadAllPositionHistory();
     QSet<QString> instruments,currencies;currencies.insert(input.currency);

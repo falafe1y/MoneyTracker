@@ -68,7 +68,7 @@ Item {
                 : qsTr("Выборочное отклонение дневной доходности × √365,25. Дни с нулевым капиталом и без движений исключены из волатильности. Короткая история даёт менее устойчивую оценку.")
         }
         Label {
-            visible: panel.risk.available && panel.risk.maximumDrawdownPercent > 0
+            visible: !!panel.risk.available && panel.risk.maximumDrawdownPercent > 0
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: panel.muted
