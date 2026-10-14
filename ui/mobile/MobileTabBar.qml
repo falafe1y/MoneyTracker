@@ -29,6 +29,7 @@ Rectangle {
 
                 required property var modelData
                 readonly property bool current: modelData.key === bar.activeKey
+                opacity: tab.modelData.disabled ? 0.35 : 1
 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -71,6 +72,7 @@ Rectangle {
                 }
 
                 TapHandler {
+                    enabled: !tab.modelData.disabled
                     onTapped: bar.selected(tab.modelData.key)
                 }
             }

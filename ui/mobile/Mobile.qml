@@ -55,10 +55,14 @@ ApplicationWindow {
     readonly property color transparentColor: "transparent"
 
     property string page: "overview"
-    onPageChanged: browserScroll.stop()
+    onPageChanged: {
+        browserScroll.stop();
+        Qt.inputMethod.hide();
+    }
     readonly property var scrollController: browserScroll
     AutoScrollController { id: browserScroll; parent: root.contentItem }
     property string searchText: ""
+    property bool hideAmounts: false
     readonly property int pageMargin: MobileTheme.margin
     readonly property int touchHeight: 48
     readonly property var assets: [
@@ -69,7 +73,7 @@ ApplicationWindow {
         },
         {
             code: "crypto",
-            title: qsTr("Крипта"),
+            title: qsTr("Криптовалюта"),
             icon: ""
         },
         {
@@ -298,13 +302,24 @@ ApplicationWindow {
         return result.slice(0, 5);
     }
 
+    // Neobrutalism shadow: a solid accent copy of the shape 4 px below, without blur (as in the Figma design)
+    component HardShadow: Rectangle {
+        x: 0
+        y: 4
+        z: -1
+        width: parent ? parent.width : 0
+        height: parent ? parent.height : 0
+        radius: parent ? parent.radius : 0
+        color: root.accent
+    }
+
     component Panel: Rectangle {
-        SurfaceShadow { }
+        HardShadow { }
 
         color: root.panel
         radius: 16
         border.width: 1
-        border.color: root.line
+        border.color: root.accent
     }
 
     // Item.clip and ListView.clip are rectangular. These masks cover content
@@ -371,8 +386,6 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
-
             radius: 8
             color: menuItem.highlighted || menuItem.hovered
                    ? (menuItem.destructive ? root.expensePanel : root.controlHovered)
@@ -411,7 +424,7 @@ ApplicationWindow {
     readonly property var tabItems: [
         { key: "overview", title: qsTr("Обзор"), svg: "qrc:/icons/dashboard.svg" },
         { key: "accounts", title: qsTr("Счета"), icon: "wallet" },
-        { key: "operations", title: qsTr("Операции"), icon: "list" },
+        { key: "add", title: qsTr("Операция"), icon: "plus", disabled: financeController.selectedAsset !== "fiat" },
         { key: "analytics", title: qsTr("Аналитика"), svg: "qrc:/icons/analytics.svg" },
         { key: "more", title: qsTr("Ещё"), icon: "more" }
     ]
@@ -494,6 +507,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 48
+                visible: root.page !== "overview"
                 spacing: 8
 
                 MobileIconButton {
@@ -521,7 +535,7 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                visible: root.globalFilters
+                visible: root.globalFilters && root.page !== "overview"
                 spacing: 8
 
                 MobileChip {
@@ -532,7 +546,7 @@ ApplicationWindow {
 
                 MobileField {
                     Layout.fillWidth: true
-                    visible: root.page === "overview" || root.page === "operations"
+                    visible: root.page === "operations"
                     placeholder: qsTr("Поиск")
                     onTextChanged: root.searchText = text
                 }
@@ -571,7 +585,7 @@ ApplicationWindow {
             height: 64
             items: root.tabItems
             activeKey: root.tabKey
-            onSelected: function(key) { root.openTab(key) }
+            onSelected: function(key) { if (key === "add") operationDialog.openForNew(); else root.openTab(key) }
         }
     }
 
@@ -665,6 +679,108 @@ ApplicationWindow {
         MobileNotesPage {}
     }
 
+    // ---- Overview (design): balance card, asset strip, accounts of the asset, history ----
+    readonly property color designIncome: "#2E8963"
+    readonly property color designExpense: "#2D0300"
+    property bool overviewSearchOpen: false
+
+    function shownAmount(text) {
+        return root.hideAmounts ? "••••••" : text;
+    }
+
+    function assetRows() {
+        return financeController.selectedAsset === "crypto" ? financeController.cryptoWallets : financeController.accounts;
+    }
+
+    function rowPrimaryAmount(row) {
+        if (row.isCrypto)
+            return row.balanceText + " " + row.symbol;
+        if (row.isCreditCard)
+            return root.money(row.availableCreditMinor, row.currency, false);
+        return root.money(row.balanceMinor, row.currency, false);
+    }
+
+    function dayKey(date) {
+        return Qt.formatDate(date, "yyyy-MM-dd");
+    }
+
+    // Operations grouped by day: header items ("Сегодня", "Вчера", dd.MM.yyyy) and row items
+    function overviewHistoryItems() {
+        const rows = visibleTransactions();
+        const today = new Date();
+        const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+        const todayKey = dayKey(today);
+        const yesterdayKey = dayKey(yesterday);
+        const items = [];
+        let lastKey = "";
+        for (let i = 0; i < rows.length; ++i) {
+            const date = new Date(rows[i].date);
+            const key = dayKey(date);
+            if (key !== lastKey) {
+                items.push({ header: true, label: key === todayKey ? qsTr("Сегодня") : key === yesterdayKey ? qsTr("Вчера") : Qt.formatDate(date, "dd.MM.yyyy") });
+                lastKey = key;
+            }
+            items.push({ header: false, row: rows[i] });
+        }
+        return items;
+    }
+
+    // Round tool button of the balance card. selected = pressed look (e.g. an active date filter)
+    component RoundTool: Item {
+        id: tool
+
+        property string icon: ""
+        property string glyph: ""
+        property bool selected: false
+        signal clicked()
+
+        implicitWidth: 38
+        implicitHeight: 42
+
+        Rectangle {
+            x: 0
+            y: 4
+            width: 38
+            height: 38
+            radius: 19
+            color: root.accent
+            visible: !tool.selected
+        }
+
+        Rectangle {
+            y: tool.selected ? 4 : 0
+            width: 38
+            height: 38
+            radius: 19
+            color: tool.selected ? root.accent : tap.pressed ? root.controlHovered : root.panel
+            border.width: 1
+            border.color: root.accent
+
+            MobileIcon {
+                anchors.centerIn: parent
+                visible: tool.icon.length > 0
+                name: tool.icon
+                width: 20
+                height: 20
+                color: tool.selected ? root.panel : root.accent
+            }
+
+            Text {
+                anchors.centerIn: parent
+                visible: tool.glyph.length > 0
+                text: tool.glyph
+                color: tool.selected ? root.panel : root.accent
+                font.pixelSize: 17
+                font.weight: Font.DemiBold
+            }
+        }
+
+        TapHandler {
+            id: tap
+            onTapped: tool.clicked()
+        }
+    }
+
     Component {
         id: overviewPage
         ScrollView {
@@ -674,9 +790,7 @@ ApplicationWindow {
             ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
 
-            // ===== CONTENT CLIP SAFETY MARGIN =====
             // Keep panel borders one physical pixel away from ScrollView's clip edge.
-            // If outlines ever need to touch the viewport again, set this to 0.
             readonly property int contentEdgeMargin: 2
 
             contentWidth: availableWidth
@@ -686,443 +800,491 @@ ApplicationWindow {
                 id: dashboard
                 x: overviewScroll.contentEdgeMargin
                 width: Math.max(0, overviewScroll.availableWidth - overviewScroll.contentEdgeMargin * 2)
-                spacing: 14
+                spacing: 12
 
-                ColumnLayout {
+                // "Общий баланс" card with the round tools on the right
+                RowLayout {
                     Layout.fillWidth: true
                     spacing: 10
 
                     Panel {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 112
-                        color: root.soft
-                        border.color: root.accentSoft
+                        Layout.preferredHeight: 100
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 18
-                            spacing: 10
+                            anchors.margins: 16
+                            spacing: 6
 
-                            RowLayout {
-                                Rectangle {
-                                    SurfaceShadow { }
-
-                                    width: 38
-                                    height: 38
-                                    radius: 19
-                                    color: root.accent
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "∑"
-                                        color: root.white
-                                        font.pixelSize: 19
-                                        font.weight: Font.DemiBold
-                                    }
-                                }
-
-                                Text {
-                                    text: qsTr("Все активы")
-                                    color: root.accent
-                                    font.pixelSize: 17
-                                    font.weight: Font.DemiBold
-                                }
+                            Text {
+                                text: qsTr("Общий баланс")
+                                color: root.accent
+                                font.pixelSize: 16
+                                font.weight: Font.DemiBold
                             }
 
                             Text {
                                 Layout.fillWidth: true
-                                text: root.money(
-                                    financeController.balanceMinorUnits,
-                                    financeController.appCurrency,
-                                    false
-                                )
-                                color: root.navSelected
-                                font.pixelSize: 23
+                                text: root.shownAmount(root.money(financeController.balanceMinorUnits, financeController.appCurrency, false))
+                                color: root.designIncome
+                                font.pixelSize: 22
                                 font.weight: Font.Bold
                                 elide: Text.ElideRight
                             }
                         }
                     }
 
-                    ListView {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 112
-                        orientation: ListView.Horizontal
-                        spacing: 8
-                        clip: true
-                        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-                        model: root.assets
-                        delegate: Panel {
-                            required property var modelData
-                            width: Math.min(220, ListView.view.width * 0.72)
-                            height: ListView.view.height
-                            color: financeController.selectedAsset === modelData.code ? root.accent : root.panel
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: financeController.selectedAsset = modelData.code
-                            }
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 18
-                                spacing: 10
-                                RowLayout {
-                                    Rectangle {
-                                        SurfaceShadow { }
+                    ColumnLayout {
+                        spacing: 4
 
-                                        width: 38
-                                        height: 38
-                                        radius: 19
-                                        color: financeController.selectedAsset === modelData.code ? root.accentSoft : root.pale
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: modelData.icon
-                                            color: financeController.selectedAsset === modelData.code ? root.white : root.accent
-                                            font.pixelSize: 19
-                                        }
-                                    }
-                                    Text {
-                                        text: modelData.title
-                                        color: financeController.selectedAsset === modelData.code ? root.white : root.accent
-                                        font.pixelSize: 17
-                                        font.weight: Font.DemiBold
+                        RowLayout {
+                            spacing: 8
+
+                            RoundTool {
+                                icon: "filter"
+                                selected: financeController.dateFilterActive
+                                onClicked: dateFilterDialog.openForCurrent()
+                            }
+                            RoundTool {
+                                icon: root.hideAmounts ? "eyeOff" : "eye"
+                                onClicked: root.hideAmounts = !root.hideAmounts
+                            }
+                        }
+
+                        Item {
+                            Layout.preferredWidth: 84
+                            Layout.preferredHeight: 42
+
+                            RoundTool {
+                                x: 23
+                                glyph: MobileFormat.symbol(financeController.appCurrency)
+                                onClicked: currencySheet.open()
+                            }
+                        }
+                    }
+                }
+
+                // Asset strip: the selected asset is the wide bar, the others are squares.
+                // Order is fixed: фиат, крипта, инвестиции. Swipe left/right or tap a square.
+                Item {
+                    id: assetStrip
+
+                    readonly property var assetOrder: ["fiat", "crypto", "investment"]
+                    readonly property var assetGlyphs: ["₽", "₿", ""]
+                    readonly property int squareSize: 36
+                    readonly property int gap: 8
+
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+
+                    function selectedIndex() {
+                        return assetOrder.indexOf(financeController.selectedAsset);
+                    }
+
+                    function widthOf(index) {
+                        return index === selectedIndex() ? width - 2 * squareSize - 2 * gap : squareSize;
+                    }
+
+                    function xOf(index) {
+                        let x = 0;
+                        for (let i = 0; i < index; ++i)
+                            x += widthOf(i) + gap;
+                        return x;
+                    }
+
+                    function indexAt(x) {
+                        for (let i = 0; i < assetOrder.length; ++i)
+                            if (x >= xOf(i) && x < xOf(i) + widthOf(i))
+                                return i;
+                        return -1;
+                    }
+
+                    function selectAt(index) {
+                        if (index >= 0 && index < assetOrder.length)
+                            financeController.selectedAsset = assetOrder[index];
+                    }
+
+                    Repeater {
+                        model: assetStrip.assetOrder
+
+                        delegate: Rectangle {
+                            id: assetTile
+
+                            required property string modelData
+                            required property int index
+                            readonly property bool selected: financeController.selectedAsset === modelData
+
+                            x: assetStrip.xOf(index)
+                            y: 0
+                            width: assetStrip.widthOf(index)
+                            height: 36
+                            radius: 9
+                            color: selected ? root.accent : root.panel
+                            border.width: selected ? 0 : 1
+                            border.color: root.accent
+
+                            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                            Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+                            // Selected asset: "all accounts" checkbox and the total
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 12
+                                spacing: 10
+                                visible: assetTile.selected
+
+                                Rectangle {
+                                    Layout.preferredWidth: 18
+                                    Layout.preferredHeight: 18
+                                    radius: 4
+                                    color: financeController.selectedAccountId === "" ? root.panel : root.accent
+                                    border.width: 1
+                                    border.color: root.panel
+
+                                    MobileIcon {
+                                        anchors.centerIn: parent
+                                        visible: financeController.selectedAccountId === ""
+                                        name: "check"
+                                        width: 14
+                                        height: 14
+                                        color: root.accent
                                     }
                                 }
+
                                 Text {
                                     Layout.fillWidth: true
-                                    text: root.money(root.assetAmount(modelData.code), financeController.appCurrency, false)
-                                    color: financeController.selectedAsset === modelData.code ? root.white : root.accent
-                                    font.pixelSize: 23
+                                    text: root.shownAmount(root.money(root.assetAmount(assetTile.modelData), financeController.appCurrency, false))
+                                    color: root.white
+                                    font.pixelSize: 14
                                     font.weight: Font.Bold
                                     elide: Text.ElideRight
                                 }
                             }
+
+                            // Other assets: squares with a glyph
+                            Text {
+                                anchors.centerIn: parent
+                                visible: !assetTile.selected && assetStrip.assetGlyphs[assetTile.index] !== ""
+                                text: assetStrip.assetGlyphs[assetTile.index]
+                                color: root.accent
+                                font.pixelSize: 17
+                                font.weight: Font.DemiBold
+                            }
+
+                            MobileIcon {
+                                anchors.centerIn: parent
+                                visible: !assetTile.selected && assetStrip.assetGlyphs[assetTile.index] === ""
+                                name: "chart"
+                                width: 20
+                                height: 20
+                                color: root.accent
+                            }
+                        }
+                    }
+
+                    // Taps and swipes on the whole strip. A tap on the checkbox of the selected asset clears the account filter.
+                    MouseArea {
+                        id: assetSwipe
+
+                        property real pressX: 0
+
+                        anchors.fill: parent
+                        preventStealing: true
+                        onPressed: function (mouse) {
+                            pressX = mouse.x;
+                        }
+                        onReleased: function (mouse) {
+                            const dx = mouse.x - pressX;
+                            if (dx < -40)
+                                assetStrip.selectAt(assetStrip.selectedIndex() + 1);
+                            else if (dx > 40)
+                                assetStrip.selectAt(assetStrip.selectedIndex() - 1);
+                        }
+                        onClicked: function (mouse) {
+                            if (Math.abs(mouse.x - pressX) > 40)
+                                return;
+                            const index = assetStrip.indexAt(mouse.x);
+                            if (index < 0)
+                                return;
+                            if (index !== assetStrip.selectedIndex()) {
+                                assetStrip.selectAt(index);
+                                return;
+                            }
+                            if (mouse.x - assetStrip.xOf(index) < 40)
+                                financeController.selectedAccountId = "";
                         }
                     }
                 }
+
+                // Accounts of the selected asset, one row per account
                 Panel {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 188
+                    implicitHeight: assetColumn.implicitHeight + 32
+
                     ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 8
+                        id: assetColumn
+                        x: 16
+                        y: 16
+                        width: parent.width - 32
+                        spacing: 16
+
                         RowLayout {
                             Layout.fillWidth: true
+                            spacing: 8
+
                             Text {
-                                text: (financeController.selectedAsset === "crypto"
-                                       ? qsTr("Криптовалюты")
-                                       : qsTr("Счета"))
-                                      + " · " + root.assetTitle(financeController.selectedAsset)
+                                Layout.fillWidth: true
+                                text: root.assetTitle(financeController.selectedAsset)
                                 color: root.accent
                                 font.pixelSize: 16
                                 font.weight: Font.DemiBold
+                                elide: Text.ElideRight
                             }
-                            Item {
-                                Layout.fillWidth: true
-                            }
-                            SoftButton {
-                                id: addAccountButton
-                                flat: true
-                                text: financeController.selectedAsset === "crypto"
-                                      ? qsTr("+  Добавить криптовалюту")
-                                      : qsTr("+  Добавить счёт")
 
-                                contentItem: Text {
-                                    text: addAccountButton.text
-                                    color: root.navSelected
-                                    font.pixelSize: 14
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
+                            Text {
+                                id: assetAddButton
+                                text: qsTr("+ Добавить")
+                                color: root.navSelected
+                                font.pixelSize: 14
+                                opacity: addTap.pressed ? 0.6 : 1
 
-                                onClicked: {
-                                    if (financeController.selectedAsset === "crypto")
-                                        cryptoWalletDialog.openForNewWallet();
-                                    else
-                                        accountDialog.openForSelectedAsset();
+                                TapHandler {
+                                    id: addTap
+                                    onTapped: {
+                                        if (financeController.selectedAsset === "crypto")
+                                            cryptoWalletDialog.openForNewWallet();
+                                        else
+                                            accountDialog.openForSelectedAsset();
+                                    }
                                 }
                             }
                         }
-                        ListView {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            orientation: ListView.Horizontal
-                            spacing: 12
-                            clip: true
-                            // Scrollbars intentionally hidden application-wide.
-                            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-                            model: [
-                                {
-                                    id: "",
-                                    name: financeController.selectedAsset === "crypto"
-                                          ? qsTr("Все кошельки")
-                                          : qsTr("Все счета"),
-                                    balanceMinor: root.assetAmount(financeController.selectedAsset),
-                                    currency: financeController.appCurrency
-                                }
-                            ].concat(financeController.selectedAsset === "crypto"
-                                     ? financeController.cryptoWallets
-                                     : financeController.accounts)
+
+                        Repeater {
+                            model: root.assetRows()
+
                             delegate: Rectangle {
-                                SurfaceShadow { }
+                                id: accountRow
 
                                 required property var modelData
-                                width: 245
-                                height: 106
-                                radius: 13
-                                color: financeController.selectedAccountId === modelData.id ? root.accent : root.panel
-                                border.width: 1
-                                border.color: financeController.selectedAccountId === modelData.id ? root.accent : root.line
-                                MouseArea {
-                                    id: overviewAccountMouseArea
+                                readonly property bool selected: !modelData.isCrypto && financeController.selectedAccountId === modelData.id
+
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 69
+                                radius: 10
+                                color: selected ? root.accent : root.canvas
+
+                                RowLayout {
                                     anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                    onClicked: function (mouse) {
-                                        if (mouse.button === Qt.LeftButton && !modelData.isCrypto)
-                                            financeController.selectedAccountId = modelData.id;
-                                    }
-                                    onPressAndHold: {
-                                        if (modelData.id)
-                                            root.openAccountContextMenu(
-                                                modelData,
-                                                overviewAccountMouseArea,
-                                                mouseX,
-                                                mouseY
-                                            );
-                                    }
-                                    onPressed: function (mouse) {
-                                        if (mouse.button === Qt.RightButton && modelData.id)
-                                            root.openAccountContextMenu(
-                                                modelData,
-                                                overviewAccountMouseArea,
-                                                mouse.x,
-                                                mouse.y
-                                            );
-                                    }
-                                }
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 13
-                                    spacing: 5
-                                    RowLayout {
+                                    anchors.leftMargin: 16
+                                    anchors.rightMargin: 16
+                                    spacing: 8
+
+                                    ColumnLayout {
                                         Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
                                         spacing: 6
+
                                         Text {
-                                            text: "▣"
-                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
+                                            Layout.fillWidth: true
+                                            text: accountRow.modelData.name
+                                            color: accountRow.selected ? root.white : root.accent
+                                            font.pixelSize: 14
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: root.shownAmount(root.rowPrimaryAmount(accountRow.modelData))
+                                            color: accountRow.selected ? root.white : root.accent
+                                            font.pixelSize: 20
+                                            font.weight: Font.Bold
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        visible: accountRow.modelData.isCreditCard === true
+                                        spacing: 6
+
+                                        Text {
+                                            Layout.alignment: Qt.AlignRight
+                                            text: qsTr("Долг")
+                                            color: accountRow.selected ? root.paleText : root.muted
+                                            font.pixelSize: 14
+                                        }
+
+                                        Text {
+                                            Layout.alignment: Qt.AlignRight
+                                            text: root.shownAmount(root.money(accountRow.modelData.debtMinor, accountRow.modelData.currency, false))
+                                            color: accountRow.selected ? root.white : root.accent
                                             font.pixelSize: 20
                                         }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: modelData.name
-                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
-                                            font.pixelSize: 14
-                                            font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            text: financeController.selectedAccountId === modelData.id ? "✓" : "›"
-                                            color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
-                                            font.pixelSize: 18
-                                        }
                                     }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelData.isCreditCard
-                                              ? qsTr("Долг: %1").arg(root.money(
-                                                    modelData.debtMinor, modelData.currency, false))
-                                              : root.accountCompactAmount(modelData)
-                                        color: financeController.selectedAccountId === modelData.id ? root.white : root.accent
-                                        font.pixelSize: 18
-                                        font.weight: Font.Bold
-                                        fontSizeMode: Text.Fit
-                                        minimumPixelSize: 14
-                                        elide: Text.ElideRight
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (!accountRow.modelData.isCrypto)
+                                            financeController.selectedAccountId = accountRow.selected ? "" : accountRow.modelData.id;
                                     }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        visible: modelData.isCreditCard === true
-                                        text: modelData.isCreditCard
-                                              ? qsTr("Доступно: %1").arg(root.money(
-                                                    modelData.availableCreditMinor,
-                                                    modelData.currency, false)) : ""
-                                        color: financeController.selectedAccountId === modelData.id ? root.paleText : root.muted
-                                        font.pixelSize: 14
-                                        font.weight: Font.Medium
-                                        fontSizeMode: Text.Fit
-                                        minimumPixelSize: 12
-                                        elide: Text.ElideRight
-                                    }
+                                    onPressAndHold: root.openAccountContextMenu(accountRow.modelData, accountRow, mouseX, mouseY)
                                 }
                             }
                         }
                     }
                 }
-                ColumnLayout {
+
+                // "История операций" grouped by day; "Поиск" is a plain text link
+                Panel {
                     Layout.fillWidth: true
-                    spacing: 14
-                    Panel {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 210
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 16
+                    implicitHeight: historyColumn.implicitHeight + 32
+
+                    ColumnLayout {
+                        id: historyColumn
+                        x: 16
+                        y: 16
+                        width: parent.width - 32
+                        spacing: 0
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.bottomMargin: 8
+
                             Text {
-                                text: qsTr("Расходы по категориям")
+                                Layout.fillWidth: true
+                                text: qsTr("История операций")
                                 color: root.accent
                                 font.pixelSize: 16
                                 font.weight: Font.DemiBold
                             }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                spacing: 18
-                                Repeater {
-                                    model: root.categoryTotals()
-                                    delegate: ColumnLayout {
-                                        required property int index
-                                        required property var modelData
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 0
-                                        Layout.minimumWidth: 0
-                                        Layout.fillHeight: true
-                                        Item {
-                                            Layout.fillHeight: true
-                                        }
-                                        Rectangle {
-                                            Layout.alignment: Qt.AlignHCenter
-                                            width: 44
-                                            height: Math.max(5, Math.min(120, modelData.amount / Math.max(1, root.categoryTotals()[0].amount) * 120))
-                                            radius: 5
-                                            color: root.chartColors[index % root.chartColors.length]
-                                            border.width: 1
-                                            border.color: root.line
-                                        }
-                                        Text {
-                                            Layout.alignment: Qt.AlignHCenter
-                                            Layout.fillWidth: true
-                                            Layout.preferredWidth: 0
-                                            Layout.maximumWidth: 80
-                                            text: modelData.label
-                                            color: root.muted
-                                            font.pixelSize: 14
-                                            horizontalAlignment: Text.AlignHCenter
-                                            elide: Text.ElideRight
+
+                            Text {
+                                id: overviewSearchButton
+                                text: qsTr("Поиск")
+                                color: root.navSelected
+                                font.pixelSize: 14
+                                opacity: searchTap.pressed ? 0.6 : 1
+
+                                TapHandler {
+                                    id: searchTap
+                                    onTapped: {
+                                        root.overviewSearchOpen = !root.overviewSearchOpen;
+                                        if (!root.overviewSearchOpen) {
+                                            root.searchText = "";
+                                            Qt.inputMethod.hide();
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        Loader {
+                            id: overviewSearchLoader
+
+                            Layout.fillWidth: true
+                            Layout.bottomMargin: root.overviewSearchOpen ? 6 : 0
+                            active: root.overviewSearchOpen
+                            visible: root.overviewSearchOpen
+
+                            sourceComponent: TextField {
+                                id: overviewSearchField
+
+                                width: overviewSearchLoader.width
+                                placeholderText: qsTr("Поиск по операциям")
+                                placeholderTextColor: root.muted
+                                color: root.accent
+                                font.pixelSize: 14
+                                leftPadding: 0
+                                rightPadding: 0
+                                background: Item {}
+                                text: root.searchText
+                                onTextChanged: root.searchText = text
+                                Component.onCompleted: {
+                                    forceActiveFocus();
+                                    Qt.inputMethod.show();
+                                }
+                            }
+                        }
+
+                        Repeater {
+                            model: root.overviewHistoryItems()
+
+                            delegate: Item {
+                                id: historyItem
+
+                                required property var modelData
+
+                                Layout.fillWidth: true
+                                implicitHeight: modelData.header ? 34 : 50
+
                                 Text {
-                                    visible: root.categoryTotals().length === 0
-                                    text: qsTr("Добавьте расходы — здесь появится график")
-                                    color: root.muted
-                                    Layout.alignment: Qt.AlignCenter
+                                    visible: modelData.header
+                                    anchors.left: parent.left
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 4
+                                    text: modelData.label || ""
+                                    color: root.accent
+                                    font.pixelSize: 14
+                                    font.weight: Font.Bold
                                 }
-                            }
-                        }
-                    }
-                    Panel {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 210
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            Text {
-                                text: qsTr("Структура расходов")
-                                color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Layout.fillHeight: true
-                                spacing: 24
-                                Canvas {
-                                    id: donut
-                                    width: 145
-                                    height: 145
-                                    onPaint: {
-                                        const ctx = getContext("2d");
-                                        ctx.clearRect(0, 0, width, height);
-                                        const data = root.categoryTotals();
-                                        let total = 0;
-                                        for (let i = 0; i < data.length; ++i)
-                                            total += data[i].amount;
-                                        let angle = -Math.PI / 2;
-                                        if (total === 0) {
-                                            ctx.strokeStyle = root.line;
-                                            ctx.lineWidth = 25;
-                                            ctx.beginPath();
-                                            ctx.arc(72, 72, 48, 0, Math.PI * 2);
-                                            ctx.stroke();
-                                            return;
-                                        }
-                                        for (let j = 0; j < data.length; ++j) {
-                                            const next = angle + data[j].amount / total * Math.PI * 2;
-                                            ctx.strokeStyle = root.chartColors[j % root.chartColors.length];
-                                            ctx.lineWidth = 25;
-                                            ctx.beginPath();
-                                            ctx.arc(72, 72, 48, angle, next);
-                                            ctx.stroke();
-                                            angle = next;
-                                        }
-                                    }
-                                    Connections {
-                                        target: financeController
-                                        function onTransactionsChanged() {
-                                            donut.requestPaint();
-                                        }
-                                        function onSelectedAccountIdChanged() {
-                                            donut.requestPaint();
-                                        }
-                                        function onSelectedAssetChanged() {
-                                            donut.requestPaint();
-                                        }
-                                    }
-                                }
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    Repeater {
-                                        model: root.categoryTotals()
-                                        delegate: RowLayout {
-                                            required property int index
-                                            required property var modelData
+
+                                RowLayout {
+                                    visible: !historyItem.modelData.header
+                                    anchors.fill: parent
+                                    spacing: 8
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        spacing: 2
+
+                                        Text {
                                             Layout.fillWidth: true
-                                            Rectangle {
-                                                width: 9
-                                                height: 9
-                                                radius: 5
-                                                color: root.chartColors[index % root.chartColors.length]
-                                            }
-                                            Text {
-                                                text: modelData.label
-                                                color: root.muted
-                                                Layout.fillWidth: true
-                                            }
-                                            Text {
-                                                text: root.money(modelData.amount, financeController.appCurrency, false)
-                                                color: root.accent
-                                                font.pixelSize: 14
-                                            }
+                                            text: historyItem.modelData.header ? "" : root.transactionSummary(historyItem.modelData.row)
+                                            color: root.accent
+                                            font.pixelSize: 14
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: historyItem.modelData.header ? "" : root.accountName(historyItem.modelData.row.accountId)
+                                            color: root.muted
+                                            font.pixelSize: 13
+                                            elide: Text.ElideRight
                                         }
                                     }
-                                    Item {
-                                        Layout.fillHeight: true
+
+                                    Text {
+                                        text: historyItem.modelData.header ? "" : root.shownAmount(root.money(
+                                                  root.transactionSignedAmount(historyItem.modelData.row),
+                                                  historyItem.modelData.row.currency, true))
+                                        color: historyItem.modelData.header ? root.accent
+                                             : historyItem.modelData.row.type === "transfer" ? root.navSelected
+                                             : (historyItem.modelData.row.type === "income" || (historyItem.modelData.row.type === "investment_cash" && historyItem.modelData.row.amount >= 0)) ? root.designIncome
+                                             : root.designExpense
+                                        font.pixelSize: 14
+                                        font.weight: Font.DemiBold
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: !historyItem.modelData.header
+                                    onPressAndHold: root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouseX, mouseY)
+                                    onPressed: function (mouse) {
+                                        if (mouse.button === Qt.RightButton && !historyItem.modelData.header)
+                                            root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouse.x, mouse.y);
                                     }
                                 }
                             }
                         }
                     }
                 }
-                MobileTransactionBlock {
-                    Layout.fillWidth: true
-                    expandToContent: true
-                    title: qsTr("История операций")
-                    rows: root.visibleTransactions()
-                }
+
                 Item {
                     Layout.preferredHeight: 8
                 }
@@ -1503,7 +1665,7 @@ ApplicationWindow {
     }
 
     component MobileTransactionCard: Rectangle {
-        SurfaceShadow { }
+        HardShadow { }
 
         id: mobileTransactionCard
         property var rowData: null
@@ -2053,7 +2215,7 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
-                                SurfaceShadow { }
+                                HardShadow { }
 
                                 required property var modelData
 
@@ -2138,7 +2300,7 @@ ApplicationWindow {
                             })
 
                             delegate: Rectangle {
-                                SurfaceShadow { }
+                                HardShadow { }
 
                                 required property var modelData
 
@@ -2262,7 +2424,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
                 Rectangle {
-                    SurfaceShadow { }
+                    HardShadow { }
 
                     id: currentRatesBlock
 
@@ -2551,7 +2713,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18
@@ -2745,7 +2907,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18
@@ -3028,7 +3190,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 12
@@ -3055,7 +3217,7 @@ ApplicationWindow {
         onClosed: accountData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18
@@ -3206,7 +3368,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 12
@@ -3233,7 +3395,7 @@ ApplicationWindow {
         onClosed: transactionData = null
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18
@@ -3465,7 +3627,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18
@@ -3628,7 +3790,7 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
-                        SurfaceShadow { }
+                        HardShadow { }
 
                         radius: 11
                         color: operationDateButton.down
@@ -3829,7 +3991,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18
@@ -3959,8 +4121,6 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
-                        SurfaceShadow { }
-
                         radius: 9
                         color: filterDayButton.rangeEdge
                                ? root.accent
@@ -4040,7 +4200,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18
@@ -4130,8 +4290,6 @@ ApplicationWindow {
                     }
 
                     background: Rectangle {
-                        SurfaceShadow { }
-
                         radius: 9
                         color: operationDateDialog.isSameDay(
                                    dayButton.model.date,
@@ -4182,7 +4340,7 @@ ApplicationWindow {
             open();
         }
         background: Rectangle {
-            SurfaceShadow { }
+            HardShadow { }
 
             color: root.panel
             radius: 18

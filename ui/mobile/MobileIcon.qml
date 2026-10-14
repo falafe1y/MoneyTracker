@@ -148,6 +148,18 @@ Canvas {
             trace(ctx, s, [8, 4, 8, 8], false);
             trace(ctx, s, [16, 4, 16, 8], false);
             break;
+        case "filter":
+            trace(ctx, s, [3, 5, 21, 5, 14, 13, 14, 19, 10, 21, 10, 13], true);
+            break;
+        case "eye":
+            trace(ctx, s, [2, 12, 12, 6, 22, 12, 12, 18], true);
+            ring(ctx, s, 12, 12, 3);
+            break;
+        case "eyeOff":
+            trace(ctx, s, [2, 12, 12, 6, 22, 12, 12, 18], true);
+            ring(ctx, s, 12, 12, 3);
+            trace(ctx, s, [3, 3, 21, 21], false);
+            break;
         case "arrowIn":
             trace(ctx, s, [12, 4, 12, 16], false);
             trace(ctx, s, [7, 11, 12, 16, 17, 11], false);
