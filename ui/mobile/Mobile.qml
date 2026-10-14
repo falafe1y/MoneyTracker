@@ -725,6 +725,18 @@ ApplicationWindow {
         return items;
     }
 
+    // Horizontal swipe on the dashboard switches the asset: left = next, right = previous.
+    // Vertical or short moves do nothing, so scrolling and taps keep working.
+    function overviewSwipe(dx, dy) {
+        if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy))
+            return false;
+        const order = ["fiat", "crypto", "investment"];
+        const next = order.indexOf(financeController.selectedAsset) + (dx < 0 ? 1 : -1);
+        if (next >= 0 && next < order.length)
+            financeController.selectedAsset = order[next];
+        return true;
+    }
+
     // Round tool button of the balance card. selected = pressed look (e.g. an active date filter)
     component RoundTool: Item {
         id: tool
@@ -775,31 +787,69 @@ ApplicationWindow {
             }
         }
 
-        TapHandler {
+        MouseArea {
             id: tap
-            onTapped: tool.clicked()
+
+            property real pressX: 0
+            property real pressY: 0
+
+            anchors.fill: parent
+            onPressed: function (mouse) {
+                pressX = mouse.x;
+                pressY = mouse.y;
+            }
+            onReleased: function (mouse) {
+                root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+            }
+            onClicked: function (mouse) {
+                if (Math.abs(mouse.x - pressX) <= 40)
+                    tool.clicked();
+            }
         }
     }
 
     Component {
         id: overviewPage
-        ScrollView {
+        // A plain vertical Flickable: horizontal drags are not taken by the scroller,
+        // so the swipe areas of the dashboard receive them (ScrollView grabbed every drag).
+        Flickable {
             id: overviewScroll
             clip: true
+            flickableDirection: Flickable.VerticalFlick
+            boundsBehavior: Flickable.StopAtBounds
 
-            ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AlwaysOff }
-            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOff }
-
-            // Keep panel borders one physical pixel away from ScrollView's clip edge.
+            // Keep panel borders one physical pixel away from the clip edge.
             readonly property int contentEdgeMargin: 2
 
-            contentWidth: availableWidth
+            contentWidth: width
             contentHeight: dashboard.implicitHeight
+
+            // Empty places of the dashboard: a horizontal swipe switches the asset.
+            // Areas with their own taps (accounts, history, buttons) handle the swipe themselves.
+            MouseArea {
+                id: dashboardSwipe
+
+                property real pressX: 0
+                property real pressY: 0
+
+                x: dashboard.x
+                y: 0
+                z: -1
+                width: dashboard.width
+                height: dashboard.implicitHeight
+                onPressed: function (mouse) {
+                    pressX = mouse.x;
+                    pressY = mouse.y;
+                }
+                onReleased: function (mouse) {
+                    root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                }
+            }
 
             ColumnLayout {
                 id: dashboard
                 x: overviewScroll.contentEdgeMargin
-                width: Math.max(0, overviewScroll.availableWidth - overviewScroll.contentEdgeMargin * 2)
+                width: Math.max(0, overviewScroll.width - overviewScroll.contentEdgeMargin * 2)
                 spacing: 12
 
                 // "Общий баланс" card with the round tools on the right
@@ -826,7 +876,7 @@ ApplicationWindow {
                             Text {
                                 Layout.fillWidth: true
                                 text: root.shownAmount(root.money(financeController.balanceMinorUnits, financeController.appCurrency, false))
-                                color: root.designIncome
+                                color: financeController.balanceMinorUnits > 0 ? root.designIncome : root.red
                                 font.pixelSize: 22
                                 font.weight: Font.Bold
                                 elide: Text.ElideRight
@@ -983,23 +1033,20 @@ ApplicationWindow {
                         }
                     }
 
-                    // Taps and swipes on the whole strip. A tap on the checkbox of the selected asset clears the account filter.
+                    // Taps on the strip: a square selects its asset; a tap on the checkbox of the selected asset clears the account filter.
                     MouseArea {
-                        id: assetSwipe
+                        id: assetTap
 
                         property real pressX: 0
+                        property real pressY: 0
 
                         anchors.fill: parent
-                        preventStealing: true
                         onPressed: function (mouse) {
                             pressX = mouse.x;
+                            pressY = mouse.y;
                         }
                         onReleased: function (mouse) {
-                            const dx = mouse.x - pressX;
-                            if (dx < -40)
-                                assetStrip.selectAt(assetStrip.selectedIndex() + 1);
-                            else if (dx > 40)
-                                assetStrip.selectAt(assetStrip.selectedIndex() - 1);
+                            root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
                         }
                         onClicked: function (mouse) {
                             if (Math.abs(mouse.x - pressX) > 40)
@@ -1049,9 +1096,23 @@ ApplicationWindow {
                                 font.pixelSize: 14
                                 opacity: addTap.pressed ? 0.6 : 1
 
-                                TapHandler {
+                                MouseArea {
                                     id: addTap
-                                    onTapped: {
+
+                                    property real pressX: 0
+                                    property real pressY: 0
+
+                                    anchors.fill: parent
+                                    onPressed: function (mouse) {
+                                        pressX = mouse.x;
+                                        pressY = mouse.y;
+                                    }
+                                    onReleased: function (mouse) {
+                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                                    }
+                                    onClicked: function (mouse) {
+                                        if (Math.abs(mouse.x - pressX) > 40)
+                                            return;
                                         if (financeController.selectedAsset === "crypto")
                                             cryptoWalletDialog.openForNewWallet();
                                         else
@@ -1125,8 +1186,20 @@ ApplicationWindow {
                                 }
 
                                 MouseArea {
+                                    property real pressX: 0
+                                    property real pressY: 0
+
                                     anchors.fill: parent
-                                    onClicked: {
+                                    onPressed: function (mouse) {
+                                        pressX = mouse.x;
+                                        pressY = mouse.y;
+                                    }
+                                    onReleased: function (mouse) {
+                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                                    }
+                                    onClicked: function (mouse) {
+                                        if (Math.abs(mouse.x - pressX) > 40)
+                                            return;
                                         if (!accountRow.modelData.isCrypto)
                                             financeController.selectedAccountId = accountRow.selected ? "" : accountRow.modelData.id;
                                     }
@@ -1168,9 +1241,23 @@ ApplicationWindow {
                                 font.pixelSize: 14
                                 opacity: searchTap.pressed ? 0.6 : 1
 
-                                TapHandler {
+                                MouseArea {
                                     id: searchTap
-                                    onTapped: {
+
+                                    property real pressX: 0
+                                    property real pressY: 0
+
+                                    anchors.fill: parent
+                                    onPressed: function (mouse) {
+                                        pressX = mouse.x;
+                                        pressY = mouse.y;
+                                    }
+                                    onReleased: function (mouse) {
+                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                                    }
+                                    onClicked: function (mouse) {
+                                        if (Math.abs(mouse.x - pressX) > 40)
+                                            return;
                                         root.overviewSearchOpen = !root.overviewSearchOpen;
                                         if (!root.overviewSearchOpen) {
                                             root.searchText = "";
@@ -1272,12 +1359,22 @@ ApplicationWindow {
                                 }
 
                                 MouseArea {
+                                    property real pressX: 0
+                                    property real pressY: 0
+
                                     anchors.fill: parent
-                                    enabled: !historyItem.modelData.header
-                                    onPressAndHold: root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouseX, mouseY)
                                     onPressed: function (mouse) {
+                                        pressX = mouse.x;
+                                        pressY = mouse.y;
                                         if (mouse.button === Qt.RightButton && !historyItem.modelData.header)
                                             root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouse.x, mouse.y);
+                                    }
+                                    onReleased: function (mouse) {
+                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                                    }
+                                    onPressAndHold: {
+                                        if (!historyItem.modelData.header)
+                                            root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouseX, mouseY);
                                     }
                                 }
                             }
