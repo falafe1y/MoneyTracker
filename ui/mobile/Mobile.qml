@@ -10,35 +10,28 @@ ApplicationWindow {
     minimumHeight: 560
     visible: true
     title: "Vexa"
-    onClosing: Qt.quit()
     color: root.canvas
     font.pixelSize: 14
 
-    // Color palette
-    // Ivory + indigo foundation. Indigo is the only primary accent;
-    // Income and terracotta colors below are reserved for financial semantics.
-    readonly property color canvas: "#F5F3E4"
-    readonly property color panel: "#FFFFF8"
-    readonly property color soft: "#FFFFF0"
-    readonly property color line: "#D8D7C7"
-    readonly property color accent: "#031528"   // indigo
-    readonly property color muted: "#687483"
-
-    // readonly property color accentDark: "#020D1A"
-    // readonly property color accent2: "#294477"
-    readonly property color accentSoft: "#536A98"
-    readonly property color pale: "#E4E8F1"
+    // Palette values live in MobileTheme so the pages and the shell share one source.
+    readonly property color canvas: MobileTheme.canvas
+    readonly property color panel: MobileTheme.panel
+    readonly property color soft: MobileTheme.soft
+    readonly property color line: MobileTheme.line
+    readonly property color accent: MobileTheme.accent
+    readonly property color muted: MobileTheme.muted
+    readonly property color accentSoft: MobileTheme.accentSoft
+    readonly property color pale: MobileTheme.pale
     readonly property color paleText: "#E9EDF6"
-    readonly property color red: "#B94F48"
-
-    readonly property color navSelected: "#294477"
+    readonly property color red: MobileTheme.red
+    readonly property color navSelected: MobileTheme.navSelected
     readonly property color navHovered: "#142B48"
 
-    readonly property color chartAccent1: "#072a50"
-    readonly property color chartAccent2: "#0e54a0"
-    readonly property color chartAccent3: "#3a8eee"
-    readonly property color chartAccent4: "#31c7ed"
-    readonly property color chartAccent5: "#70d6f0"
+    readonly property color chartAccent1: MobileTheme.chartColors[0]
+    readonly property color chartAccent2: MobileTheme.chartColors[1]
+    readonly property color chartAccent3: MobileTheme.chartColors[2]
+    readonly property color chartAccent4: MobileTheme.chartColors[3]
+    readonly property color chartAccent5: MobileTheme.chartColors[4]
     readonly property var chartColors: [
         chartAccent1,
         chartAccent2,
@@ -47,18 +40,18 @@ ApplicationWindow {
         chartAccent5
     ]
 
-    readonly property color tableHeader: "#F1F0DF"
+    readonly property color tableHeader: MobileTheme.tableHeader
     readonly property color tableRowAlt: "#FAF9EC"
     readonly property color categoryRow: "#FFFFF0"
     readonly property color categoryEditRow: "#F4F3E3"
-    readonly property color controlHovered: "#F3F1E3"
+    readonly property color controlHovered: MobileTheme.hover
     readonly property int chartPriceLevels: 7
 
-    readonly property color incomePanel: "#E8F0E9"
-    readonly property color expensePanel: "#F5E6E2"
-    readonly property color income: "#3F735F"
+    readonly property color incomePanel: MobileTheme.incomePanel
+    readonly property color expensePanel: MobileTheme.expensePanel
+    readonly property color income: MobileTheme.income
 
-    readonly property color white: "#FFFFF0"
+    readonly property color white: MobileTheme.accentText
     readonly property color transparentColor: "transparent"
 
     property string page: "overview"
@@ -66,7 +59,7 @@ ApplicationWindow {
     readonly property var scrollController: browserScroll
     AutoScrollController { id: browserScroll; parent: root.contentItem }
     property string searchText: ""
-    readonly property int pageMargin: width < 360 ? 10 : 14
+    readonly property int pageMargin: MobileTheme.margin
     readonly property int touchHeight: 48
     readonly property var assets: [
         {
@@ -86,23 +79,9 @@ ApplicationWindow {
         }
     ]
 
-    function symbol(code) {
-        return code === "USD" ? "$" : code === "EUR" ? "€" : code === "CNY" ? "¥" : "₽";
-    }
-
-    function uiLocale() {
-        return Qt.locale(financeController.uiLanguage === "en" ? "en_US" : "ru_RU");
-    }
-
-    function money(minor, code, sign) {
-        const roundedMinor = Math.round(Number(minor));
-        const value = roundedMinor / 100;
-        const decimals = Math.abs(roundedMinor) % 100 === 0 ? 0 : 2;
-        const prefix = sign ? (value >= 0 ? "+" : "−") : (value < 0 ? "−" : "");
-        return prefix
-             + Math.abs(value).toLocaleString(root.uiLocale(), "f", decimals)
-             + " " + symbol(code || financeController.appCurrency);
-    }
+    function symbol(code) { return MobileFormat.symbol(code); }
+    function uiLocale() { return MobileFormat.locale(); }
+    function money(minor, code, sign) { return MobileFormat.money(minor, code, sign); }
 
     function assetTitle(code) {
         for (let i = 0; i < assets.length; ++i)
@@ -273,139 +252,6 @@ ApplicationWindow {
              + " — " + Qt.formatDate(to, "dd.MM.yyyy");
     }
 
-    function historyResolutionLabel(rows) {
-        if (rows.length === 0) return "";
-        if (rows[0].resolution === "year") return qsTr("По годам");
-        if (rows[0].resolution === "month") return qsTr("По месяцам");
-        return qsTr("По дням");
-    }
-
-    function averageCompletedMonthExpense(rows) {
-        let total = 0, count = 0;
-        for (let i = 0; i < rows.length; ++i) {
-            if (!rows[i].tracked || !rows[i].complete) continue;
-            total += Number(rows[i].totalMinor);
-            ++count;
-        }
-        if (count === 0) {
-            for (let j = 0; j < rows.length; ++j) {
-                if (!rows[j].tracked) continue;
-                total += Number(rows[j].totalMinor);
-                ++count;
-            }
-        }
-        return count > 0 ? Math.round(total / count) : 0;
-    }
-
-    function expenseHistoryFirstYear() {
-        const rows = financeController.expenseHistoryByMonthRub;
-        if (rows.length === 0) return new Date().getFullYear();
-        const date = root.dateFromIso(rows[0].date);
-        return date ? date.getFullYear() : new Date().getFullYear();
-    }
-
-    function expenseHistoryLastYear() {
-        const rows = financeController.expenseHistoryByMonthRub;
-        if (rows.length === 0) return new Date().getFullYear();
-        const date = root.dateFromIso(rows[rows.length - 1].date);
-        return date ? Math.max(new Date().getFullYear(), date.getFullYear())
-                    : new Date().getFullYear();
-    }
-
-    function expenseRowsForYear(year) {
-        const source = financeController.expenseHistoryByMonthRub;
-        const byMonth = {};
-        for (let i = 0; i < source.length; ++i) {
-            const date = root.dateFromIso(source[i].date);
-            if (date && date.getFullYear() === year) byMonth[date.getMonth()] = source[i];
-        }
-        const result = [];
-        for (let month = 0; month < 12; ++month) {
-            const row = byMonth[month];
-            result.push({
-                date: year + "-" + (month < 9 ? "0" : "") + (month + 1) + "-01",
-                monthIndex: month,
-                totalMinor: row ? Number(row.totalMinor) : 0,
-                complete: row ? Boolean(row.complete) : false,
-                tracked: Boolean(row)
-            });
-        }
-        return result;
-    }
-
-    function expenseMonthLabel(month) {
-        return [
-            qsTr("Янв."), qsTr("Фев."), qsTr("Мар."), qsTr("Апр."),
-            qsTr("Май"), qsTr("Июн."), qsTr("Июл."), qsTr("Авг."),
-            qsTr("Сен."), qsTr("Окт."), qsTr("Ноя."), qsTr("Дек.")
-        ][month];
-    }
-
-    function compactAxisMoney(minor, code) {
-        const amount = Math.abs(Number(minor)) < 0.5 ? 0 : Number(minor) / 100;
-        const absolute = Math.abs(amount);
-        let divisor = 1, suffix = "";
-        const westernStyle = code !== "RUB";
-        if (absolute >= 1000000000) { divisor = 1000000000; suffix = westernStyle ? "B" : qsTr("млрд"); }
-        else if (absolute >= 1000000) { divisor = 1000000; suffix = westernStyle ? "M" : qsTr("млн"); }
-        else if (absolute >= 1000) { divisor = 1000; suffix = westernStyle ? "K" : qsTr("тыс."); }
-        if (westernStyle) {
-            const scaledWestern = amount / divisor;
-            const roundedWestern = Math.round(scaledWestern);
-            const wholeWestern = Math.abs(scaledWestern - roundedWestern) < 0.000001;
-            const westernDigits = wholeWestern || Math.abs(scaledWestern) >= 100 ? 0
-                                : Math.abs(scaledWestern) >= 10 ? 1 : 2;
-            const westernNumber = Math.abs(scaledWestern).toFixed(westernDigits)
-                .replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
-            return (scaledWestern < 0 ? "−" : "")
-                + root.symbol(code) + westernNumber + suffix;
-        }
-        if (divisor === 1) return root.money(Math.round(Number(minor)), code, false);
-        const scaled = amount / divisor;
-        const roundedScaled = Math.round(scaled);
-        const whole = Math.abs(scaled - roundedScaled) < 0.000001;
-        const digits = whole || Math.abs(scaled) >= 100 ? 0
-                     : Math.abs(scaled) >= 10 ? 1 : 2;
-        return scaled.toLocaleString(root.uiLocale(), "f", digits)
-            + " " + suffix + " " + root.symbol(code);
-    }
-
-    function chartStep(range, intervals) {
-        const raw = range / Math.max(1, intervals);
-        if (!Number.isFinite(raw) || raw <= 0) return 1;
-        const magnitude = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
-        const normalized = raw / magnitude;
-        return (normalized <= 1 ? 1 : normalized <= 2 ? 2
-              : normalized <= 2.5 ? 2.5 : normalized <= 3 ? 3
-              : normalized <= 4 ? 4 : normalized <= 5 ? 5
-              : normalized <= 7.5 ? 7.5 : 10)
-            * magnitude;
-    }
-
-    function chartAxis(minimum, maximum, bars) {
-        const intervals = Math.max(1, chartPriceLevels - 1);
-        if (bars) {
-            const step = chartStep(Math.max(100, maximum * 1.08), intervals);
-            return { minimum: 0, maximum: intervals * step };
-        }
-        const span = maximum === minimum
-            ? Math.max(100, Math.abs(maximum) * 0.1)
-            : maximum - minimum;
-        const padding = span * 0.04;
-        let step = chartStep(span + padding * 2, intervals);
-        let low;
-        while (true) {
-            const lowerStart = Math.floor((minimum - padding) / step + 1e-9) * step;
-            const upperStart = Math.ceil((maximum + padding) / step - 1e-9) * step
-                             - intervals * step;
-            low = Math.max(lowerStart, upperStart);
-            if (low <= minimum + step * 1e-9)
-                break;
-            step = chartStep(step * (1 + 1e-9), 1);
-        }
-        return { minimum: low, maximum: low + intervals * step };
-    }
-
     function transactionSummary(row) {
         if (row.recipientSource)
             return row.recipientName || qsTr("Получатель не определён");
@@ -459,113 +305,6 @@ ApplicationWindow {
         radius: 16
         border.width: 1
         border.color: root.line
-    }
-
-    component MobileAnalyticsChart: Item {
-        id: mobileAnalyticsRoot
-        property var points: []
-        property string currency: "RUB"
-        property bool bars: false
-        property real averageMinor: 0
-
-        Canvas {
-            id: mobileAnalyticsCanvas
-            anchors.fill: parent
-            onWidthChanged: requestPaint()
-            onHeightChanged: requestPaint()
-            Component.onCompleted: requestPaint()
-            Connections {
-                target: mobileAnalyticsRoot
-                function onPointsChanged() { mobileAnalyticsCanvas.requestPaint(); }
-                function onCurrencyChanged() { mobileAnalyticsCanvas.requestPaint(); }
-                function onBarsChanged() { mobileAnalyticsCanvas.requestPaint(); }
-                function onAverageMinorChanged() { mobileAnalyticsCanvas.requestPaint(); }
-            }
-            onPaint: {
-                const ctx = getContext("2d");
-                ctx.clearRect(0, 0, width, height);
-                const data = parent.points || [];
-                if (data.length === 0 || width < 120 || height < 80) return;
-                const left = 88, right = 8, top = 8, bottom = 24;
-                const plotWidth = Math.max(1, width - left - right);
-                const plotHeight = Math.max(1, height - top - bottom);
-                let minimum = parent.bars ? 0 : Number(data[0].totalMinor);
-                let maximum = minimum;
-                for (let i = 0; i < data.length; ++i) {
-                    const value = Number(data[i].totalMinor);
-                    minimum = Math.min(minimum, value);
-                    maximum = Math.max(maximum, value);
-                }
-                const axis = root.chartAxis(minimum, maximum, parent.bars);
-                minimum = axis.minimum;
-                maximum = axis.maximum;
-                const range = Math.max(1, maximum - minimum);
-                ctx.font = "14px Commissioner";
-                const intervals = Math.max(1, root.chartPriceLevels - 1);
-                for (let tick = 0; tick <= intervals; ++tick) {
-                    const ratio = tick / intervals, y = top + ratio * plotHeight;
-                    ctx.strokeStyle = root.line; ctx.lineWidth = 1;
-                    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke();
-                    ctx.fillStyle = root.muted; ctx.textAlign = "right"; ctx.textBaseline = "middle";
-                    ctx.fillText(root.compactAxisMoney(maximum - ratio * range, parent.currency), left - 5, y);
-                }
-                const slot = data.length > 1 ? plotWidth / (data.length - 1) : plotWidth;
-                if (parent.bars) {
-                    const barSlot = plotWidth / data.length;
-                    ctx.fillStyle = root.red;
-                    for (let bar = 0; bar < data.length; ++bar) {
-                        const barHeight = (Number(data[bar].totalMinor) - minimum) / range * plotHeight;
-                        ctx.fillRect(left + bar * barSlot + barSlot * 0.18,
-                                     top + plotHeight - barHeight, Math.max(1, barSlot * 0.64), barHeight);
-                    }
-                    if (parent.averageMinor > 0) {
-                        const averageY = top + plotHeight
-                            - Math.min(parent.averageMinor, maximum) / maximum * plotHeight;
-                        ctx.save(); ctx.strokeStyle = root.accent; ctx.lineWidth = 1.3;
-                        ctx.setLineDash([5, 3]); ctx.beginPath();
-                        ctx.moveTo(left, averageY); ctx.lineTo(left + plotWidth, averageY);
-                        ctx.stroke(); ctx.restore();
-                    }
-                } else {
-                    ctx.strokeStyle = root.chartAccent3; ctx.lineWidth = 2.2;
-                    ctx.lineJoin = "round"; ctx.beginPath();
-                    for (let point = 0; point < data.length; ++point) {
-                        const x = data.length === 1 ? left + plotWidth / 2 : left + point * slot;
-                        const y = top + (maximum - Number(data[point].totalMinor)) / range * plotHeight;
-                        if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-                    }
-                    ctx.stroke();
-                }
-                ctx.fillStyle = root.muted; ctx.textBaseline = "top";
-                if (parent.bars) {
-                    const monthSlot = plotWidth / data.length;
-                    ctx.font = "14px Commissioner";
-                    ctx.textAlign = "center";
-                    for (let label = 0; label < data.length; ++label)
-                        ctx.fillText(root.expenseMonthLabel(data[label].monthIndex),
-                                     left + (label + 0.5) * monthSlot,
-                                     top + plotHeight + 6);
-                } else {
-                    const firstLabel = Qt.formatDate(root.dateFromIso(data[0].date), "dd.MM");
-                    const lastLabel = Qt.formatDate(
-                        root.dateFromIso(data[data.length - 1].date), "dd.MM");
-                    ctx.textAlign = "left";
-                    ctx.fillText(firstLabel, left, top + plotHeight + 6);
-                    ctx.textAlign = "right";
-                    ctx.fillText(lastLabel, left + plotWidth, top + plotHeight + 6);
-                }
-            }
-        }
-        Text {
-            anchors.centerIn: parent
-            width: Math.max(0, parent.width - 24)
-            visible: !mobileAnalyticsRoot.bars && mobileAnalyticsRoot.points.length === 0
-            text: qsTr("Добавьте операцию — здесь появится история капитала")
-            color: root.muted
-            font.pixelSize: 14
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-        }
     }
 
     // Item.clip and ListView.clip are rectangular. These masks cover content
@@ -669,138 +408,132 @@ ApplicationWindow {
         appAccentColor: root.navSelected
         appHoverColor: root.controlHovered
     }
-    component NavButton: Button {
-        id: nav
-        property string glyph: ""
-        property string iconSource: ""
-        property string target: ""
-        flat: true
-        hoverEnabled: true
-        implicitHeight: 62
-        implicitWidth: 56
-        contentItem: ColumnLayout {
-            spacing: 2
-            Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 24
+    readonly property var tabItems: [
+        { key: "overview", title: qsTr("Обзор"), svg: "qrc:/icons/dashboard.svg" },
+        { key: "accounts", title: qsTr("Счета"), icon: "wallet" },
+        { key: "operations", title: qsTr("Операции"), icon: "list" },
+        { key: "analytics", title: qsTr("Аналитика"), svg: "qrc:/icons/analytics.svg" },
+        { key: "more", title: qsTr("Ещё"), icon: "more" }
+    ]
+    readonly property var pageTitles: ({
+        "overview": qsTr("Мои финансы"),
+        "accounts": qsTr("Счета"),
+        "operations": qsTr("Операции"),
+        "analytics": qsTr("Аналитика"),
+        "more": qsTr("Ещё"),
+        "categories": qsTr("Категории"),
+        "budgets": qsTr("Бюджеты"),
+        "goals": qsTr("Цели"),
+        "trajectory": qsTr("Траектория"),
+        "scheduled": qsTr("Регулярные операции"),
+        "projects": qsTr("Проекты"),
+        "notes": qsTr("Заметки"),
+        "settings": qsTr("Настройки"),
+        "data": qsTr("Импорт и экспорт")
+    })
+    readonly property var globalFilterPages: ["overview", "accounts", "operations", "analytics"]
+    readonly property bool globalFilters: globalFilterPages.indexOf(page) >= 0
+    readonly property string tabKey: globalFilters ? page : "more"
+    property var pageHistory: []
 
-                Text {
-                    anchors.fill: parent
-                    visible: nav.iconSource.length === 0
-                    text: nav.glyph
-                    color: root.page === nav.target ? root.white : root.paleText
-                    font.pixelSize: 19
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                Image {
-                    id: navIconImage
-                    anchors.centerIn: parent
-                    width: 21
-                    height: 21
-                    visible: nav.iconSource.length > 0
-                    source: nav.iconSource
-                    sourceSize: Qt.size(21, 21)
-                    fillMode: Image.PreserveAspectFit
-                }
-            }
-            Text {
-                text: nav.text
-                color: root.page === nav.target ? root.white : root.paleText
-                font.pixelSize: 14
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                elide: Text.ElideRight
-            }
+    function pageTitle() {
+        if (page === "project") {
+            const rows = financeController.projects;
+            for (let i = 0; i < rows.length; ++i)
+                if (rows[i].id === financeController.selectedProjectId)
+                    return rows[i].name;
+            return qsTr("Проект");
         }
-        background: Rectangle {
-            SurfaceShadow { }
+        return pageTitles[page] || "";
+    }
 
-            radius: 12
-            color: root.page === nav.target ? root.navSelected : (nav.hovered ? root.navHovered : root.transparentColor)
+    function openTab(key) {
+        pageHistory = [];
+        page = key;
+    }
+
+    function openPage(key) {
+        if (key === page)
+            return;
+        pageHistory = pageHistory.concat([page]);
+        page = key;
+    }
+
+    function goBack() {
+        if (pageHistory.length > 0) {
+            const previous = pageHistory.slice();
+            page = previous.pop();
+            pageHistory = previous;
+            return true;
         }
-        onClicked: root.page = target
+        if (page !== "overview") {
+            page = "overview";
+            return true;
+        }
+        return false;
     }
 
     Item {
         anchors.fill: parent
+        focus: true
+        Keys.onBackPressed: function(event) {
+            event.accepted = root.goBack();
+        }
 
         ColumnLayout {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.bottom: mobileNavigation.top
+            anchors.bottom: tabBar.top
             anchors.leftMargin: root.pageMargin
             anchors.rightMargin: root.pageMargin
             anchors.topMargin: 8
-            anchors.bottomMargin: 10
-            spacing: 10
+            anchors.bottomMargin: 8
+            spacing: 8
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 52
-                spacing: 10
+                Layout.preferredHeight: 48
+                spacing: 8
 
-                Rectangle {
-                    SurfaceShadow { }
-
-                    width: 38
-                    height: 38
-                    radius: 12
-                    color: root.accent
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: "◆"
-                        color: root.white
-                        font.pixelSize: 16
-                    }
+                MobileIconButton {
+                    visible: root.pageHistory.length > 0
+                    icon: "chevronLeft"
+                    onClicked: root.goBack()
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: page === "overview" ? qsTr("Мои финансы")
-                        : page === "accounts" ? qsTr("Счета")
-                        : page === "categories" ? qsTr("Категории")
-                        : page === "operations" ? qsTr("Операции")
-                        : page === "analytics" ? qsTr("Аналитика")
-                        : qsTr("Настройки")
-                    color: root.accent
-                    font.pixelSize: root.width < 360 ? 21 : 23
-                    font.weight: Font.Bold
+                    Layout.minimumWidth: 0
+                    text: root.pageTitle()
                     elide: Text.ElideRight
+                    color: root.accent
+                    font.pixelSize: MobileTheme.sizeTitle
+                    font.weight: Font.DemiBold
                 }
 
-                AppComboBox {
-                    id: currencyBox
-                    Layout.preferredWidth: 92
-                    implicitHeight: root.touchHeight
-                    model: ["RUB", "USD", "EUR", "CNY"]
-                    currentIndex: Math.max(0, model.indexOf(financeController.appCurrency))
-                    onActivated: financeController.appCurrency = currentText
+                MobileChip {
+                    visible: root.globalFilters
+                    text: financeController.appCurrency
+                    onClicked: currencySheet.open()
                 }
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                visible: page === "overview"
-                      || page === "accounts"
-                      || page === "operations"
-                      || page === "analytics"
+                visible: root.globalFilters
                 spacing: 8
 
-                SoftButton {
+                MobileChip {
                     Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: "◷  " + root.dateFilterLabel()
+                    text: root.dateFilterLabel()
                     onClicked: dateFilterDialog.openForCurrent()
                 }
 
-                AppTextField {
-                    visible: page === "overview" || page === "operations"
+                MobileField {
                     Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    placeholderText: qsTr("Поиск...")
+                    visible: root.page === "overview" || root.page === "operations"
+                    placeholder: qsTr("Поиск")
                     onTextChanged: root.searchText = text
                 }
             }
@@ -812,75 +545,124 @@ ApplicationWindow {
                 pages: [
                     { key: "overview", component: overviewPage },
                     { key: "accounts", component: accountsPage },
-                    { key: "categories", component: categoriesPage },
                     { key: "operations", component: operationsPage },
                     { key: "analytics", component: analyticsPage },
-                    { key: "settings", component: settingsPage }
+                    { key: "more", component: morePage },
+                    { key: "categories", component: categoriesPage },
+                    { key: "settings", component: settingsPage },
+                    { key: "data", component: dataPage },
+                    { key: "budgets", component: budgetsPage },
+                    { key: "goals", component: goalsPage },
+                    { key: "trajectory", component: trajectoryPage },
+                    { key: "scheduled", component: scheduledPage },
+                    { key: "projects", component: projectsPage },
+                    { key: "project", component: projectPage },
+                    { key: "notes", component: notesPage }
                 ]
             }
         }
 
-        Rectangle {
-            SurfaceShadow { }
+        MobileTabBar {
+            id: tabBar
 
-            id: mobileNavigation
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.margins: 6
-            height: 70
-            radius: 18
-            color: root.accent
+            height: 64
+            items: root.tabItems
+            activeKey: root.tabKey
+            onSelected: function(key) { root.openTab(key) }
+        }
+    }
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 4
-                spacing: 2
+    MobileSheet {
+        id: currencySheet
 
-                NavButton {
+        title: qsTr("Валюта")
+
+        MobileCard {
+            Layout.fillWidth: true
+            cardPadding: 0
+            gap: 0
+
+            Repeater {
+                model: ["RUB", "USD", "EUR", "CNY"]
+
+                delegate: MobileListRow {
+                    required property string modelData
+                    required property int index
+
                     Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: qsTr("Обзор")
-                    iconSource: "qrc:/icons/dashboard.svg"
-                    target: "overview"
-                }
-                NavButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: qsTr("Счета")
-                    glyph: "▣"
-                    target: "accounts"
-                }
-                NavButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: qsTr("Категории")
-                    glyph: "◇"
-                    target: "categories"
-                }
-                NavButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: qsTr("Операции")
-                    glyph: "⇄"
-                    target: "operations"
-                }
-                NavButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: qsTr("Аналитика")
-                    iconSource: "qrc:/icons/analytics.svg"
-                    target: "analytics"
-                }
-                NavButton {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    text: qsTr("Настройки")
-                    glyph: "⚙"
-                    target: "settings"
+                    first: index === 0
+                    title: modelData
+                    marked: financeController.appCurrency === modelData
+                    onClicked: {
+                        financeController.appCurrency = modelData;
+                        currencySheet.close();
+                    }
                 }
             }
         }
+    }
+
+    Component {
+        id: morePage
+
+        MobileMorePage {
+            onNavigate: function(key) { root.openPage(key) }
+        }
+    }
+
+    Component {
+        id: budgetsPage
+
+        MobileBudgetsPage {}
+    }
+
+    Component {
+        id: goalsPage
+
+        MobileGoalsPage {}
+    }
+
+    Component {
+        id: trajectoryPage
+
+        MobileTrajectoryPage {}
+    }
+
+    Component {
+        id: scheduledPage
+
+        MobileScheduledPage {}
+    }
+
+    Component {
+        id: dataPage
+
+        MobileDataPage {}
+    }
+
+    Component {
+        id: projectsPage
+
+        MobileProjectsPage {
+            onNavigate: function(key) { root.openPage(key) }
+        }
+    }
+
+    Component {
+        id: projectPage
+
+        MobileProjectPage {
+            onDone: root.goBack()
+        }
+    }
+
+    Component {
+        id: notesPage
+
+        MobileNotesPage {}
     }
 
     Component {
@@ -2415,156 +2197,9 @@ ApplicationWindow {
 
     Component {
         id: analyticsPage
-        ScrollView {
-            id: mobileAnalyticsScroll
-            property int expenseYear: new Date().getFullYear()
-            clip: true
-            contentWidth: availableWidth
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
 
-            ColumnLayout {
-                width: mobileAnalyticsScroll.availableWidth
-                spacing: 10
-
-                Panel {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 235
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("История расходов по месяцам") + " · RUB"
-                            color: root.accent
-                            font.pixelSize: 16
-                            font.weight: Font.DemiBold
-                            wrapMode: Text.WordWrap
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Item { Layout.fillWidth: true }
-                            SoftButton {
-                                text: "‹"
-                                controlHeight: 30
-                                Layout.preferredWidth: 38
-                                enabled: mobileAnalyticsScroll.expenseYear
-                                    > root.expenseHistoryFirstYear()
-                                onClicked: mobileAnalyticsScroll.expenseYear -= 1
-                            }
-                            Text {
-                                text: mobileAnalyticsScroll.expenseYear
-                                color: root.accent
-                                font.pixelSize: 14
-                                font.weight: Font.DemiBold
-                                Layout.minimumWidth: 44
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-                            SoftButton {
-                                text: "›"
-                                controlHeight: 30
-                                Layout.preferredWidth: 38
-                                enabled: mobileAnalyticsScroll.expenseYear
-                                    < root.expenseHistoryLastYear()
-                                onClicked: mobileAnalyticsScroll.expenseYear += 1
-                            }
-                            Item { Layout.fillWidth: true }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Среднее: %1 в месяц").arg(root.money(
-                                root.averageCompletedMonthExpense(
-                                    root.expenseRowsForYear(
-                                        mobileAnalyticsScroll.expenseYear)),
-                                "RUB", false))
-                            color: root.muted
-                            font.pixelSize: 14
-                            wrapMode: Text.WordWrap
-                        }
-                        MobileAnalyticsChart {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            points: root.expenseRowsForYear(
-                                mobileAnalyticsScroll.expenseYear)
-                            currency: "RUB"
-                            bars: true
-                            averageMinor: root.averageCompletedMonthExpense(points)
-                        }
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            visible: financeController.expenseHistoryByMonthRub.length === 0
-                            text: qsTr("Добавьте расходы — здесь появится история по месяцам")
-                            color: root.muted
-                            font.pixelSize: 14
-                        }
-                    }
-                }
-
-                Panel {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 235
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Text {
-                                Layout.fillWidth: true
-                                text: qsTr("История капитала в рублях")
-                                color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                            }
-                            Text {
-                                text: root.historyResolutionLabel(financeController.capitalHistoryRub)
-                                color: root.muted
-                                font.pixelSize: 14
-                            }
-                        }
-                        MobileAnalyticsChart {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            points: financeController.capitalHistoryRub
-                            currency: "RUB"
-                        }
-                    }
-                }
-
-                Panel {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 250
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Text {
-                                Layout.fillWidth: true
-                                text: qsTr("Капитал в выбранной валюте")
-                                color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                                wrapMode: Text.WordWrap
-                            }
-                            AppComboBox {
-                                model: ["USD", "EUR", "CNY"]
-                                currentIndex: Math.max(0, model.indexOf(financeController.analyticsCurrency))
-                                onActivated: financeController.analyticsCurrency = currentText
-                                implicitWidth: 92
-                            }
-                        }
-                        MobileAnalyticsChart {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            points: financeController.capitalHistoryAnalyticsCurrency
-                            currency: financeController.analyticsCurrency
-                        }
-                    }
-                }
-            }
-        }
+        MobileAnalyticsPage {}
     }
-
     Component {
         id: settingsPage
         Panel {

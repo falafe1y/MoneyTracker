@@ -7,7 +7,7 @@ include(GNUInstallDirs)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Sql Network Concurrent LinguistTools Svg)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 QuickDialogs2 Sql Network Concurrent LinguistTools Svg)
 find_package(ZLIB REQUIRED)
 add_subdirectory(security)
 add_subdirectory(storage)
@@ -25,12 +25,62 @@ qt_add_executable(vexa
     services/BankRecipients.qrc
 )
 
+set_source_files_properties(
+    ui/mobile/MobileTheme.qml
+    ui/mobile/MobileFormat.qml
+    ui/mobile/MobileAnalytics.qml
+    ui/mobile/MobileMetricDefinitions.qml
+    PROPERTIES QT_QML_SINGLETON_TYPE TRUE
+)
+
 qt_add_qml_module(vexa
     URI Vexa
     QML_FILES
         ui/security/AccessWindow.qml
         ui/security/DatabaseWindow.qml
         ui/mobile/Mobile.qml
+        ui/mobile/MobileTheme.qml
+        ui/mobile/MobileFormat.qml
+        ui/mobile/MobileIcon.qml
+        ui/mobile/MobileSvgIcon.qml
+        ui/mobile/MobileCard.qml
+        ui/mobile/MobileButton.qml
+        ui/mobile/MobileChip.qml
+        ui/mobile/MobileSegmented.qml
+        ui/mobile/MobileField.qml
+        ui/mobile/MobileCheckRow.qml
+        ui/mobile/MobileListRow.qml
+        ui/mobile/MobileIconButton.qml
+        ui/mobile/MobileFab.qml
+        ui/mobile/MobileProgress.qml
+        ui/mobile/MobileSheet.qml
+        ui/mobile/MobileTabBar.qml
+        ui/mobile/MobileEmptyState.qml
+        ui/mobile/MobileMorePage.qml
+        ui/mobile/MobileNotesPage.qml
+        ui/mobile/MobileBudgetsPage.qml
+        ui/mobile/MobileBudgetSheet.qml
+        ui/mobile/MobileGoalsPage.qml
+        ui/mobile/MobileGoalSheet.qml
+        ui/mobile/MobileProjectsPage.qml
+        ui/mobile/MobileProjectPage.qml
+        ui/mobile/MobileTrajectoryPage.qml
+        ui/mobile/MobileScheduledPage.qml
+        ui/mobile/MobileDataPage.qml
+        ui/mobile/MobileAnalytics.qml
+        ui/mobile/MobileMetricDefinitions.qml
+        ui/mobile/MobileMetricSheet.qml
+        ui/mobile/MobileInfoButton.qml
+        ui/mobile/MobileSeriesChart.qml
+        ui/mobile/MobileBarChart.qml
+        ui/mobile/MobileInvestmentDataQuality.qml
+        ui/mobile/MobileInvestmentBenchmark.qml
+        ui/mobile/MobileInvestmentDeposit.qml
+        ui/mobile/MobileInvestmentRisk.qml
+        ui/mobile/MobileInvestmentStructure.qml
+        ui/mobile/MobileInvestmentPayments.qml
+        ui/mobile/MobileInvestmentPerformance.qml
+        ui/mobile/MobileAnalyticsPage.qml
         ui/computer/common/AutoScrollController.qml
         ui/computer/common/CachedPages.qml
         ui/computer/common/HardShadow.qml
@@ -115,6 +165,8 @@ qt_add_qml_module(vexa
         SOURCES services/DateSliceCalculator.cpp
         SOURCES services/CsvCodec.h
         SOURCES services/CsvCodec.cpp
+        SOURCES services/ContentUriIo.h
+        SOURCES services/ContentUriIo.cpp
         SOURCES services/BankCsvImporter.h
         SOURCES services/BankCsvImporter.cpp
         SOURCES services/BankRecipientMatcher.h
@@ -185,6 +237,7 @@ target_link_libraries(vexa
     PRIVATE
         Qt6::Quick
         Qt6::QuickControls2
+        Qt6::QuickDialogs2
         Qt6::Sql
         Qt6::Network
         Qt6::Concurrent

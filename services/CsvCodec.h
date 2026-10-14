@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -34,6 +35,11 @@ public:
         const QString& filePath,
         const QVector<QStringList>& rows,
         QString& error
+        );
+    static QByteArray serialize(const QVector<QStringList>& rows);
+    static ReadResult parseBytes(
+        const QByteArray& bytes,
+        const ReadOptions& options
         );
     static ReadResult readFile(const QString& filePath);
     static ReadResult readFile(

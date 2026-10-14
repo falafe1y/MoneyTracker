@@ -13,6 +13,7 @@
 #include "../services/DateSliceCalculator.h"
 #include "../services/DepositInterestCalculator.h"
 #include "../services/RecurringScheduleCalculator.h"
+#include "../services/ContentUriIo.h"
 #include "../services/CsvCodec.h"
 #include "../services/CryptoParser.h"
 #include "../services/TransactionDateFilter.h"
@@ -1163,12 +1164,13 @@ bool FinanceController::saveManualCurrencyRates(
 QVariantMap FinanceController::exportTransactionsCsv(const QUrl& fileUrl) const
 {
     QVariantMap result{{QStringLiteral("ok"), false}};
+    const bool contentUri = ContentUriIo::isContentUri(fileUrl);
     QString filePath = fileUrl.toLocalFile();
-    if (filePath.isEmpty()) {
+    if (!contentUri && filePath.isEmpty()) {
         result["error"] = tr("Не выбран файл для экспорта");
         return result;
     }
-    if (!filePath.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive)) {
+    if (!contentUri && !filePath.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive)) {
         filePath += QStringLiteral(".csv");
     }
 
@@ -1245,13 +1247,18 @@ QVariantMap FinanceController::exportTransactionsCsv(const QUrl& fileUrl) const
     }
 
     QString error;
-    if (!CsvCodec::writeFile(filePath, rows, error)) {
+    if (contentUri) {
+        if (!ContentUriIo::writeAll(fileUrl, CsvCodec::serialize(rows), error)) {
+            result["error"] = error;
+            return result;
+        }
+    } else if (!CsvCodec::writeFile(filePath, rows, error)) {
         result["error"] = error;
         return result;
     }
     result["ok"] = true;
     result["count"] = rows.size() - 1;
-    result["path"] = QFileInfo(filePath).absoluteFilePath();
+    result["path"] = contentUri ? fileUrl.toString() : QFileInfo(filePath).absoluteFilePath();
     return result;
 }
 
@@ -1532,12 +1539,23 @@ QVariantMap FinanceController::importTransactionsCsv(const QUrl& fileUrl)
     QVariantMap result{{QStringLiteral("ok"), false},
                        {QStringLiteral("imported"), 0},
                        {QStringLiteral("skipped"), 0}};
-    const QString filePath = fileUrl.toLocalFile();
-    if (filePath.isEmpty()) {
-        result["error"] = tr("Не выбран CSV-файл");
-        return result;
+    CsvCodec::ReadResult csv;
+    if (ContentUriIo::isContentUri(fileUrl)) {
+        QByteArray bytes;
+        QString readError;
+        if (!ContentUriIo::readAll(fileUrl, bytes, readError)) {
+            result["error"] = readError;
+            return result;
+        }
+        csv = CsvCodec::parseBytes(bytes, CsvCodec::ReadOptions{});
+    } else {
+        const QString filePath = fileUrl.toLocalFile();
+        if (filePath.isEmpty()) {
+            result["error"] = tr("Не выбран CSV-файл");
+            return result;
+        }
+        csv = CsvCodec::readFile(filePath);
     }
-    const CsvCodec::ReadResult csv = CsvCodec::readFile(filePath);
     if (!csv.error.isEmpty()) {
         result["error"] = csv.error;
         return result;

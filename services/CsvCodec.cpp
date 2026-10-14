@@ -201,6 +201,20 @@ QChar detectDelimiter(const QString& text)
 }
 }
 
+QByteArray CsvCodec::serialize(const QVector<QStringList>& rows)
+{
+    QString text;
+    for (const QStringList& row : rows) {
+        QStringList encoded;
+        encoded.reserve(row.size());
+        for (const QString& field : row) {
+            encoded.append(encodeField(field));
+        }
+        text += encoded.join(QLatin1Char(';')) + QLatin1Char('\n');
+    }
+    return QByteArray("\xEF\xBB\xBF", 3) + text.toUtf8();
+}
+
 bool CsvCodec::writeFile(
     const QString& filePath,
     const QVector<QStringList>& rows,
@@ -212,20 +226,8 @@ bool CsvCodec::writeFile(
         error = file.errorString();
         return false;
     }
-
-    file.write("\xEF\xBB\xBF", 3);
-    QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
-    for (const QStringList& row : rows) {
-        QStringList encoded;
-        encoded.reserve(row.size());
-        for (const QString& field : row) {
-            encoded.append(encodeField(field));
-        }
-        stream << encoded.join(QLatin1Char(';')) << '\n';
-    }
-    stream.flush();
-    if (stream.status() != QTextStream::Ok || !file.commit()) {
+    file.write(serialize(rows));
+    if (!file.commit()) {
         error = file.errorString();
         return false;
     }
@@ -252,7 +254,14 @@ CsvCodec::ReadResult CsvCodec::readFile(
     if (file.error() != QFileDevice::NoError) {
         return {{}, file.errorString(), {}, {}};
     }
+    return parseBytes(bytes, options);
+}
 
+CsvCodec::ReadResult CsvCodec::parseBytes(
+    const QByteArray& bytes,
+    const ReadOptions& options
+    )
+{
     QString encoding;
     QString error;
     const QString text = decodeBytes(bytes, options.encoding, encoding, error);
