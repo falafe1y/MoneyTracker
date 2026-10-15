@@ -20,6 +20,19 @@ QtObject {
     readonly property color hover: "#F3F1E3"
     readonly property var chartColors: ["#072a50", "#0e54a0", "#3a8eee", "#31c7ed", "#70d6f0"]
 
+    // Overview and navbar of the Figma export "Untitled (1)"
+    readonly property color designCanvas: "#F3F1EA"
+    readonly property color designBand: "#E6E1D3"
+    readonly property color designCard: "#FBFAF6"
+    readonly property color designInk: "#161616"
+    readonly property color designNavy: "#03132A"
+    readonly property color designMuted: "#5E5E58"
+    readonly property color designLight: "#B9C2D0"
+    readonly property color designCream: "#F3F1EA"
+    readonly property color designIncome: "#2E8963"
+    readonly property color designExpense: "#9A3B32"
+    readonly property color designShadow: "#70212842"
+
     readonly property int margin: 16
     readonly property int touchHeight: 48
     readonly property int radiusControl: 9

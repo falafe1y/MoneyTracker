@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Effects
 import QtQuick.Layouts
 
 ApplicationWindow {
@@ -421,12 +422,13 @@ ApplicationWindow {
         appAccentColor: root.navSelected
         appHoverColor: root.controlHovered
     }
+    // Icons of the navbar are drawn by MobileTabBar (grid, wallet, bars, dots); "add" is the big round button
     readonly property var tabItems: [
-        { key: "overview", title: qsTr("Обзор"), svg: "qrc:/icons/dashboard.svg" },
-        { key: "accounts", title: qsTr("Счета"), icon: "wallet" },
+        { key: "overview", title: qsTr("Обзор"), icon: "grid" },
+        { key: "accounts", title: qsTr("Счета"), icon: "wallet", spacing: 0.34 },
         { key: "add", title: qsTr("Операция"), icon: "plus", disabled: financeController.selectedAsset !== "fiat" },
-        { key: "analytics", title: qsTr("Аналитика"), svg: "qrc:/icons/analytics.svg" },
-        { key: "more", title: qsTr("Ещё"), icon: "more" }
+        { key: "analytics", title: qsTr("Аналитика"), icon: "bars", spacing: 0.66 },
+        { key: "more", title: qsTr("Ещё"), icon: "dots", spacing: 0 }
     ]
     readonly property var pageTitles: ({
         "overview": qsTr("Мои финансы"),
@@ -487,10 +489,25 @@ ApplicationWindow {
     }
 
     Item {
+        id: shell
+
+        // Top inset for the status bar and the camera cutout: Qt computes it, the content moves down by it
+        readonly property real safeTop: SafeArea.margins.top
+
         anchors.fill: parent
         focus: true
         Keys.onBackPressed: function(event) {
             event.accepted = root.goBack();
+        }
+
+        // Status band of the overview: its height is the top inset
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: shell.safeTop
+            color: MobileTheme.designCanvas
+            visible: root.page === "overview"
         }
 
         ColumnLayout {
@@ -498,9 +515,10 @@ ApplicationWindow {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: tabBar.top
-            anchors.leftMargin: root.pageMargin
-            anchors.rightMargin: root.pageMargin
-            anchors.topMargin: 8
+            // The overview is full width: its cards keep their own 16 px margins
+            anchors.leftMargin: root.page === "overview" ? 0 : root.pageMargin
+            anchors.rightMargin: root.page === "overview" ? 0 : root.pageMargin
+            anchors.topMargin: shell.safeTop + (root.page === "overview" ? 0 : 8)
             anchors.bottomMargin: 8
             spacing: 8
 
@@ -738,6 +756,7 @@ ApplicationWindow {
     }
 
     // Round tool button of the balance card. selected = pressed look (e.g. an active date filter)
+    // Round 32 px button of the overview header: a flat circle with an icon or a glyph (no outline, no shadow)
     component RoundTool: Item {
         id: tool
 
@@ -746,45 +765,31 @@ ApplicationWindow {
         property bool selected: false
         signal clicked()
 
-        implicitWidth: 38
-        implicitHeight: 42
+        width: 32
+        height: 32
 
         Rectangle {
-            x: 0
-            y: 4
-            width: 38
-            height: 38
-            radius: 19
-            color: root.accent
-            visible: !tool.selected
+            anchors.fill: parent
+            radius: 16
+            color: tool.selected ? MobileTheme.accent : tap.pressed ? MobileTheme.hover : MobileTheme.designCard
         }
 
-        Rectangle {
-            y: tool.selected ? 4 : 0
-            width: 38
-            height: 38
-            radius: 19
-            color: tool.selected ? root.accent : tap.pressed ? root.controlHovered : root.panel
-            border.width: 1
-            border.color: root.accent
+        MobileIcon {
+            anchors.centerIn: parent
+            visible: tool.icon.length > 0
+            name: tool.icon
+            width: 24
+            height: 24
+            color: tool.selected ? MobileTheme.designCream : MobileTheme.designInk
+        }
 
-            MobileIcon {
-                anchors.centerIn: parent
-                visible: tool.icon.length > 0
-                name: tool.icon
-                width: 20
-                height: 20
-                color: tool.selected ? root.panel : root.accent
-            }
-
-            Text {
-                anchors.centerIn: parent
-                visible: tool.glyph.length > 0
-                text: tool.glyph
-                color: tool.selected ? root.panel : root.accent
-                font.pixelSize: 17
-                font.weight: Font.DemiBold
-            }
+        Text {
+            anchors.centerIn: parent
+            visible: tool.glyph.length > 0
+            text: tool.glyph
+            color: tool.selected ? MobileTheme.designCream : MobileTheme.designInk
+            font.pixelSize: 23
+            font.weight: Font.Bold
         }
 
         MouseArea {
@@ -808,35 +813,676 @@ ApplicationWindow {
         }
     }
 
+    // Card of the overview: 1 px outline and a soft shadow (dy 2, blur 2.3, accent at 44 %) as in the frame
+    component SoftCard: Rectangle {
+        radius: 16
+        color: MobileTheme.designCard
+
+        RectangularShadow {
+            anchors.fill: parent
+            z: -1
+            radius: parent.radius
+            blur: 2.3
+            spread: 0
+            offset: Qt.vector2d(0, 2)
+            color: MobileTheme.designShadow
+            cached: false
+        }
+    }
+
+    // Text placed by frame coordinates: baseY is the baseline; anchorX is the left origin (mode 0), the right edge
+    // of the advance box (mode 1) or its centre (mode 2). The top of the line follows from the font ascent.
+    component DText: Text {
+        id: dt
+
+        property real baseY: 0
+        property real anchorX: 0
+        property int anchorMode: 0
+
+        x: anchorMode === 0 ? anchorX : (anchorMode === 1 ? anchorX - implicitWidth : anchorX - implicitWidth / 2)
+        y: baseY - metrics.ascent
+
+        FontMetrics {
+            id: metrics
+            font: dt.font
+        }
+    }
+
+    // Overview as in the frame "finance_ui_neobrutal_calm". Frame y is measured from the top of the status band
+    // (frame y 44); the page starts at the device's top inset, so the band follows the camera cutout. The band with
+    // the title and the round tools stays on top; the rest scrolls under it. Right-side items anchor to the right edge.
     Component {
         id: overviewPage
-        // A plain vertical Flickable: horizontal drags are not taken by the scroller,
-        // so the swipe areas of the dashboard receive them (ScrollView grabbed every drag).
-        Flickable {
-            id: overviewScroll
-            clip: true
-            flickableDirection: Flickable.VerticalFlick
-            boundsBehavior: Flickable.StopAtBounds
 
-            // Keep panel borders one physical pixel away from the clip edge.
-            readonly property int contentEdgeMargin: 2
+        Item {
+            id: overviewView
 
-            contentWidth: width
-            contentHeight: dashboard.implicitHeight
+            readonly property var history: buildHistory()
+            readonly property real historyBottom: history.bottom
+            readonly property real pillWidth: (width - 56) / 3
 
-            // Empty places of the dashboard: a horizontal swipe switches the asset.
-            // Areas with their own taps (accounts, history, buttons) handle the swipe themselves.
+            // The keyboard covers the bottom of the window: the scrolling part ends at its top edge
+            readonly property bool keyboardShown: Qt.inputMethod.visible && Qt.inputMethod.keyboardRectangle.height > 0
+            readonly property real keyboardTop: keyboardShown
+                ? Math.min(height, mapFromItem(null, 0, Qt.inputMethod.keyboardRectangle.y).y) : height
+            readonly property real keyboardPad: keyboardShown ? Qt.inputMethod.keyboardRectangle.height : 0
+
+            // Search open with the keyboard up: the search field goes to the top of the visible part
+            // (under the header band), and the history continues below it. 650 is the field top in page coordinates.
+            function revealSearch() {
+                if (!root.overviewSearchOpen || !keyboardShown)
+                    return;
+                overviewScroll.contentY = 650 - 66;
+            }
+
+            Connections {
+                target: Qt.inputMethod
+
+                function onKeyboardRectangleChanged() {
+                    Qt.callLater(overviewView.revealSearch);
+                }
+
+                function onVisibleChanged() {
+                    Qt.callLater(overviewView.revealSearch);
+                }
+            }
+
+            Connections {
+                target: root
+
+                function onOverviewSearchOpenChanged() {
+                    Qt.callLater(overviewView.revealSearch);
+                }
+            }
+
+            // History rows with baselines in page coordinates (frame y minus 44)
+            function buildHistory() {
+                const shift = root.overviewSearchOpen ? 40 : 0;
+                const items = root.overviewHistoryItems();
+                const rows = [];
+                let headerBase = 670.86 + shift;
+                let nameBase = 0;
+                let lastAccount = -1;
+                let first = true;
+                for (let i = 0; i < items.length; ++i) {
+                    const item = items[i];
+                    if (item.header) {
+                        headerBase = first ? 670.86 + shift : lastAccount + 31.64;
+                        rows.push({ kind: "header", label: item.label || "", base: headerBase });
+                        nameBase = headerBase + 30.14;
+                        first = false;
+                    } else {
+                        rows.push({ kind: "row", row: item.row, nameBase: nameBase,
+                                    accountBase: nameBase + 19.36, amountBase: nameBase + 12.23 });
+                        lastAccount = nameBase + 19.36;
+                        nameBase += 46;
+                    }
+                }
+                return { rows: rows, bottom: lastAccount > 0 ? lastAccount + 18.64 : 670.86 + shift + 26 };
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: MobileTheme.designCanvas
+            }
+
+            Flickable {
+                id: overviewScroll
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: Math.max(0, overviewView.keyboardTop)
+                clip: true
+                flickableDirection: Flickable.VerticalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                contentWidth: width
+                contentHeight: Math.max(height, overviewView.historyBottom + 24 + overviewView.keyboardPad)
+
+                // Empty places of the page: a horizontal swipe switches the asset
+                MouseArea {
+                    id: dashboardSwipe
+
+                    property real pressX: 0
+                    property real pressY: 0
+
+                    x: 0
+                    y: 0
+                    z: -1
+                    width: overviewScroll.width
+                    height: overviewScroll.contentHeight
+                    onPressed: function (mouse) {
+                        pressX = mouse.x;
+                        pressY = mouse.y;
+                    }
+                    onReleased: function (mouse) {
+                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                    }
+                }
+
+                // Balance card: "ОБЩИЙ БАЛАНС" and the total
+                SoftCard {
+                    x: 16
+                    y: 70
+                    width: overviewView.width - 32
+                    height: 104
+                }
+
+                DText {
+                    baseY: 96.56
+                    anchorX: 36.64
+                    text: qsTr("ОБЩИЙ БАЛАНС")
+                    color: MobileTheme.designMuted
+                    font.pixelSize: 11
+                    font.weight: Font.Bold
+                    font.letterSpacing: -0.108
+                }
+
+                DText {
+                    baseY: 142.06
+                    anchorX: 38.97
+                    text: root.shownAmount(root.money(financeController.balanceMinorUnits, financeController.appCurrency, false))
+                    color: MobileTheme.designInk
+                    font.pixelSize: 31
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.229
+                }
+
+                // Asset pills in a fixed order; the selected asset is navy
+                SoftCard {
+                    x: 16
+                    y: 186
+                    width: overviewView.pillWidth
+                    height: 28
+                    radius: 14
+                    color: financeController.selectedAsset === "fiat" ? MobileTheme.accent : MobileTheme.designCard
+                }
+
+                SoftCard {
+                    x: 16 + overviewView.pillWidth + 12
+                    y: 186
+                    width: overviewView.pillWidth
+                    height: 28
+                    radius: 14
+                    color: financeController.selectedAsset === "crypto" ? MobileTheme.accent : MobileTheme.designCard
+                }
+
+                SoftCard {
+                    x: 16 + 2 * (overviewView.pillWidth + 12)
+                    y: 186
+                    width: overviewView.pillWidth
+                    height: 28
+                    radius: 14
+                    color: financeController.selectedAsset === "investment" ? MobileTheme.accent : MobileTheme.designCard
+                }
+
+                DText {
+                    anchorMode: 2
+                    anchorX: 16 + overviewView.pillWidth / 2
+                    baseY: 204.31
+                    text: qsTr("Фиат")
+                    color: financeController.selectedAsset === "fiat" ? MobileTheme.designCream : MobileTheme.accent
+                    font.pixelSize: 12
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.68
+                }
+
+                DText {
+                    anchorMode: 2
+                    anchorX: 16 + overviewView.pillWidth + 12 + overviewView.pillWidth / 2
+                    baseY: 205.43
+                    text: qsTr("Криптовалюта")
+                    color: financeController.selectedAsset === "crypto" ? MobileTheme.designCream : MobileTheme.accent
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
+                    font.letterSpacing: -0.064
+                }
+
+                DText {
+                    anchorMode: 2
+                    anchorX: 16 + 2 * (overviewView.pillWidth + 12) + overviewView.pillWidth / 2
+                    baseY: 205.43
+                    text: qsTr("Инвестиции")
+                    color: financeController.selectedAsset === "investment" ? MobileTheme.designCream : MobileTheme.accent
+                    font.pixelSize: 13
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.397
+                }
+
+                Repeater {
+                    model: ["fiat", "crypto", "investment"]
+
+                    delegate: MouseArea {
+                        id: pillArea
+
+                        required property string modelData
+                        required property int index
+
+                        property real pressX: 0
+                        property real pressY: 0
+
+                        x: 16 + index * (overviewView.pillWidth + 12)
+                        y: 186
+                        width: overviewView.pillWidth
+                        height: 28
+                        onPressed: function (mouse) {
+                            pressX = mouse.x;
+                            pressY = mouse.y;
+                        }
+                        onReleased: function (mouse) {
+                            root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                        }
+                        onClicked: function (mouse) {
+                            if (Math.abs(mouse.x - pressX) <= 40)
+                                financeController.selectedAsset = pillArea.modelData;
+                        }
+                    }
+                }
+
+                // Asset summary: the square, the title and the total of the selected asset
+                SoftCard {
+                    x: 16
+                    y: 226
+                    width: overviewView.width - 32
+                    height: 44
+                }
+
+                Rectangle {
+                    x: 24
+                    y: 234
+                    width: 28
+                    height: 28
+                    color: MobileTheme.designInk
+                }
+
+                DText {
+                    baseY: 253.86
+                    anchorX: 64.63
+                    text: root.assetTitle(financeController.selectedAsset)
+                    color: MobileTheme.designInk
+                    font.pixelSize: 15
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.128
+                }
+
+                DText {
+                    baseY: 253.83
+                    anchorMode: 1
+                    anchorX: overviewView.width - 29.36
+                    text: root.shownAmount(root.money(root.assetAmount(financeController.selectedAsset), financeController.appCurrency, false))
+                    color: MobileTheme.designInk
+                    font.pixelSize: 16
+                    font.weight: Font.Bold
+                    font.letterSpacing: -0.211
+                }
+
+                // A tap on the summary shows all accounts of the asset
+                MouseArea {
+                    property real pressX: 0
+                    property real pressY: 0
+
+                    x: 16
+                    y: 226
+                    width: overviewView.width - 32
+                    height: 44
+                    onPressed: function (mouse) {
+                        pressX = mouse.x;
+                        pressY = mouse.y;
+                    }
+                    onReleased: function (mouse) {
+                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                    }
+                    onClicked: function (mouse) {
+                        if (Math.abs(mouse.x - pressX) <= 40)
+                            financeController.selectedAccountId = "";
+                    }
+                }
+
+                // Section title of the selected asset and the add link on the right
+                DText {
+                    baseY: 310.97
+                    anchorX: 16.81
+                    text: root.assetTitle(financeController.selectedAsset)
+                    color: MobileTheme.designInk
+                    font.pixelSize: 19
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.354
+                }
+
+                DText {
+                    baseY: 309.82
+                    anchorMode: 1
+                    anchorX: overviewView.width - 16.42
+                    text: financeController.selectedAsset === "crypto" ? qsTr("+ Добавить криптовалюту") : qsTr("+ Добавить счёт")
+                    color: MobileTheme.designInk
+                    font.pixelSize: 12
+                    font.weight: Font.Normal
+                    font.letterSpacing: 0.177
+                }
+
+                MouseArea {
+                    property real pressX: 0
+                    property real pressY: 0
+
+                    x: overviewView.width - 200
+                    y: 296
+                    width: 184
+                    height: 28
+                    onPressed: function (mouse) {
+                        pressX = mouse.x;
+                        pressY = mouse.y;
+                    }
+                    onReleased: function (mouse) {
+                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                    }
+                    onClicked: function (mouse) {
+                        if (Math.abs(mouse.x - pressX) > 40)
+                            return;
+                        if (financeController.selectedAsset === "crypto")
+                            cryptoWalletDialog.openForNewWallet();
+                        else
+                            accountDialog.openForSelectedAsset();
+                    }
+                }
+
+                // Accounts of the selected asset: 84 px cards, 8 px apart; the selected account is navy
+                Repeater {
+                    model: root.assetRows()
+
+                    delegate: Item {
+                        id: accountItem
+
+                        required property var modelData
+                        required property int index
+
+                        readonly property bool selected: !modelData.isCrypto && financeController.selectedAccountId === modelData.id
+                        readonly property bool credit: modelData.isCreditCard === true
+
+                        x: 0
+                        y: 322 + index * 92
+                        width: overviewView.width
+                        height: 84
+
+                        SoftCard {
+                            x: 16
+                            y: 0
+                            width: overviewView.width - 32
+                            height: 84
+                            color: accountItem.selected ? MobileTheme.accent : MobileTheme.designCard
+                        }
+
+                        DText {
+                            baseY: 23.5
+                            anchorX: 32.3
+                            text: accountItem.modelData.name
+                            color: accountItem.selected ? MobileTheme.designLight : MobileTheme.designMuted
+                            font.pixelSize: 12
+                            font.weight: Font.Bold
+                            font.letterSpacing: -0.2
+                        }
+
+                        DText {
+                            baseY: 48.6
+                            anchorX: 32.79
+                            text: root.shownAmount(root.rowPrimaryAmount(accountItem.modelData))
+                            color: accountItem.selected ? MobileTheme.designCream : MobileTheme.designInk
+                            font.pixelSize: 17
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.43
+                        }
+
+                        DText {
+                            visible: accountItem.credit
+                            baseY: 70.15
+                            anchorX: 32.05
+                            text: qsTr("Долг")
+                            color: accountItem.selected ? MobileTheme.designLight : MobileTheme.designMuted
+                            font.pixelSize: 11
+                            font.weight: Font.Bold
+                            font.letterSpacing: 0.101
+                        }
+
+                        DText {
+                            visible: accountItem.credit
+                            baseY: 70.93
+                            anchorX: 68.57
+                            text: root.shownAmount(root.money(accountItem.modelData.debtMinor, accountItem.modelData.currency, false))
+                            color: accountItem.selected ? MobileTheme.designLight : MobileTheme.designMuted
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            font.letterSpacing: -0.5
+                        }
+
+                        MouseArea {
+                            property real pressX: 0
+                            property real pressY: 0
+
+                            x: 16
+                            y: 0
+                            width: overviewView.width - 32
+                            height: 84
+                            onPressed: function (mouse) {
+                                pressX = mouse.x;
+                                pressY = mouse.y;
+                            }
+                            onReleased: function (mouse) {
+                                root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                            }
+                            onClicked: function (mouse) {
+                                if (Math.abs(mouse.x - pressX) > 40)
+                                    return;
+                                if (!accountItem.modelData.isCrypto)
+                                    financeController.selectedAccountId = accountItem.selected ? "" : accountItem.modelData.id;
+                            }
+                            onPressAndHold: root.openAccountContextMenu(accountItem.modelData, accountItem, mouseX, mouseY)
+                        }
+                    }
+                }
+
+                // "История операций" and the history card grouped by day; "Поиск" opens the search field
+                DText {
+                    baseY: 630.94
+                    anchorX: 16.62
+                    text: qsTr("История операций")
+                    color: MobileTheme.designInk
+                    font.pixelSize: 20
+                    font.weight: Font.Bold
+                    font.letterSpacing: 0.002
+                }
+
+                SoftCard {
+                    x: 16
+                    y: 642
+                    width: overviewView.width - 32
+                    height: overviewView.historyBottom - 642
+                }
+
+                DText {
+                    baseY: root.overviewSearchOpen ? 672.25 : 667.43
+                    anchorMode: 1
+                    anchorX: overviewView.width - 32.82
+                    text: root.overviewSearchOpen ? qsTr("Отмена") : qsTr("Поиск")
+                    color: MobileTheme.designInk
+                    font.pixelSize: 12
+                    font.weight: Font.Normal
+                    font.letterSpacing: -0.096
+                    opacity: searchTap.pressed ? 0.6 : 1
+                }
+
+                MouseArea {
+                    id: searchTap
+
+                    property real pressX: 0
+                    property real pressY: 0
+
+                    x: overviewView.width - 96
+                    y: 654
+                    width: 80
+                    height: 24
+                    onPressed: function (mouse) {
+                        pressX = mouse.x;
+                        pressY = mouse.y;
+                    }
+                    onReleased: function (mouse) {
+                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                    }
+                    onClicked: function (mouse) {
+                        if (Math.abs(mouse.x - pressX) > 40)
+                            return;
+                        root.overviewSearchOpen = !root.overviewSearchOpen;
+                        if (!root.overviewSearchOpen) {
+                            root.searchText = "";
+                            overviewScroll.contentY = 0;
+                            Qt.inputMethod.hide();
+                        }
+                    }
+                }
+
+                Loader {
+                    id: overviewSearchLoader
+
+                    x: 32
+                    y: 650
+                    width: overviewView.width - 128
+                    height: 36
+                    active: root.overviewSearchOpen
+                    visible: root.overviewSearchOpen
+
+                    sourceComponent: TextField {
+                        id: overviewSearchField
+
+                        width: overviewSearchLoader.width
+                        height: overviewSearchLoader.height
+                        placeholderText: qsTr("Поиск по операциям")
+                        placeholderTextColor: MobileTheme.designMuted
+                        color: MobileTheme.designInk
+                        font.pixelSize: 14
+                        leftPadding: 12
+                        rightPadding: 12
+                        verticalAlignment: TextInput.AlignVCenter
+                        background: Rectangle {
+                            radius: 10
+                            color: MobileTheme.designCanvas
+                        }
+                        text: root.searchText
+                        onTextChanged: root.searchText = text
+                        Component.onCompleted: {
+                            forceActiveFocus();
+                            Qt.inputMethod.show();
+                        }
+                    }
+                }
+
+                DText {
+                    visible: overviewView.history.rows.length === 0
+                    baseY: 670.86 + (root.overviewSearchOpen ? 40 : 0)
+                    anchorX: 32.81
+                    text: root.searchText.length > 0 ? qsTr("Ничего не найдено") : qsTr("Операций пока нет")
+                    color: MobileTheme.designMuted
+                    font.pixelSize: 14
+                    font.weight: Font.Normal
+                }
+
+                Repeater {
+                    model: overviewView.history.rows
+
+                    delegate: Item {
+                        id: historyItem
+
+                        required property var modelData
+                        readonly property bool header: modelData.kind === "header"
+
+                        DText {
+                            visible: historyItem.header
+                            baseY: historyItem.header ? historyItem.modelData.base : 0
+                            anchorX: 32.81
+                            text: historyItem.header ? historyItem.modelData.label : ""
+                            color: MobileTheme.designInk
+                            font.pixelSize: 15
+                            font.weight: Font.Bold
+                            font.letterSpacing: -0.362
+                        }
+
+                        DText {
+                            visible: !historyItem.header
+                            baseY: historyItem.header ? 0 : historyItem.modelData.nameBase
+                            anchorX: 33.36
+                            text: historyItem.header ? "" : root.transactionSummary(historyItem.modelData.row)
+                            color: MobileTheme.accent
+                            font.pixelSize: 14
+                            font.weight: Font.Normal
+                            font.letterSpacing: -0.14
+                        }
+
+                        DText {
+                            visible: !historyItem.header
+                            baseY: historyItem.header ? 0 : historyItem.modelData.accountBase
+                            anchorX: 32.0
+                            text: historyItem.header ? "" : root.accountName(historyItem.modelData.row.accountId)
+                            color: MobileTheme.designMuted
+                            font.pixelSize: 14
+                            font.weight: Font.Normal
+                            font.letterSpacing: 0.091
+                        }
+
+                        DText {
+                            visible: !historyItem.header
+                            baseY: historyItem.header ? 0 : historyItem.modelData.amountBase
+                            anchorMode: 1
+                            anchorX: overviewView.width - 32.62
+                            text: historyItem.header ? "" : root.shownAmount(root.money(
+                                      root.transactionSignedAmount(historyItem.modelData.row),
+                                      historyItem.modelData.row.currency, true))
+                            color: historyItem.header ? MobileTheme.designInk
+                                 : historyItem.modelData.row.type === "transfer" ? MobileTheme.navSelected
+                                 : (historyItem.modelData.row.type === "income" || (historyItem.modelData.row.type === "investment_cash" && historyItem.modelData.row.amount >= 0)) ? MobileTheme.designIncome
+                                 : MobileTheme.designExpense
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                            font.letterSpacing: -0.236
+                        }
+
+                        MouseArea {
+                            property real pressX: 0
+                            property real pressY: 0
+
+                            visible: !historyItem.header
+                            x: 16
+                            y: historyItem.header ? 0 : historyItem.modelData.nameBase - 14
+                            width: overviewView.width - 32
+                            height: 40
+                            onPressed: function (mouse) {
+                                pressX = mouse.x;
+                                pressY = mouse.y;
+                                if (mouse.button === Qt.RightButton)
+                                    root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouse.x, mouse.y);
+                            }
+                            onReleased: function (mouse) {
+                                root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
+                            }
+                            onPressAndHold: root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouseX, mouseY)
+                        }
+                    }
+                }
+            }
+
+            // Fixed header: the status band with the title and the round tools
+            Rectangle {
+                x: 0
+                y: 0
+                width: overviewView.width
+                height: 54
+                color: MobileTheme.designBand
+            }
+
             MouseArea {
-                id: dashboardSwipe
-
                 property real pressX: 0
                 property real pressY: 0
 
-                x: dashboard.x
+                x: 0
                 y: 0
-                z: -1
-                width: dashboard.width
-                height: dashboard.implicitHeight
+                width: overviewView.width
+                height: 54
                 onPressed: function (mouse) {
                     pressX = mouse.x;
                     pressY = mouse.y;
@@ -846,545 +1492,36 @@ ApplicationWindow {
                 }
             }
 
-            ColumnLayout {
-                id: dashboard
-                x: overviewScroll.contentEdgeMargin
-                width: Math.max(0, overviewScroll.width - overviewScroll.contentEdgeMargin * 2)
-                spacing: 12
-
-                // "Общий баланс" card with the round tools on the right
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    Panel {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 100
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 6
-
-                            Text {
-                                text: qsTr("Общий баланс")
-                                color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.shownAmount(root.money(financeController.balanceMinorUnits, financeController.appCurrency, false))
-                                color: financeController.balanceMinorUnits > 0 ? root.designIncome : root.red
-                                font.pixelSize: 22
-                                font.weight: Font.Bold
-                                elide: Text.ElideRight
-                            }
-                        }
-                    }
-
-                    ColumnLayout {
-                        spacing: 4
-
-                        RowLayout {
-                            spacing: 8
-
-                            RoundTool {
-                                icon: "filter"
-                                selected: financeController.dateFilterActive
-                                onClicked: dateFilterDialog.openForCurrent()
-                            }
-                            RoundTool {
-                                icon: root.hideAmounts ? "eyeOff" : "eye"
-                                onClicked: root.hideAmounts = !root.hideAmounts
-                            }
-                        }
-
-                        Item {
-                            Layout.preferredWidth: 84
-                            Layout.preferredHeight: 42
-
-                            RoundTool {
-                                x: 23
-                                glyph: MobileFormat.symbol(financeController.appCurrency)
-                                onClicked: currencySheet.open()
-                            }
-                        }
-                    }
-                }
-
-                // Asset strip: the selected asset is the wide bar, the others are squares.
-                // Order is fixed: фиат, крипта, инвестиции. Swipe left/right or tap a square.
-                Item {
-                    id: assetStrip
-
-                    readonly property var assetOrder: ["fiat", "crypto", "investment"]
-                    readonly property var assetGlyphs: ["₽", "₿", ""]
-                    readonly property int squareSize: 36
-                    readonly property int gap: 8
-
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 36
-
-                    function selectedIndex() {
-                        return assetOrder.indexOf(financeController.selectedAsset);
-                    }
-
-                    function widthOf(index) {
-                        return index === selectedIndex() ? width - 2 * squareSize - 2 * gap : squareSize;
-                    }
-
-                    function xOf(index) {
-                        let x = 0;
-                        for (let i = 0; i < index; ++i)
-                            x += widthOf(i) + gap;
-                        return x;
-                    }
-
-                    function indexAt(x) {
-                        for (let i = 0; i < assetOrder.length; ++i)
-                            if (x >= xOf(i) && x < xOf(i) + widthOf(i))
-                                return i;
-                        return -1;
-                    }
-
-                    function selectAt(index) {
-                        if (index >= 0 && index < assetOrder.length)
-                            financeController.selectedAsset = assetOrder[index];
-                    }
-
-                    Repeater {
-                        model: assetStrip.assetOrder
-
-                        delegate: Rectangle {
-                            id: assetTile
-
-                            required property string modelData
-                            required property int index
-                            readonly property bool selected: financeController.selectedAsset === modelData
-
-                            x: assetStrip.xOf(index)
-                            y: 0
-                            width: assetStrip.widthOf(index)
-                            height: 36
-                            radius: 9
-                            color: selected ? root.accent : root.panel
-                            border.width: selected ? 0 : 1
-                            border.color: root.accent
-
-                            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                            Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-
-                            // Selected asset: "all accounts" checkbox and the total
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 12
-                                spacing: 10
-                                visible: assetTile.selected
-
-                                Rectangle {
-                                    Layout.preferredWidth: 18
-                                    Layout.preferredHeight: 18
-                                    radius: 4
-                                    color: financeController.selectedAccountId === "" ? root.panel : root.accent
-                                    border.width: 1
-                                    border.color: root.panel
-
-                                    MobileIcon {
-                                        anchors.centerIn: parent
-                                        visible: financeController.selectedAccountId === ""
-                                        name: "check"
-                                        width: 14
-                                        height: 14
-                                        color: root.accent
-                                    }
-                                }
-
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: root.shownAmount(root.money(root.assetAmount(assetTile.modelData), financeController.appCurrency, false))
-                                    color: root.white
-                                    font.pixelSize: 14
-                                    font.weight: Font.Bold
-                                    elide: Text.ElideRight
-                                }
-                            }
-
-                            // Other assets: squares with a glyph
-                            Text {
-                                anchors.centerIn: parent
-                                visible: !assetTile.selected && assetStrip.assetGlyphs[assetTile.index] !== ""
-                                text: assetStrip.assetGlyphs[assetTile.index]
-                                color: root.accent
-                                font.pixelSize: 17
-                                font.weight: Font.DemiBold
-                            }
-
-                            MobileIcon {
-                                anchors.centerIn: parent
-                                visible: !assetTile.selected && assetStrip.assetGlyphs[assetTile.index] === ""
-                                name: "chart"
-                                width: 20
-                                height: 20
-                                color: root.accent
-                            }
-                        }
-                    }
-
-                    // Taps on the strip: a square selects its asset; a tap on the checkbox of the selected asset clears the account filter.
-                    MouseArea {
-                        id: assetTap
-
-                        property real pressX: 0
-                        property real pressY: 0
-
-                        anchors.fill: parent
-                        onPressed: function (mouse) {
-                            pressX = mouse.x;
-                            pressY = mouse.y;
-                        }
-                        onReleased: function (mouse) {
-                            root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
-                        }
-                        onClicked: function (mouse) {
-                            if (Math.abs(mouse.x - pressX) > 40)
-                                return;
-                            const index = assetStrip.indexAt(mouse.x);
-                            if (index < 0)
-                                return;
-                            if (index !== assetStrip.selectedIndex()) {
-                                assetStrip.selectAt(index);
-                                return;
-                            }
-                            if (mouse.x - assetStrip.xOf(index) < 40)
-                                financeController.selectedAccountId = "";
-                        }
-                    }
-                }
-
-                // Accounts of the selected asset, one row per account
-                Panel {
-                    Layout.fillWidth: true
-                    implicitHeight: assetColumn.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: assetColumn
-                        x: 16
-                        y: 16
-                        width: parent.width - 32
-                        spacing: 16
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.assetTitle(financeController.selectedAsset)
-                                color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                                elide: Text.ElideRight
-                            }
-
-                            Text {
-                                id: assetAddButton
-                                text: qsTr("+ Добавить")
-                                color: root.navSelected
-                                font.pixelSize: 14
-                                opacity: addTap.pressed ? 0.6 : 1
-
-                                MouseArea {
-                                    id: addTap
-
-                                    property real pressX: 0
-                                    property real pressY: 0
-
-                                    anchors.fill: parent
-                                    onPressed: function (mouse) {
-                                        pressX = mouse.x;
-                                        pressY = mouse.y;
-                                    }
-                                    onReleased: function (mouse) {
-                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
-                                    }
-                                    onClicked: function (mouse) {
-                                        if (Math.abs(mouse.x - pressX) > 40)
-                                            return;
-                                        if (financeController.selectedAsset === "crypto")
-                                            cryptoWalletDialog.openForNewWallet();
-                                        else
-                                            accountDialog.openForSelectedAsset();
-                                    }
-                                }
-                            }
-                        }
-
-                        Repeater {
-                            model: root.assetRows()
-
-                            delegate: Rectangle {
-                                id: accountRow
-
-                                required property var modelData
-                                readonly property bool selected: !modelData.isCrypto && financeController.selectedAccountId === modelData.id
-
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 69
-                                radius: 10
-                                color: selected ? root.accent : root.canvas
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 16
-                                    anchors.rightMargin: 16
-                                    spacing: 8
-
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumWidth: 0
-                                        spacing: 6
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: accountRow.modelData.name
-                                            color: accountRow.selected ? root.white : root.accent
-                                            font.pixelSize: 14
-                                            elide: Text.ElideRight
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: root.shownAmount(root.rowPrimaryAmount(accountRow.modelData))
-                                            color: accountRow.selected ? root.white : root.accent
-                                            font.pixelSize: 20
-                                            font.weight: Font.Bold
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-
-                                    ColumnLayout {
-                                        visible: accountRow.modelData.isCreditCard === true
-                                        spacing: 6
-
-                                        Text {
-                                            Layout.alignment: Qt.AlignRight
-                                            text: qsTr("Долг")
-                                            color: accountRow.selected ? root.paleText : root.muted
-                                            font.pixelSize: 14
-                                        }
-
-                                        Text {
-                                            Layout.alignment: Qt.AlignRight
-                                            text: root.shownAmount(root.money(accountRow.modelData.debtMinor, accountRow.modelData.currency, false))
-                                            color: accountRow.selected ? root.white : root.accent
-                                            font.pixelSize: 20
-                                        }
-                                    }
-                                }
-
-                                MouseArea {
-                                    property real pressX: 0
-                                    property real pressY: 0
-
-                                    anchors.fill: parent
-                                    onPressed: function (mouse) {
-                                        pressX = mouse.x;
-                                        pressY = mouse.y;
-                                    }
-                                    onReleased: function (mouse) {
-                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
-                                    }
-                                    onClicked: function (mouse) {
-                                        if (Math.abs(mouse.x - pressX) > 40)
-                                            return;
-                                        if (!accountRow.modelData.isCrypto)
-                                            financeController.selectedAccountId = accountRow.selected ? "" : accountRow.modelData.id;
-                                    }
-                                    onPressAndHold: root.openAccountContextMenu(accountRow.modelData, accountRow, mouseX, mouseY)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // "История операций" grouped by day; "Поиск" is a plain text link
-                Panel {
-                    Layout.fillWidth: true
-                    implicitHeight: historyColumn.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: historyColumn
-                        x: 16
-                        y: 16
-                        width: parent.width - 32
-                        spacing: 0
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.bottomMargin: 8
-
-                            Text {
-                                Layout.fillWidth: true
-                                text: qsTr("История операций")
-                                color: root.accent
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                            }
-
-                            Text {
-                                id: overviewSearchButton
-                                text: qsTr("Поиск")
-                                color: root.navSelected
-                                font.pixelSize: 14
-                                opacity: searchTap.pressed ? 0.6 : 1
-
-                                MouseArea {
-                                    id: searchTap
-
-                                    property real pressX: 0
-                                    property real pressY: 0
-
-                                    anchors.fill: parent
-                                    onPressed: function (mouse) {
-                                        pressX = mouse.x;
-                                        pressY = mouse.y;
-                                    }
-                                    onReleased: function (mouse) {
-                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
-                                    }
-                                    onClicked: function (mouse) {
-                                        if (Math.abs(mouse.x - pressX) > 40)
-                                            return;
-                                        root.overviewSearchOpen = !root.overviewSearchOpen;
-                                        if (!root.overviewSearchOpen) {
-                                            root.searchText = "";
-                                            Qt.inputMethod.hide();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Loader {
-                            id: overviewSearchLoader
-
-                            Layout.fillWidth: true
-                            Layout.bottomMargin: root.overviewSearchOpen ? 6 : 0
-                            active: root.overviewSearchOpen
-                            visible: root.overviewSearchOpen
-
-                            sourceComponent: TextField {
-                                id: overviewSearchField
-
-                                width: overviewSearchLoader.width
-                                placeholderText: qsTr("Поиск по операциям")
-                                placeholderTextColor: root.muted
-                                color: root.accent
-                                font.pixelSize: 14
-                                leftPadding: 0
-                                rightPadding: 0
-                                background: Item {}
-                                text: root.searchText
-                                onTextChanged: root.searchText = text
-                                Component.onCompleted: {
-                                    forceActiveFocus();
-                                    Qt.inputMethod.show();
-                                }
-                            }
-                        }
-
-                        Repeater {
-                            model: root.overviewHistoryItems()
-
-                            delegate: Item {
-                                id: historyItem
-
-                                required property var modelData
-
-                                Layout.fillWidth: true
-                                implicitHeight: modelData.header ? 34 : 50
-
-                                Text {
-                                    visible: modelData.header
-                                    anchors.left: parent.left
-                                    anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: 4
-                                    text: modelData.label || ""
-                                    color: root.accent
-                                    font.pixelSize: 14
-                                    font.weight: Font.Bold
-                                }
-
-                                RowLayout {
-                                    visible: !historyItem.modelData.header
-                                    anchors.fill: parent
-                                    spacing: 8
-
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumWidth: 0
-                                        spacing: 2
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: historyItem.modelData.header ? "" : root.transactionSummary(historyItem.modelData.row)
-                                            color: root.accent
-                                            font.pixelSize: 14
-                                            elide: Text.ElideRight
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: historyItem.modelData.header ? "" : root.accountName(historyItem.modelData.row.accountId)
-                                            color: root.muted
-                                            font.pixelSize: 13
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-
-                                    Text {
-                                        text: historyItem.modelData.header ? "" : root.shownAmount(root.money(
-                                                  root.transactionSignedAmount(historyItem.modelData.row),
-                                                  historyItem.modelData.row.currency, true))
-                                        color: historyItem.modelData.header ? root.accent
-                                             : historyItem.modelData.row.type === "transfer" ? root.navSelected
-                                             : (historyItem.modelData.row.type === "income" || (historyItem.modelData.row.type === "investment_cash" && historyItem.modelData.row.amount >= 0)) ? root.designIncome
-                                             : root.designExpense
-                                        font.pixelSize: 14
-                                        font.weight: Font.DemiBold
-                                    }
-                                }
-
-                                MouseArea {
-                                    property real pressX: 0
-                                    property real pressY: 0
-
-                                    anchors.fill: parent
-                                    onPressed: function (mouse) {
-                                        pressX = mouse.x;
-                                        pressY = mouse.y;
-                                        if (mouse.button === Qt.RightButton && !historyItem.modelData.header)
-                                            root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouse.x, mouse.y);
-                                    }
-                                    onReleased: function (mouse) {
-                                        root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
-                                    }
-                                    onPressAndHold: {
-                                        if (!historyItem.modelData.header)
-                                            root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouseX, mouseY);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Item {
-                    Layout.preferredHeight: 8
-                }
+            DText {
+                baseY: 35.64
+                anchorX: 21.39
+                text: qsTr("Обзор")
+                color: MobileTheme.accent
+                font.pixelSize: 24
+                font.weight: Font.Bold
+                font.letterSpacing: 0.21
+            }
+
+            RoundTool {
+                x: overviewView.width - 136
+                y: 11
+                icon: root.hideAmounts ? "eyeOff" : "eye"
+                onClicked: root.hideAmounts = !root.hideAmounts
+            }
+
+            RoundTool {
+                x: overviewView.width - 92
+                y: 11
+                icon: "filter"
+                selected: financeController.dateFilterActive
+                onClicked: dateFilterDialog.openForCurrent()
+            }
+
+            RoundTool {
+                x: overviewView.width - 48
+                y: 11
+                glyph: MobileFormat.symbol(financeController.appCurrency)
+                onClicked: currencySheet.open()
             }
         }
     }
@@ -3665,6 +3802,9 @@ ApplicationWindow {
                 "id",
                 financeController.selectedAccountId
             );
+            // No account is picked on the overview: the new operation goes to the first account of the active asset
+            if (operationAccount.currentIndex < 0 && financeController.accounts.length > 0)
+                operationAccount.currentIndex = 0;
             operationCategory.currentIndex = 0;
             const source = operationAccount.currentIndex >= 0
                          ? financeController.accounts[operationAccount.currentIndex]
