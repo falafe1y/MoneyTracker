@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Effects
 import QtQuick.Layouts
 
@@ -130,7 +131,8 @@ ApplicationWindow {
         if (row && row.isCreditCard)
             return qsTr("Долг %1 · доступно %2")
                 .arg(root.money(row.debtMinor, row.currency, false))
-                .arg(root.money(row.availableCreditMinor, row.currency, false));
+                .arg(root.money(row.availableCreditMinor, row.currency, false))
+                + (row.countsDebt === false ? qsTr(" · не учитывается") : "");
         return row ? root.money(row.balanceMinor, row.currency, false) : "";
     }
 
@@ -470,10 +472,73 @@ ApplicationWindow {
 
     function openTab(key) {
         pageHistory = [];
+        clearTransactionSelection();
         page = key;
     }
 
+    // Several operations at once, keyed as on the computer (HistorySelection.key)
+    property var transactionSelection: ({})
+    readonly property int transactionSelectionCount: Object.keys(transactionSelection).length
+
+    function transactionKey(row) {
+        return row.transactionId ? "crypto:" + row.walletId + ":" + row.transactionId
+                                 : (row.type || "operation") + ":" + row.id;
+    }
+    function isTransactionSelected(row) {
+        return !!row && transactionSelection[transactionKey(row)] !== undefined;
+    }
+    function toggleTransactionSelection(row) {
+        if (!row)
+            return;
+        const next = Object.assign({}, transactionSelection);
+        const key = transactionKey(row);
+        if (next[key] !== undefined)
+            delete next[key];
+        else
+            next[key] = row;
+        transactionSelection = next;
+    }
+    function clearTransactionSelection() {
+        if (transactionSelectionCount > 0)
+            transactionSelection = ({});
+    }
+    function selectedTransactionRows() {
+        return Object.keys(transactionSelection).map(function(key) { return transactionSelection[key]; });
+    }
+
+    function selectedInvestmentAccount() {
+        const accounts = financeController.accounts;
+        for (let i = 0; i < accounts.length; ++i)
+            if (accounts[i].id === financeController.selectedAccountId)
+                return accounts[i];
+        return null;
+    }
+
+    // The same routing as on the computer: a brokerage account takes purchases, sales, transfers and charges
+    function openNewOperation() {
+        if (financeController.selectedAsset !== "investment") {
+            operationDialog.openForNew();
+            return;
+        }
+        const account = selectedInvestmentAccount();
+        if (!account)
+            return;
+        if (account.type === "brokerage")
+            brokerOperationDialog.openFor(account.id);
+        else
+            operationDialog.openForNew();
+    }
+
+    function exchangeSection(section) {
+        const names = { FundingAccount: qsTr("Финансирование"), UnifiedTradingAccount: qsTr("Торговый счёт"),
+            Earn: qsTr("Накопления"), TradingBot: qsTr("Торговые боты"), CopyTrading: qsTr("Копирование сделок"),
+            CryptoLoans: qsTr("Криптозаймы"), CryptoLoans_legacy: qsTr("Криптозаймы"),
+            Launchpool: qsTr("Пул вознаграждений") };
+        return names[section] || section;
+    }
+
     function openPage(key) {
+        clearTransactionSelection();
         if (key === page)
             return;
         pageHistory = pageHistory.concat([page]);
@@ -600,6 +665,48 @@ ApplicationWindow {
             }
         }
 
+        // Shown while operations are selected: the count, cancel, and delete them together
+        Rectangle {
+            id: transactionSelectionBar
+            visible: root.transactionSelectionCount > 0
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: tabBar.top
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            anchors.bottomMargin: 8
+            height: 60
+            radius: 14
+            color: root.panel
+            border.width: 1
+            border.color: root.line
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 14
+                anchors.rightMargin: 10
+                spacing: 8
+
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Выбрано операций: %1").arg(root.transactionSelectionCount)
+                    color: root.accent
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                SoftButton {
+                    text: qsTr("Отмена")
+                    onClicked: root.clearTransactionSelection()
+                }
+                SoftButton {
+                    text: qsTr("Удалить")
+                    highlighted: true
+                    onClicked: transactionDeleteSheet.openFor()
+                }
+            }
+        }
+
         MobileTabBar {
             id: tabBar
 
@@ -609,7 +716,7 @@ ApplicationWindow {
             height: 64
             items: root.tabItems
             activeKey: root.tabKey
-            onSelected: function(key) { if (key === "add") operationDialog.openForNew(); else root.openTab(key) }
+            onSelected: function(key) { if (key === "add") root.openNewOperation(); else root.openTab(key) }
         }
     }
 
@@ -678,7 +785,9 @@ ApplicationWindow {
     Component {
         id: dataPage
 
-        MobileDataPage {}
+        MobileDataPage {
+            onBankStatementChosen: function(file) { bankCsvImportDialog.openForFile(file); }
+        }
     }
 
     Component {
@@ -992,6 +1101,16 @@ ApplicationWindow {
                     font.pixelSize: 31
                     font.weight: Font.Bold
                     font.letterSpacing: 0.229
+                }
+
+                // Same note as the computer: some investments have no price, rate or manual value yet
+                DText {
+                    visible: financeController.investmentValuationIncomplete
+                    baseY: 164
+                    anchorX: 36.64
+                    text: qsTr("Оценка неполная: для части инвестиций нужна котировка, курс или ручная оценка")
+                    color: MobileTheme.designMuted
+                    font.pixelSize: 11
                 }
 
                 // Asset pills in a fixed order; the selected asset is navy
@@ -1577,7 +1696,7 @@ ApplicationWindow {
                     text: qsTr("+  Операция")
                     highlighted: true
                     implicitWidth: 132
-                    onClicked: operationDialog.openForNew()
+                    onClicked: root.openNewOperation()
                 }
             }
 
@@ -1914,7 +2033,8 @@ ApplicationWindow {
         width: parent ? parent.width : 0
         height: 92
         radius: 13
-        color: rowIndex % 2 ? root.tableRowAlt : root.panel
+        color: root.isTransactionSelected(mobileTransactionCard.rowData) ? root.pale
+             : rowIndex % 2 ? root.tableRowAlt : root.panel
         border.width: 1
         border.color: root.line
 
@@ -2050,8 +2170,18 @@ ApplicationWindow {
             anchors.bottom: parent.bottom
             anchors.rightMargin: 50
             acceptedButtons: Qt.LeftButton | Qt.RightButton
+            // A long press selects the operation; the click that may follow its release is then ignored
+            property bool holdHandled: false
             onPressAndHold: {
-                if (mobileTransactionCard.rowData)
+                holdHandled = true;
+                root.toggleTransactionSelection(mobileTransactionCard.rowData);
+            }
+            onClicked: function(mouse) {
+                if (mouse.button !== Qt.LeftButton || holdHandled)
+                    return;
+                if (root.transactionSelectionCount > 0)
+                    root.toggleTransactionSelection(mobileTransactionCard.rowData);
+                else if (mobileTransactionCard.rowData)
                     root.openTransactionContextMenu(
                         mobileTransactionCard.rowData,
                         transactionTouchArea,
@@ -2060,6 +2190,7 @@ ApplicationWindow {
                     );
             }
             onPressed: function(mouse) {
+                holdHandled = false;
                 if (mouse.button === Qt.RightButton && mobileTransactionCard.rowData)
                     root.openTransactionContextMenu(
                         mobileTransactionCard.rowData,
@@ -2150,7 +2281,7 @@ ApplicationWindow {
                     text: qsTr("+ Операция")
                     highlighted: true
                     implicitWidth: 122
-                    onClicked: operationDialog.openForNew()
+                    onClicked: root.openNewOperation()
                 }
             }
 
@@ -2237,6 +2368,128 @@ ApplicationWindow {
                     visible: !financeController.cryptoRefreshing
                     text: qsTr("Повторить")
                     onClicked: financeController.refreshCryptoWallets()
+                }
+            }
+
+            Panel {
+                id: cryptoHistoryPanel
+                Layout.fillWidth: true
+                visible: financeController.selectedAsset === "crypto" && cryptoHistoryRows.length > 0
+                implicitHeight: cryptoHistoryColumn.implicitHeight + 28
+                // The newest operations first; the list stays short on a phone
+                readonly property var cryptoHistoryRows: (financeController.cryptoTransactions || []).slice(0, 50)
+                ColumnLayout {
+                    id: cryptoHistoryColumn
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 6
+                    Text {
+                        text: qsTr("Операции криптовалюты")
+                        color: root.accent
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Долгое нажатие на операцию удаляет её из истории")
+                        color: root.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+                    Repeater {
+                        model: cryptoHistoryPanel.cryptoHistoryRows
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            implicitHeight: cryptoRow.implicitHeight + 8
+                            radius: 8
+                            color: root.isTransactionSelected(modelData) ? root.pale : "transparent"
+
+                            RowLayout {
+                                id: cryptoRow
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: 6
+                                anchors.rightMargin: 6
+                                spacing: 8
+                                Text {
+                                    text: Qt.formatDateTime(modelData.occurredAt, "dd.MM.yy HH:mm")
+                                    color: root.muted
+                                    font.pixelSize: 12
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.counterparty
+                                    color: root.accent
+                                    font.pixelSize: 13
+                                    elide: Text.ElideMiddle
+                                }
+                                Text {
+                                    text: (modelData.direction === "in" ? "+" : modelData.direction === "out" ? "−" : "")
+                                          + String(modelData.amountText).replace(".", ",") + " " + modelData.symbol
+                                    color: modelData.direction === "in" ? root.income : root.accent
+                                    font.pixelSize: 13
+                                    font.weight: Font.DemiBold
+                                }
+                            }
+                            TapHandler {
+                                onTapped: {
+                                    if (root.transactionSelectionCount > 0)
+                                        root.toggleTransactionSelection(modelData);
+                                }
+                                onLongPressed: root.toggleTransactionSelection(modelData)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Panel {
+                id: holdingsPanel
+                Layout.fillWidth: true
+                visible: financeController.selectedAsset === "crypto" && exchangeRows.length > 0
+                implicitHeight: holdingsColumn.implicitHeight + 28
+                // Reading cryptoWallets makes the binding follow every refresh of the exchanges
+                readonly property var exchangeRows: {
+                    financeController.cryptoWallets;
+                    return financeController.cryptoExchangeHoldings();
+                }
+                ColumnLayout {
+                    id: holdingsColumn
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 6
+                    Text {
+                        text: qsTr("Остатки на бирже")
+                        color: root.accent
+                        font.pixelSize: 17
+                        font.weight: Font.DemiBold
+                    }
+                    Repeater {
+                        model: holdingsPanel.exchangeRows
+                        delegate: RowLayout {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.accountName + " · " + root.exchangeSection(modelData.section)
+                                    + (modelData.category ? " · " + modelData.category : "")
+                                color: root.accent
+                                font.pixelSize: 14
+                                font.weight: modelData.summary ? Font.DemiBold : Font.Normal
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: modelData.summary
+                                    ? Number(modelData.usdValue).toLocaleString(MobileFormat.locale(), "f", 2) + " $"
+                                    : String(modelData.amountText) + " " + modelData.coin
+                                color: root.accent
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2463,6 +2716,9 @@ ApplicationWindow {
                                 height: 52
                                 radius: 10
                                 color: root.panel
+                                TapHandler {
+                                    onTapped: categoryDialog.openForEdit(modelData)
+                                }
                                 border.width: 1
                                 border.color: "#C9D9CE"
 
@@ -2548,6 +2804,9 @@ ApplicationWindow {
                                 height: 52
                                 radius: 10
                                 color: root.panel
+                                TapHandler {
+                                    onTapped: categoryDialog.openForEdit(modelData)
+                                }
                                 border.width: 1
                                 border.color: "#E1C9C2"
 
@@ -2619,6 +2878,10 @@ ApplicationWindow {
                     x: 16
                     y: 16
                     width: Math.max(0, settingsScroll.availableWidth - 32)
+                    DatabaseEncryptionSettings {
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 24
+                    }
                     PasswordSettings {
                         Layout.fillWidth: true
                         Layout.bottomMargin: 24
@@ -2908,6 +3171,76 @@ ApplicationWindow {
         }
     }
 
+    BankCsvImportDialog {
+        id: bankCsvImportDialog
+        controller: financeController
+        panelColor: root.panel; softColor: root.soft; textColor: root.accent
+        mutedColor: root.muted; lineColor: root.line; accentColor: root.accent; errorColor: root.red
+        successColor: root.income
+    }
+
+    MobileSheet {
+        id: transactionDeleteSheet
+
+        title: qsTr("Удалить операции?")
+        property string errorText: ""
+
+        function openFor() {
+            errorText = "";
+            if (root.transactionSelectionCount > 0)
+                open();
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Выделено операций: %1").arg(root.transactionSelectionCount)
+            color: root.accent
+            font.pixelSize: 16
+            font.weight: Font.DemiBold
+        }
+        Text {
+            Layout.fillWidth: true
+            text: qsTr("Переводы будут удалены вместе с парной операцией.")
+            color: root.muted
+            font.pixelSize: 14
+            wrapMode: Text.WordWrap
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: transactionDeleteSheet.errorText.length > 0
+            text: transactionDeleteSheet.errorText
+            color: root.red
+            font.pixelSize: 14
+            wrapMode: Text.WordWrap
+        }
+        MobileButton {
+            Layout.fillWidth: true
+            variant: "danger"
+            text: qsTr("Удалить")
+            onClicked: {
+                if (financeController.deleteHistoryRows(root.selectedTransactionRows())) {
+                    root.clearTransactionSelection();
+                    transactionDeleteSheet.close();
+                } else {
+                    transactionDeleteSheet.errorText = qsTr("Не удалось удалить операции. Данные не изменены.");
+                }
+            }
+        }
+        MobileButton {
+            Layout.fillWidth: true
+            text: qsTr("Отмена")
+            onClicked: transactionDeleteSheet.close()
+        }
+    }
+
+    BrokerOperationDialog {
+        id: brokerOperationDialog
+        controller: financeController
+        panelColor: root.panel; softColor: root.soft; textColor: root.accent
+        mutedColor: root.muted; lineColor: root.line; accentColor: root.accent
+        hoverColor: root.pale; errorColor: root.red
+    }
+
     InvestmentOperationDialog {
         id: investmentOperationDialog
         controller: financeController
@@ -2932,24 +3265,40 @@ ApplicationWindow {
         modal: true
         anchors.centerIn: parent
         padding: root.width < 380 ? 16 : 20
+        property string editingId: ""
 
         function openForNewWallet() {
+            editingId = "";
+            cryptoNameField.clear();
+            cryptoSourceBox.currentIndex = 0;
             cryptoTypeBox.currentIndex = 0;
             cryptoAddressField.clear();
+            cryptoApiKeyField.clear();
+            cryptoApiSecretField.clear();
             cryptoWalletError.text = "";
             open();
-            cryptoAddressField.forceActiveFocus();
+            cryptoNameField.forceActiveFocus();
         }
 
         function submit() {
-            const result = financeController.addCryptoWallet(
-                cryptoTypeBox.model[cryptoTypeBox.currentIndex].value,
-                cryptoAddressField.text
-            );
+            const result = financeController.saveCryptoConnection({
+                id: editingId,
+                name: cryptoNameField.text,
+                kind: cryptoSourceBox.currentIndex === 0 ? "wallet" : "exchange",
+                symbol: cryptoTypeBox.model[cryptoTypeBox.currentIndex].value,
+                address: cryptoAddressField.text,
+                apiKey: cryptoApiKeyField.text,
+                apiSecret: cryptoApiSecretField.text
+            });
             if (result.ok)
                 close();
             else
-                cryptoWalletError.text = result.error || qsTr("Не удалось добавить кошелёк");
+                cryptoWalletError.text = result.error || qsTr("Не удалось сохранить счёт");
+        }
+
+        onClosed: {
+            cryptoApiKeyField.clear();
+            cryptoApiSecretField.clear();
         }
 
         background: Rectangle {
@@ -2970,9 +3319,26 @@ ApplicationWindow {
                 font.pixelSize: 21
                 font.weight: Font.Bold
             }
+            AppTextField {
+                id: cryptoNameField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Название счёта")
+                maximumLength: 80
+            }
+            AppComboBox {
+                id: cryptoSourceBox
+                Layout.fillWidth: true
+                model: [
+                    { label: qsTr("Кошелёк по публичному адресу"), value: "wallet" },
+                    { label: qsTr("Биржа Bybit"), value: "exchange" }
+                ]
+                textRole: "label"
+                onActivated: cryptoWalletError.text = ""
+            }
             AppComboBox {
                 id: cryptoTypeBox
                 Layout.fillWidth: true
+                visible: cryptoSourceBox.currentIndex === 0
                 model: [
                     { label: "USDT · TRC-20", value: "USDT" },
                     { label: "BTC · Bitcoin", value: "BTC" },
@@ -2988,6 +3354,7 @@ ApplicationWindow {
             AppTextField {
                 id: cryptoAddressField
                 Layout.fillWidth: true
+                visible: cryptoSourceBox.currentIndex === 0
                 placeholderText: cryptoTypeBox.currentIndex === 0
                     ? qsTr("Публичный адрес TRON (T…)")
                     : cryptoTypeBox.currentIndex === 1
@@ -2996,9 +3363,28 @@ ApplicationWindow {
                 maximumLength: 90
                 onAccepted: cryptoWalletDialog.submit()
             }
+            AppTextField {
+                id: cryptoApiKeyField
+                Layout.fillWidth: true
+                visible: cryptoSourceBox.currentIndex === 1
+                placeholderText: qsTr("Ключ API")
+                maximumLength: 256
+                echoMode: TextInput.Password
+            }
+            AppTextField {
+                id: cryptoApiSecretField
+                Layout.fillWidth: true
+                visible: cryptoSourceBox.currentIndex === 1
+                placeholderText: qsTr("Секретный ключ")
+                maximumLength: 256
+                echoMode: TextInput.Password
+                onAccepted: cryptoWalletDialog.submit()
+            }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Вводите только публичный адрес. Никогда не указывайте seed-фразу или приватный ключ.")
+                text: cryptoSourceBox.currentIndex === 0
+                    ? qsTr("Вводите только публичный адрес. Никогда не указывайте seed-фразу или приватный ключ.")
+                    : qsTr("Bybit: основной сайт, ключ с доступом только на чтение. История торгового счёта и финансирования загружается автоматически.")
                 color: root.muted
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -3035,6 +3421,7 @@ ApplicationWindow {
         property var accountTypes: []
         property string editingId: ""
         property var editingAccount: null
+        property bool countsDebtChecked: true
         property string editingAsset: financeController.selectedAsset
         property var depositPayoutTypes: [
             { label: qsTr("Ежемесячно"), value: "monthly" },
@@ -3102,6 +3489,7 @@ ApplicationWindow {
             accountNameField.clear();
             accountBalanceField.clear();
             accountCreditLimitField.clear();
+            countsDebtChecked = true;
             depositRateField.clear();
             depositPayoutBox.currentIndex = 0;
             depositPayoutDayField.text = "1";
@@ -3130,6 +3518,7 @@ ApplicationWindow {
                                      ? root.amountForInput(row.initialDebtMinor)
                                      : root.signedAmountForInput(row.initialBalanceMinor);
             accountCreditLimitField.text = root.amountForInput(row.creditLimitMinor);
+            countsDebtChecked = row.countsDebt !== false;
             depositRateField.text = row.depositAnnualRatePercent
                                   ? String(row.depositAnnualRatePercent).replace(".", ",")
                                   : "";
@@ -3302,6 +3691,21 @@ ApplicationWindow {
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
             }
+            MobileCheckRow {
+                Layout.fillWidth: true
+                visible: accountDialog.creditCardSelected
+                label: qsTr("Учитывать долг?")
+                checked: accountDialog.countsDebtChecked
+                onToggled: function(nowChecked) { accountDialog.countsDebtChecked = nowChecked; }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.creditCardSelected && !accountDialog.countsDebtChecked
+                text: qsTr("Долг не вычитается из суммы фиата: в суммах учитывается только положительный остаток карты.")
+                color: root.muted
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
             Text {
                 id: accountError
                 color: root.red
@@ -3365,7 +3769,7 @@ ApplicationWindow {
                                      depositAnnualRatePercent,
                                      depositPayoutFrequency,
                                      depositPayoutDay,
-                                     true
+                                     accountDialog.creditCardSelected ? accountDialog.countsDebtChecked : true
                                  )
                                  : financeController.addAccount(
                                      accountNameField.text,
@@ -3376,7 +3780,7 @@ ApplicationWindow {
                                      depositAnnualRatePercent,
                                      depositPayoutFrequency,
                                      depositPayoutDay,
-                                     true
+                                     accountDialog.creditCardSelected ? accountDialog.countsDebtChecked : true
                                  );
                         if (ok)
                             accountDialog.close();
@@ -4579,8 +4983,26 @@ ApplicationWindow {
         modal: true
         anchors.centerIn: parent
         padding: root.width < 380 ? 14 : 18
+        property var editingData: null
+        property bool confirmingDelete: false
+        readonly property string editingId: editingData ? editingData.value : ""
+
         function openForManagement() {
+            editingData = null;
+            confirmingDelete = false;
             categoryNameField.clear();
+            categoryType.currentIndex = 0;
+            categoryType.enabled = true;
+            categoryError.text = "";
+            open();
+        }
+
+        function openForEdit(row) {
+            editingData = row;
+            confirmingDelete = false;
+            categoryNameField.text = row.label || "";
+            categoryType.currentIndex = row.type === "expense" ? 1 : 0;
+            categoryType.enabled = false;
             categoryError.text = "";
             open();
         }
@@ -4617,12 +5039,33 @@ ApplicationWindow {
                     text: qsTr("Сохранить")
                     highlighted: true
                     onClicked: {
-                        const ok = financeController.addCategory(categoryNameField.text, categoryType.currentIndex === 0 ? "income" : "expense");
-                        if (ok) {
+                        const ok = categoryDialog.editingId.length > 0
+                            ? financeController.renameCategory(categoryDialog.editingId, categoryNameField.text)
+                            : financeController.addCategory(categoryNameField.text,
+                                                            categoryType.currentIndex === 0 ? "income" : "expense");
+                        if (!ok) {
+                            categoryError.text = qsTr("Не удалось сохранить категорию");
+                        } else if (categoryDialog.editingId.length > 0) {
+                            categoryDialog.close();
+                        } else {
                             categoryNameField.clear();
                             categoryError.text = "";
-                        } else
-                            categoryError.text = qsTr("Не удалось сохранить категорию");
+                        }
+                    }
+                }
+                SoftButton {
+                    Layout.fillWidth: true
+                    visible: categoryDialog.editingId.length > 0
+                    text: categoryDialog.confirmingDelete ? qsTr("Нажмите ещё раз, чтобы удалить") : qsTr("Удалить категорию")
+                    onClicked: {
+                        if (!categoryDialog.confirmingDelete) {
+                            categoryDialog.confirmingDelete = true;
+                            return;
+                        }
+                        if (financeController.deleteCategory(categoryDialog.editingId))
+                            categoryDialog.close();
+                        else
+                            categoryError.text = qsTr("Не удалось удалить категорию");
                     }
                 }
             }

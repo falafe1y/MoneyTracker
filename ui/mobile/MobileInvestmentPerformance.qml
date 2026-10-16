@@ -5,7 +5,9 @@ ColumnLayout {
     id: panel
 
     readonly property var report: financeController.investmentPerformance || ({})
-    readonly property var choices: [{ id: "", name: qsTr("Все инвестиционные счета") }]
+    readonly property var choices: [{ id: "", name: qsTr("Все инвестиционные счета") },
+        { id: "group:brokerage", name: qsTr("Все брокерские счета") },
+        { id: "group:deposit", name: qsTr("Все вклады") }]
         .concat(financeController.performanceAccounts || [])
     readonly property var warnings: report.warnings || []
     property bool detailsOpen: false
@@ -34,7 +36,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        text: qsTr("Результат инвестиций")
+        text: qsTr("Доходность")
         color: MobileTheme.accent
         font.pixelSize: MobileTheme.sizeTitle
         font.weight: Font.Bold

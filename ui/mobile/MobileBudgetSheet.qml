@@ -32,6 +32,9 @@ MobileSheet {
         allCategoriesChecked = row ? row.allCategories : true;
         errorText = "";
         confirmingDelete = false;
+        // The operations list below follows the budget being edited
+        if (editingId.length > 0)
+            financeController.selectedBudgetId = editingId;
 
         accountModel.clear();
         const accounts = financeController.allAccounts;
@@ -222,6 +225,52 @@ MobileSheet {
                 sheet.close();
             else
                 sheet.errorText = qsTr("Не удалось удалить бюджет");
+        }
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: sheet.editingId.length > 0
+        text: qsTr("Операции бюджета")
+        color: MobileTheme.accent
+        font.pixelSize: MobileTheme.sizeHeading
+        font.weight: Font.DemiBold
+    }
+
+    Repeater {
+        model: sheet.editingId.length > 0 ? financeController.budgetTransactions : []
+
+        delegate: RowLayout {
+            required property var modelData
+
+            Layout.fillWidth: true
+            spacing: 10
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData.description
+                    color: MobileTheme.accent
+                    font.pixelSize: MobileTheme.sizeBody
+                    elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData.date + " · " + modelData.categoryName
+                    color: MobileTheme.muted
+                    font.pixelSize: MobileTheme.sizeCaption
+                    elide: Text.ElideRight
+                }
+            }
+            Text {
+                text: MobileFormat.money(modelData.budgetAmountMinor, modelData.budgetCurrency, false)
+                color: MobileTheme.accent
+                font.pixelSize: MobileTheme.sizeBody
+                font.weight: Font.DemiBold
+            }
         }
     }
 }

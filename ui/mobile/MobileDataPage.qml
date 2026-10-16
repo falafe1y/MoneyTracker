@@ -9,6 +9,8 @@ Flickable {
     property bool statusOk: true
     property bool confirmingClear: false
 
+    signal bankStatementChosen(url file)
+
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     contentWidth: width
@@ -42,6 +44,24 @@ Flickable {
             page.statusText = result.ok
                 ? qsTr("Импортировано: %1, пропущено дубликатов: %2").arg(result.imported).arg(result.skipped)
                 : qsTr("Не удалось импортировать: %1").arg(result.error);
+        }
+    }
+
+    FileDialog {
+        id: bankDialog
+
+        title: qsTr("Выберите банковскую выписку")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("Банковские выписки (*.csv *.xlsx *.pdf)"), qsTr("Все файлы (*)")]
+        onAccepted: page.bankStatementChosen(selectedFile)
+    }
+
+    // Backup and restore are the computer dialogs, used as they are
+    BackupDialogs {
+        id: backupFlow
+        onExported: function(path) {
+            page.statusOk = true;
+            page.statusText = qsTr("Резервная копия сохранена: %1").arg(path);
         }
     }
 
@@ -81,6 +101,21 @@ Flickable {
                 Layout.fillWidth: true
                 text: qsTr("Импортировать из CSV")
                 onClicked: importDialog.open()
+            }
+            MobileButton {
+                Layout.fillWidth: true
+                text: qsTr("Выписка банка")
+                onClicked: bankDialog.open()
+            }
+            MobileButton {
+                Layout.fillWidth: true
+                text: qsTr("Сохранить резервную копию")
+                onClicked: backupFlow.openExport()
+            }
+            MobileButton {
+                Layout.fillWidth: true
+                text: qsTr("Восстановить из копии")
+                onClicked: backupFlow.openImport()
             }
 
             Text {

@@ -59,6 +59,17 @@ Flickable {
             Layout.fillWidth: true
         }
 
+        AverageReturnPanel {
+            Layout.fillWidth: true
+            controller: financeController
+            surface: MobileTheme.panel
+            ink: MobileTheme.accent
+            muted: MobileTheme.muted
+            line: MobileTheme.line
+            positive: MobileTheme.income
+            negative: MobileTheme.red
+        }
+
         MobileCard {
             Layout.fillWidth: true
             gap: 8
