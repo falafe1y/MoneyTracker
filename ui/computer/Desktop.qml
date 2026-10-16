@@ -1756,6 +1756,14 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                     }
                                     SoftButton {
+                                        neo: true
+                                        visible: financeController.selectedAsset === "investment" && financeController.investmentAccounts.length > 0
+                                        text: qsTr("+ Добавить позицию")
+                                        highlighted: true
+                                        implicitWidth: 170
+                                        onClicked: investmentPositionDialog.openForNewPosition()
+                                    }
+                                    SoftButton {
                                         id: addAccountButton
                                         flat: true
                                         neo: true
@@ -1877,7 +1885,7 @@ ApplicationWindow {
                                                 width: parent.width
                                                 visible: modelData.isCreditCard === true
                                                 text: modelData.isCreditCard
-                                                      ? qsTr("Долг: %1").arg(root.money(modelData.debtMinor, modelData.currency, false)) : ""
+                                                      ? qsTr("Долг: %1").arg(root.money(modelData.debtMinor, modelData.currency, false)) + (modelData.countsDebt === false ? qsTr(" · не учитывается") : "") : ""
                                                 color: root.muted
                                                 font.pixelSize: 14
                                                 font.weight: Font.Bold
@@ -4333,6 +4341,17 @@ ApplicationWindow {
                     negative: root.red
                 }
 
+                AverageReturnPanel {
+                    Layout.fillWidth: true
+                    controller: financeController
+                    surface: root.panel
+                    ink: root.accent
+                    muted: root.muted
+                    line: root.line
+                    positive: root.income
+                    negative: root.red
+                }
+
                 Panel {
                     neo: true
                     Layout.fillWidth: true
@@ -5453,6 +5472,7 @@ ApplicationWindow {
             accountNameField.clear();
             accountBalanceField.clear();
             accountCreditLimitField.clear();
+            creditDebtCheck.checked = true;
             depositRateField.clear();
             depositPayoutBox.currentIndex = 0;
             depositPayoutDayField.text = "1";
@@ -5482,6 +5502,7 @@ ApplicationWindow {
                                      ? root.amountForInput(row.initialDebtMinor)
                                      : root.signedAmountForInput(row.initialBalanceMinor);
             accountCreditLimitField.text = root.amountForInput(row.creditLimitMinor);
+            creditDebtCheck.checked = row.countsDebt !== false;
             depositRateField.text = row.depositAnnualRatePercent
                                   ? String(row.depositAnnualRatePercent).replace(".", ",")
                                   : "";
@@ -5544,7 +5565,8 @@ ApplicationWindow {
                          creditLimitMinor,
                          depositAnnualRatePercent,
                          depositPayoutFrequency,
-                         depositPayoutDay
+                         depositPayoutDay,
+                         accountDialog.creditCardSelected ? creditDebtCheck.checked : true
                      )
                      : financeController.addAccount(
                          accountNameField.text,
@@ -5554,7 +5576,8 @@ ApplicationWindow {
                          creditLimitMinor,
                          depositAnnualRatePercent,
                          depositPayoutFrequency,
-                         depositPayoutDay
+                         depositPayoutDay,
+                         accountDialog.creditCardSelected ? creditDebtCheck.checked : true
                      );
             if (ok)
                 close();
@@ -5738,6 +5761,22 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 visible: accountDialog.creditCardSelected
                 text: qsTr("Кредитный лимит не считается активом. Расходы увеличивают задолженность, а перевод на кредитку её погашает.")
+                color: root.muted
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+            AppCheckBox {
+                neo: true
+                id: creditDebtCheck
+                Layout.fillWidth: true
+                visible: accountDialog.creditCardSelected
+                text: qsTr("Учитывать долг?")
+                checked: true
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: accountDialog.creditCardSelected && !creditDebtCheck.checked
+                text: qsTr("Долг не вычитается из суммы фиата: в суммах учитывается только положительный остаток карты.")
                 color: root.muted
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap

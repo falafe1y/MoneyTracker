@@ -82,6 +82,16 @@ Dialog {
         marginField.text = position.blockedMarginText || "0"; adjustmentField.text = position.adjustmentText || "0";
         fxField.text = position.fxRateText || ""; open();
     }
+    // The money of a purchase is quantity times price; a bond's price is a percent of its face value,
+    // so bonds and derivatives keep the money typed by hand
+    function updateCash() {
+        if (dialog.derivative || dialog.instrumentType === 2)
+            return;
+        const quantity = Number(String(quantityField.text).replace(",", "."));
+        const price = Number(String(averagePriceField.text).replace(",", "."));
+        cashField.text = quantity > 0 && price > 0 ? (-quantity * price).toFixed(2) : "";
+    }
+
     function submit() {
         const result = controller.saveInvestmentPosition({
             id: editingPositionId, accountId: accountBox.currentValue,
@@ -242,8 +252,8 @@ Dialog {
                 Label { text: qsTr("Количество (%1)").arg(dialog.selectedInstrument ? dialog.selectedInstrument.quantityUnit : dialog.instrumentType === 7 ? qsTr("г") : dialog.derivative ? qsTr("контрактов") : qsTr("единиц")); color: dialog.mutedColor; font.pixelSize: 14 }
                 RowLayout {
                     Layout.fillWidth: true
-                    FormField { id: quantityField; Layout.fillWidth: true; placeholderText: qsTr("Количество"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                    FormField { id: averagePriceField; Layout.fillWidth: true; placeholderText: dialog.instrumentType === 2 ? qsTr("Средняя цена покупки, %") : qsTr("Средняя цена покупки"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                    FormField { id: quantityField; Layout.fillWidth: true; placeholderText: qsTr("Количество"); inputMethodHints: Qt.ImhFormattedNumbersOnly; onTextEdited: dialog.updateCash() }
+                    FormField { id: averagePriceField; Layout.fillWidth: true; placeholderText: dialog.instrumentType === 2 ? qsTr("Средняя цена покупки, %") : qsTr("Средняя цена покупки"); onTextEdited: dialog.updateCash(); inputMethodHints: Qt.ImhFormattedNumbersOnly }
                 }
                 FormCombo { id: directionBox; Layout.fillWidth: true; visible: dialog.derivative; model: [qsTr("Купленная позиция"), qsTr("Проданная позиция")] }
                 StyledCheckBox {
@@ -285,7 +295,7 @@ Dialog {
                     placeholderText: qsTr("Курс %1 → %2 (пусто — автоматически)").arg(dialog.selectedInstrument ? dialog.selectedInstrument.quoteCurrency : "").arg(dialog.accountCurrency)
                 }
                 FormCombo { id: entryBox; Layout.fillWidth: true; visible: !dialog.editingPositionId; model: [qsTr("Добавить уже имеющуюся позицию"), qsTr("Записать новую сделку и движение денег")] }
-                FormField { id: cashField; Layout.fillWidth: true; visible: !dialog.editingPositionId && entryBox.currentIndex === 1; placeholderText: qsTr("Изменение денег со знаком, %1").arg(dialog.accountCurrency) }
+                FormField { id: cashField; Layout.fillWidth: true; readOnly: !dialog.derivative && dialog.instrumentType !== 2; visible: !dialog.editingPositionId && entryBox.currentIndex === 1; placeholderText: qsTr("Изменение денег со знаком, %1").arg(dialog.accountCurrency) }
                 FormField { id: costField; Layout.fillWidth: true; visible: !dialog.derivative && (!!dialog.editingPositionId || entryBox.currentIndex === 0); placeholderText: qsTr("Стоимость приобретения всей позиции с комиссиями, %1 (если известна)").arg(dialog.accountCurrency) }
                 Label { Layout.fillWidth: true; visible: costField.visible; wrapMode: Text.WordWrap; color: dialog.mutedColor; font.pixelSize: 14; text: qsTr("Указанная сумма имеет приоритет. Для акций, фондов, металлов и валют в валюте счёта начальные затраты рассчитываются из количества и средней цены покупки. Комиссии добавьте в эту сумму, если они не включены в среднюю цену. Для облигаций и другой валюты укажите фактические затраты. При исправлении остатка проверьте сумму; очистка известной стоимости делает её неизвестной.") }
                 FormField { id: feeField; Layout.fillWidth: true; visible: !dialog.editingPositionId && entryBox.currentIndex === 1; placeholderText: qsTr("Комиссия внутри указанного движения денег (необязательно)") }

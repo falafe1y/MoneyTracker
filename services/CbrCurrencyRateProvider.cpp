@@ -1,4 +1,5 @@
 #include "CbrCurrencyRateProvider.h"
+#include "CbrFxHistory.h"
 
 #include <QDateTime>
 #include <QDebug>
@@ -203,6 +204,69 @@ void CbrCurrencyRateProvider::finishRefresh(QNetworkReply* reply)
     if (automaticUpdatesEnabled_) {
         scheduleNextRefresh(kRefreshIntervalMs);
     }
+}
+
+void CbrCurrencyRateProvider::requestUsdHistory(QDate from, QDate to)
+{
+    // Official history is loaded only when automatic rates are on: otherwise the app makes no requests to the CBR
+    if (!automaticUpdatesEnabled_ || historyReply_ != nullptr || !from.isValid() || !to.isValid() || from > to) {
+        return;
+    }
+
+    QNetworkRequest request{QUrl(cbrUsdHistoryUrl(from, to))};
+    request.setHeader(
+        QNetworkRequest::UserAgentHeader,
+        QStringLiteral("vexa/0.1"));
+    request.setRawHeader(
+        QByteArrayLiteral("Accept"),
+        QByteArrayLiteral("application/xml,text/xml"));
+    request.setTransferTimeout(15'000);
+
+    historyReply_ = networkAccessManager_.get(request);
+    QObject::connect(
+        historyReply_,
+        &QNetworkReply::finished,
+        this,
+        [this, reply = historyReply_]()
+        {
+            finishUsdHistory(reply);
+        });
+}
+
+void CbrCurrencyRateProvider::finishUsdHistory(QNetworkReply* reply)
+{
+    if (reply != historyReply_) {
+        reply->deleteLater();
+        return;
+    }
+    historyReply_ = nullptr;
+
+    const int statusCode = reply->attribute(
+        QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    const QByteArray response = reply->readAll();
+    const bool networkSucceeded =
+        reply->error() == QNetworkReply::NoError &&
+        statusCode == 200 &&
+        response.size() <= kMaximumResponseSize;
+    if (!networkSucceeded) {
+        qWarning() << "CBR history request failed:" << reply->errorString() << "HTTP status" << statusCode;
+    }
+    reply->deleteLater();
+
+    const auto rates = networkSucceeded
+        ? parseCbrUsdHistory(response, QDateTime::currentDateTimeUtc())
+        : QVector<HistoricalFxRate>{};
+    if (!rates.isEmpty()) {
+        history_ = rates;
+        emit historyReady();
+    }
+}
+
+QVector<HistoricalFxRate> CbrCurrencyRateProvider::takeHistory()
+{
+    auto rates = history_;
+    history_.clear();
+    return rates;
 }
 
 void CbrCurrencyRateProvider::scheduleNextRefresh(const qint64 delayMs)

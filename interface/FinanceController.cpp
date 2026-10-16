@@ -295,6 +295,7 @@ void addAccountFinancialRoles(
 
     item["isCrypto"] = false;
     item["isCreditCard"] = creditCard;
+    item["countsDebt"] = account.countsDebt();
     item["creditLimitMinor"] = account.creditLimitMinor();
     item["initialDebtMinor"] = account.debtMinor(account.initialBalanceMinor());
     item["debtMinor"] = account.debtMinor(balanceMinor);
@@ -517,6 +518,13 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
             emit budgetsChanged();
         });
 
+    connect(&rateProvider_, &CbrCurrencyRateProvider::historyReady, this,
+            [this]() {
+        if (repository_.saveHistoricalFxRates(rateProvider_.takeHistory())) {
+            rebuildAverageReturn();
+            emit performanceChanged();
+        }
+    });
     connect(&bybitProvider_, &BybitProvider::snapshotReady, this,
             [this](const QString& id, const QVariantList& holdings, const QVariantList& operations, qint64 fetchedAtMs) {
         if (!repository_.saveCryptoExchangeSnapshot(id, holdings, operations, fetchedAtMs)) {
@@ -526,6 +534,10 @@ FinanceController::FinanceController(QObject* parent, const QString& databasePat
         }
         cryptoExchanges_ = repository_.loadCryptoExchanges();
         exchangeErrors_.remove(id);
+        if (cryptoBackfillFromMs_.contains(id))
+            repository_.saveCryptoHistoryFromMs(id, cryptoBackfillFromMs_.take(id));
+        rebuildAverageReturn();
+        emit performanceChanged();
         emit cryptoWalletsChanged(); emit cryptoTransactionsChanged(); emit balanceChanged();
     });
     connect(&bybitProvider_, &BybitProvider::finished, this, [this](const QString& id, const QString& error) {
@@ -3608,7 +3620,8 @@ bool FinanceController::addAccount(
     const qint64 creditLimitMinor,
     const double depositAnnualRatePercent,
     const QString& depositPayoutFrequency,
-    const int depositPayoutDay
+    const int depositPayoutDay,
+    const bool countsDebt
     )
 {
     const QString normalizedName = name.trimmed();
@@ -3680,7 +3693,8 @@ bool FinanceController::addAccount(
         accountType,
         accountCurrency,
         initialBalanceMinor,
-        resolvedCreditLimitMinor);
+        resolvedCreditLimitMinor,
+        creditCard ? countsDebt : true);
 
     std::optional<DepositSettings> deposit;
     if (accountType == AccountType::Deposit) {
@@ -3723,7 +3737,8 @@ bool FinanceController::updateAccount(
     const qint64 creditLimitMinor,
     const double depositAnnualRatePercent,
     const QString& depositPayoutFrequency,
-    const int depositPayoutDay
+    const int depositPayoutDay,
+    const bool countsDebt
     )
 {
     const QString normalizedName = name.trimmed();
@@ -3843,7 +3858,8 @@ bool FinanceController::updateAccount(
         accountType,
         accountCurrency,
         initialBalanceMinor,
-        resolvedCreditLimitMinor);
+        resolvedCreditLimitMinor,
+        creditCard ? countsDebt : true);
     if (!repository_.isOpen() ||
         !repository_.updateAccountAndDeposit(updated, deposit)) {
         qWarning() << "Failed to update account:" << repository_.lastError();
@@ -4281,8 +4297,17 @@ void FinanceController::startExchangeRefresh(const QString& id)
         watcher->setFuture(QtConcurrent::run([id] { return ExchangeCredentials::load(id); }));
         return;
     }
+    // The first sync of an exchange reads two years of trades: the cost of a coin may be in any of them.
+    // Later syncs read from two days before the previous one.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const qint64 fetched = account->toMap().value("fetchedAtMs").toLongLong();
-    const qint64 from = fetched > 0 ? fetched - 2LL * 86400000 : QDateTime::currentMSecsSinceEpoch() - 30LL * 86400000;
+    qint64 from = now - 2LL * 86400000;
+    if (repository_.loadCryptoHistoryFromMs(id) == 0) {
+        from = now - 730LL * 86400000;
+        cryptoBackfillFromMs_.insert(id, from);
+    } else if (fetched > 0) {
+        from = fetched - 2LL * 86400000;
+    }
     const auto credentials = exchangeCredentials_.value(id);
     if (bybitProvider_.refresh(id, credentials.first, credentials.second, from)) {
         ++pendingCryptoRequests_; beginCryptoWalletRequest(id);
@@ -5384,7 +5409,7 @@ qint64 FinanceController::assetBalanceMinor(const AssetType asset) const
             continue;
         }
         total = saturatedCapitalAdd(total, currencyConverter_.convert(
-            Money(accountBalanceMinor(account), account.currency()),
+            Money(account.countedBalanceMinor(accountBalanceMinor(account)), account.currency()),
             appCurrency_).minorUnits());
     }
     if (asset == AssetType::Crypto) {
@@ -5699,7 +5724,7 @@ CapitalHistorySeries FinanceController::calculateCapitalHistory(
 
     for (const Account& account : std::as_const(accounts_)) {
         const qint64 initialMinor = currencyConverter_.convert(
-            Money(account.initialBalanceMinor(), account.currency()),
+            Money(account.countedBalanceMinor(account.initialBalanceMinor()), account.currency()),
             currency).minorUnits();
         openingMinor = saturatedCapitalAdd(openingMinor, initialMinor);
     }
@@ -5766,7 +5791,39 @@ CapitalHistorySeries FinanceController::calculateCapitalHistory(
             openingMinor, residualOpeningMinor);
     }
 
+    // A credit card that does not count its debt adds only its positive balance. Its transactions give the change of
+    // that counted balance, in the order of their dates; all other transactions are added as they are.
+    QHash<const Transaction*, qint64> countedDeltas;
+    for (const Account& account : std::as_const(accounts_)) {
+        if (!account.isCreditCard() || account.countsDebt()) {
+            continue;
+        }
+        QVector<const Transaction*> own;
+        for (const Transaction& transaction : std::as_const(transactions_)) {
+            if (transaction.accountId() == account.id()) {
+                own.append(&transaction);
+            }
+        }
+        std::stable_sort(own.begin(), own.end(), [](const Transaction* a, const Transaction* b) {
+            return a->date() < b->date();
+        });
+        qint64 balance = account.initialBalanceMinor();
+        qint64 counted = account.countedBalanceMinor(balance);
+        for (const Transaction* transaction : std::as_const(own)) {
+            const qint64 minor = transaction->money().minorUnits();
+            balance = saturatedCapitalAdd(balance, transaction->type() == TransactionType::Income ? minor : -minor);
+            const qint64 countedNow = account.countedBalanceMinor(balance);
+            countedDeltas.insert(transaction, currencyConverter_.convert(
+                Money(countedNow - counted, account.currency()), currency).minorUnits());
+            counted = countedNow;
+        }
+    }
     for (const Transaction& transaction : std::as_const(transactions_)) {
+        const auto counted = countedDeltas.constFind(&transaction);
+        if (counted != countedDeltas.cend()) {
+            events.append({transaction.date().toLocalTime().date(), counted.value()});
+            continue;
+        }
         qint64 deltaMinor = currencyConverter_.convert(
             transaction.money(), currency).minorUnits();
         if (transaction.type() == TransactionType::Expense ||

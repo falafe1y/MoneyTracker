@@ -188,6 +188,8 @@ class FinanceController final : public QObject
     Q_PROPERTY(QString benchmarkSearchError READ benchmarkSearchError NOTIFY benchmarkChanged)
     Q_PROPERTY(QVariantMap investmentPerformance READ investmentPerformance NOTIFY performanceChanged)
     Q_PROPERTY(QVariantList performanceAccounts READ performanceAccounts NOTIFY performanceChanged)
+    Q_PROPERTY(QVariantList averageReturnItems READ averageReturnItems NOTIFY performanceChanged)
+    Q_PROPERTY(QVariantMap averageReturnSummary READ averageReturnSummary NOTIFY performanceChanged)
     Q_PROPERTY(QString performanceAccountId READ performanceAccountId NOTIFY performanceChanged)
     Q_PROPERTY(QString performanceInflation READ performanceInflation NOTIFY performanceChanged)
     Q_PROPERTY(QVariantMap performanceDeposit READ performanceDeposit NOTIFY performanceChanged)
@@ -433,11 +435,14 @@ public:
     Q_INVOKABLE void refreshBenchmark();
     QVariantMap investmentPerformance() const { return investmentPerformance_; }
     QVariantList performanceAccounts() const { return performanceAccounts_; }
+    QVariantList averageReturnItems() const { return averageReturnItems_; }
+    QVariantMap averageReturnSummary() const { return averageReturnSummary_; }
     QString performanceAccountId() const { return performanceAccountId_; }
     QString performanceInflation() const { return performanceInflation_; }
     QVariantMap performanceDeposit() const { return performanceDeposit_; }
     Q_INVOKABLE bool setPerformanceDeposit(const QString& percent, const QString& capitalization);
     Q_INVOKABLE void setPerformanceAccount(const QString& id);
+    Q_INVOKABLE void setAverageReturnSelection(const QStringList& excludedIds, bool merged);
     Q_INVOKABLE bool setPerformanceInflation(const QString& percent);
     QVariantList investmentOperations() const;
     bool investmentValuationIncomplete() const;
@@ -491,7 +496,8 @@ public:
         qint64 creditLimitMinor,
         double depositAnnualRatePercent = 0.0,
         const QString& depositPayoutFrequency = QString(),
-        int depositPayoutDay = 1
+        int depositPayoutDay = 1,
+        bool countsDebt = true
         );
 
     Q_INVOKABLE bool updateAccount(
@@ -503,7 +509,8 @@ public:
         qint64 creditLimitMinor,
         double depositAnnualRatePercent = 0.0,
         const QString& depositPayoutFrequency = QString(),
-        int depositPayoutDay = 1
+        int depositPayoutDay = 1,
+        bool countsDebt = true
         );
 
     Q_INVOKABLE bool deleteAccount(const QString& id);
@@ -802,6 +809,8 @@ private:
     CryptoProvider cryptoProvider_;
     BybitProvider bybitProvider_;
     QVariantList cryptoExchanges_;
+    QHash<QString, qint64> cryptoBackfillFromMs_;
+    QDateTime rateHistoryRequestedUtc_;
     QHash<QString, QString> cryptoWalletNames_;
     QHash<QString, QPair<QString, QString>> exchangeCredentials_;
     QHash<QString, QString> exchangeErrors_;
@@ -833,6 +842,7 @@ private:
     QVector<GoalAssetValue> goalAssetValues() const;
     void captureCapitalSnapshot(bool overwriteToday = true);
     void rebuildInvestmentPerformance();
+    void rebuildAverageReturn();
     void initializeBenchmark();
     void cancelBenchmarkRequests();
     void rebuildBenchmarkComparison();
@@ -848,6 +858,11 @@ private:
     QVariantMap investmentPerformance_;
     QVariantList performanceAccounts_;
     QString performanceAccountId_, performanceInflation_;
+    // Average annual return: every instrument with its rate and its money, and the summary of the chosen ones
+    QVariantList averageReturnItems_;
+    QVariantMap averageReturnSummary_;
+    QStringList averageReturnExcluded_;
+    bool averageReturnMerged_ = true;
     QVariantMap performanceDeposit_;
     bool captureDailyAssetValuations();
     bool valuationHistoryReady_ = false;

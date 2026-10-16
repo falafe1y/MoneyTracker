@@ -108,6 +108,7 @@ qt_add_qml_module(vexa
         ui/computer/analytics/InvestmentMetricHelp.qml
         ui/computer/analytics/InvestmentPaymentsPanel.qml
         ui/computer/analytics/InvestmentPerformancePanel.qml
+        ui/computer/analytics/AverageReturnPanel.qml
         ui/computer/analytics/InvestmentRiskPanel.qml
         ui/computer/analytics/InvestmentStructurePanel.qml
         ui/computer/settings/BackupDialogs.qml
@@ -143,6 +144,10 @@ qt_add_qml_module(vexa
         SOURCES services/InvestmentValuation.h
         SOURCES services/InvestmentValuation.cpp
         SOURCES services/InvestmentPerformanceCalculator.cpp
+        SOURCES services/InvestmentReturn.h
+        SOURCES services/InvestmentReturn.cpp
+        SOURCES services/CryptoCostBasis.h
+        SOURCES services/CryptoCostBasis.cpp
         SOURCES services/InvestmentBenchmark.h
         SOURCES services/InvestmentBenchmark.cpp
         SOURCES services/InvestmentBenchmarkProvider.h
@@ -191,6 +196,8 @@ qt_add_qml_module(vexa
         SOURCES services/CurrencyRateCache.cpp
         SOURCES services/CbrCurrencyRateProvider.h
         SOURCES services/CbrCurrencyRateProvider.cpp
+        SOURCES services/CbrFxHistory.h
+        SOURCES services/CbrFxHistory.cpp
         SOURCES services/TronUsdtParser.h
         SOURCES services/TronUsdtParser.cpp
         SOURCES services/CryptoParser.h
@@ -314,6 +321,7 @@ add_executable(CurrencyRateCacheTest
     services/CurrencyConverter.cpp
     services/CurrencyRateCache.cpp
     services/CbrCurrencyRateProvider.cpp
+    services/CbrFxHistory.cpp
 )
 
 target_link_libraries(CurrencyRateCacheTest
@@ -685,6 +693,24 @@ add_test(NAME AnalyticsHistoryControllerTest COMMAND AnalyticsHistoryControllerT
 add_executable(InvestmentPerformanceTest tests/InvestmentPerformanceTest.cpp services/InvestmentRiskCalculator.cpp services/InvestmentPerformanceCalculator.cpp services/InvestmentValuation.cpp core/Currency.cpp)
 target_link_libraries(InvestmentPerformanceTest PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME InvestmentPerformanceTest COMMAND InvestmentPerformanceTest)
+add_executable(AverageReturnTest tests/AverageReturnTest.cpp services/InvestmentReturn.cpp)
+target_link_libraries(AverageReturnTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME AverageReturnTest COMMAND AverageReturnTest)
+add_executable(AverageReturnControllerTest tests/AverageReturnControllerTest.cpp ${investment_controller_test_sources} services/BankRecipients.qrc)
+target_link_libraries(AverageReturnControllerTest PRIVATE vexa_storage Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
+add_test(NAME AverageReturnControllerTest COMMAND AverageReturnControllerTest)
+
+add_executable(CryptoCostBasisTest tests/CryptoCostBasisTest.cpp services/CryptoCostBasis.cpp services/InvestmentReturn.cpp)
+target_link_libraries(CryptoCostBasisTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME CryptoCostBasisTest COMMAND CryptoCostBasisTest)
+
+add_executable(CbrFxHistoryTest tests/CbrFxHistoryTest.cpp services/CbrFxHistory.cpp)
+target_link_libraries(CbrFxHistoryTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME CbrFxHistoryTest COMMAND CbrFxHistoryTest)
+
+add_executable(CreditDebtFlagControllerTest tests/CreditDebtFlagControllerTest.cpp ${investment_controller_test_sources} services/BankRecipients.qrc)
+target_link_libraries(CreditDebtFlagControllerTest PRIVATE vexa_storage Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Test ZLIB::ZLIB)
+add_test(NAME CreditDebtFlagControllerTest COMMAND CreditDebtFlagControllerTest)
 
 add_executable(InvestmentStructureIncomeTest tests/InvestmentStructureIncomeTest.cpp services/InvestmentRiskCalculator.cpp services/InvestmentPerformanceCalculator.cpp services/InvestmentValuation.cpp core/Currency.cpp)
 target_link_libraries(InvestmentStructureIncomeTest PRIVATE Qt6::Core Qt6::Test)

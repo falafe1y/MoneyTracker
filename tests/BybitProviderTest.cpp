@@ -32,12 +32,14 @@ public:
     bool readOnly = true, apiError = false, repeatingCursor = false, validSignatures = true;
     int authenticatedRequests = 0, utaPages = 0, fundingPages = 0;
     bool encodedCursorSeen = false;
+    qint64 firstStartMs = 0;
 protected:
     QNetworkReply* createRequest(Operation operation, const QNetworkRequest& request, QIODevice*) override {
         if (operation != GetOperation) validSignatures = false;
         const QString path = request.url().path();
         QJsonObject result;
         if (path == "/v5/market/time") result = {{"timeSecond", QString::number(QDateTime::currentSecsSinceEpoch())}};
+        else if (path == "/v5/market/tickers") result = {{"list", QJsonArray{QJsonObject{{"symbol", "BTCUSDT"}, {"lastPrice", "60000.50"}}}}};
         else {
             ++authenticatedRequests;
             validSignatures &= request.rawHeader("X-BAPI-SIGN") == BybitProvider::signature(
@@ -50,6 +52,7 @@ protected:
             else if (path == "/v5/account/transaction-log") {
                 ++utaPages;
                 const auto query = QUrlQuery(request.url());
+                if (utaPages == 1) firstStartMs = query.queryItemValue("startTime").toLongLong();
                 const QString cursor = query.queryItemValue("cursor", QUrl::FullyDecoded);
                 if (!cursor.isEmpty()) encodedCursorSeen |= cursor == "next:+%/";
                 QJsonArray rows{QJsonObject{{"id", "id-1"}, {"currency", "USDT"}, {"change", "-0.000035610000"},
@@ -83,6 +86,8 @@ private slots:
         const auto holdings = snapshots[0][1].toList(); QCOMPARE(holdings.size(), 4);
         QCOMPARE(holdings[1].toMap().value("amountText").toString(), QString("120.25"));
         QCOMPARE(holdings[3].toMap().value("amountText").toString(), QString("0.0005"));
+        QCOMPARE(holdings[3].toMap().value("priceUsd").toString(), QString("60000.5"));
+        QCOMPARE(holdings[1].toMap().value("priceUsd").toString(), QString());
         const auto rows = snapshots[0][2].toList(); QCOMPARE(rows.size(), 3);
         QCOMPARE(rows[0].toMap().value("amountText").toString(), QString("0.00003561"));
         QCOMPARE(rows[1].toMap().value("direction").toString(), QString("neutral"));
@@ -93,10 +98,35 @@ private slots:
     void loadsThirtyDaysInSevenDayWindows() {
         Network network; BybitProvider provider(nullptr, &network);
         QSignalSpy finished(&provider, &BybitProvider::finished);
-        QVERIFY(provider.refresh("a", "test-key", "test-secret", 0));
+        QVERIFY(provider.refresh("a", "test-key", "test-secret", QDateTime::currentMSecsSinceEpoch() - 30LL * 86400000));
         QVERIFY(finished.count() == 1 || finished.wait(5000)); QCOMPARE(finished.count(), 1);
         QCOMPARE(finished[0][1].toString(), QString());
         QCOMPARE(network.utaPages, 10); QCOMPARE(network.fundingPages, 5);
+    }
+    void firstSyncReadsTwoYearsOfTrades() {
+        // A coin bought long ago has its cost in old trades, so the first sync starts two years back
+        Network network; BybitProvider provider(nullptr, &network);
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        QVERIFY(provider.refresh("a", "test-key", "test-secret", 0));
+        QTRY_VERIFY(network.utaPages >= 1);
+        provider.cancel("a");
+        QVERIFY(qAbs(network.firstStartMs - (now - 730LL * 86400000)) < 60000);
+    }
+    void spotTradeKeepsItsPriceAndQuantity() {
+        const QJsonObject trade{{"id", "t1"}, {"type", "TRADE"}, {"category", "spot"}, {"side", "Sell"}, {"symbol", "BTCUSDT"}, {"currency", "BTC"},
+                                {"change", "-0.25"}, {"qty", "-0.25"}, {"tradePrice", "60000.50"},
+                                {"transactionTime", "1700000000000"}, {"cashBalance", "1"}};
+        const auto parsed = BybitProvider::parseOperation(trade, false);
+        QCOMPARE(parsed.value("symbol").toString(), QString("BTC"));
+        QCOMPARE(parsed.value("pair").toString(), QString("BTCUSDT"));
+        QCOMPARE(parsed.value("tradeSide").toString(), QString("Sell"));
+        QCOMPARE(parsed.value("tradePrice").toString(), QString("60000.5"));
+        QCOMPARE(parsed.value("tradeQty").toString(), QString("0.25"));
+        QCOMPARE(parsed.value("changeText").toString(), QString("-0.25"));
+        QCOMPARE(parsed.value("direction").toString(), QString("out"));
+        QCOMPARE(parsed.value("category").toString(), QString("spot"));
+        QJsonObject broken = trade; broken["tradePrice"] = "n/a";
+        QCOMPARE(BybitProvider::parseOperation(broken, false).value("tradePrice").toString(), QString());
     }
     void rejectsUnsafeKeyAndFailedResponses() {
         for (int mode = 0; mode < 3; ++mode) {

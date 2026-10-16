@@ -26,6 +26,9 @@ bool validDecimal(const QString& value) {
 bool nonzero(const QString& value) {
     return value.contains(QRegularExpression(QStringLiteral("[1-9]")));
 }
+QString magnitude(const QString& value) {
+    return value.startsWith('-') || value.startsWith('+') ? value.mid(1) : value;
+}
 QString operationName(const QString& type, const QString& side) {
     if (type == "TRADE") return side == "Buy" ? QObject::tr("Покупка") : side == "Sell" ? QObject::tr("Продажа") : QObject::tr("Сделка");
     if (type == "TRANSFER_IN") return QObject::tr("Перевод на счёт");
@@ -63,7 +66,8 @@ bool BybitProvider::refresh(const QString& id, const QString& key, const QString
     auto sync = QSharedPointer<Sync>::create();
     sync->id = id; sync->key = key.toUtf8(); sync->secret = secret.toUtf8();
     sync->untilMs = QDateTime::currentMSecsSinceEpoch();
-    sync->fromMs = std::max(fromMs, sync->untilMs - 30LL * 86400000);
+    // The exchange keeps two years of its transaction log; the cost of a coin may be in any of its trades.
+    sync->fromMs = std::max(fromMs, sync->untilMs - 730LL * 86400000);
     sync->elapsed.start(); active_.insert(id, sync);
     const qint64 sentAt = QDateTime::currentMSecsSinceEpoch();
     get(sync, "/v5/market/time", {}, [this, sync, sentAt](const QJsonObject& result) {
@@ -88,9 +92,27 @@ bool BybitProvider::refresh(const QString& id, const QString& key, const QString
                         finish(sync, tr("Не удалось прочитать остатки Bybit")); return;
                     }
                 }
-                sync->windowFrom = sync->fromMs;
-                sync->windowTo = std::min(sync->untilMs, sync->windowFrom + 7LL * 86400000 - 1);
-                history(sync);
+                // Prices in dollars come from the public list of spot tickers. A coin without a USDT or USDC pair keeps no price.
+                QUrlQuery tickerQuery;
+                tickerQuery.addQueryItem("category", "spot");
+                get(sync, "/v5/market/tickers", tickerQuery, [this, sync](const QJsonObject& tickers) {
+                    QHash<QString, QString> lastPrices;
+                    for (const auto& value : tickers.value("list").toArray()) {
+                        const auto row = value.toObject();
+                        lastPrices.insert(row.value("symbol").toString(), row.value("lastPrice").toString());
+                    }
+                    for (auto& value : sync->holdings) {
+                        QVariantMap row = value.toMap();
+                        if (row.value("summary").toBool()) continue;
+                        const QString coin = row.value("coin").toString();
+                        const QString price = lastPrices.value(coin + "USDT", lastPrices.value(coin + "USDC"));
+                        row.insert("priceUsd", validDecimal(price) ? decimal(price) : QString());
+                        value = row;
+                    }
+                    sync->windowFrom = sync->fromMs;
+                    sync->windowTo = std::min(sync->untilMs, sync->windowFrom + 7LL * 86400000 - 1);
+                    history(sync);
+                }, false);
             });
         });
     }, false);
@@ -109,7 +131,7 @@ void BybitProvider::get(const QSharedPointer<Sync>& sync, const QString& path,
                         const QUrlQuery& query, std::function<void(const QJsonObject&)> done,
                         bool authenticated) {
     if (sync->canceled) return;
-    if (sync->elapsed.elapsed() > 120000) { finish(sync, tr("Загрузка Bybit заняла слишком много времени. Повторите обновление")); return; }
+    if (sync->elapsed.elapsed() > 600000) { finish(sync, tr("Загрузка Bybit заняла слишком много времени. Повторите обновление")); return; }
     QUrl url("https://api.bybit.com" + path); url.setQuery(query);
     QNetworkRequest request(url);
     request.setTransferTimeout(15000);
@@ -193,11 +215,24 @@ QVariantMap BybitProvider::parseOperation(const QJsonObject& row, bool funding) 
     if (funding && description.isEmpty()) description = QObject::tr("Перевод");
     const QString pair = row.value("symbol").toString();
     if (!pair.isEmpty()) description += " · " + pair;
-    return {{"transactionId", (funding ? "fund:" : "uta:") + rawId}, {"isExchange", true},
+    QVariantMap operation{{"transactionId", (funding ? "fund:" : "uta:") + rawId}, {"isExchange", true},
             {"direction", nonzero(amount) ? (negative ? "out" : "in") : "neutral"},
             {"amountText", amount}, {"symbol", row.value("currency").toString()}, {"occurredAtMs", time},
             {"counterparty", description}, {"section", funding ? "FundingAccount" : "UnifiedTradingAccount"},
             {"cashBalance", row.value(funding ? "afterAmt" : "cashBalance").toString()}};
+    // A spot trade keeps its pair, side, price and quantity: together they give the price paid for the coin.
+    // "symbol" stays the currency of the row; the coin leg of a trade has the base coin as its currency.
+    if (!funding && row.value("type").toString() == "TRADE" && !pair.isEmpty()) {
+        const QString rawPrice = row.value("tradePrice").toString();
+        const QString rawQty = row.value("qty").toString();
+        operation.insert("pair", pair);
+        operation.insert("tradeSide", row.value("side").toString());
+        operation.insert("tradePrice", validDecimal(rawPrice) ? decimal(rawPrice) : QString());
+        operation.insert("tradeQty", validDecimal(rawQty) ? decimal(magnitude(rawQty)) : QString());
+        operation.insert("changeText", (negative ? QStringLiteral("-") : QString()) + amount);
+        operation.insert("category", row.value("category").toString());
+    }
+    return operation;
 }
 void BybitProvider::history(const QSharedPointer<Sync>& sync) {
     QUrlQuery query;

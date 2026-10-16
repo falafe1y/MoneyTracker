@@ -25,6 +25,8 @@ public:
     qint64 rateToRubMicros(const QString& code) const;
     bool automaticUpdatesEnabled() const;
     QVector<HistoricalFxRate> historicalRates() const;
+    void requestUsdHistory(QDate from, QDate to);
+    QVector<HistoricalFxRate> takeHistory();
     void setAutomaticUpdatesEnabled(bool enabled);
     bool setManualRates(
         double rublesPerRub,
@@ -35,11 +37,13 @@ public:
 
 signals:
     void ratesUpdated();
+    void historyReady();
 
 private:
     void scheduleInitialRefresh();
     void requestRefresh();
     void finishRefresh(QNetworkReply* reply);
+    void finishUsdHistory(QNetworkReply* reply);
     void scheduleNextRefresh(qint64 delayMs);
 
     static QString defaultCacheFilePath();
@@ -76,4 +80,6 @@ private:
     QNetworkAccessManager networkAccessManager_;
     QTimer refreshTimer_;
     QNetworkReply* activeReply_ = nullptr;
+    QNetworkReply* historyReply_ = nullptr;
+    QVector<HistoricalFxRate> history_;
 };

@@ -3364,7 +3364,8 @@ ApplicationWindow {
                                      creditLimitMinor,
                                      depositAnnualRatePercent,
                                      depositPayoutFrequency,
-                                     depositPayoutDay
+                                     depositPayoutDay,
+                                     true
                                  )
                                  : financeController.addAccount(
                                      accountNameField.text,
@@ -3374,7 +3375,8 @@ ApplicationWindow {
                                      creditLimitMinor,
                                      depositAnnualRatePercent,
                                      depositPayoutFrequency,
-                                     depositPayoutDay
+                                     depositPayoutDay,
+                                     true
                                  );
                         if (ok)
                             accountDialog.close();

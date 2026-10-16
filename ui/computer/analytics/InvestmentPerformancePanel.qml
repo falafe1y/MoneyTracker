@@ -34,7 +34,7 @@ Rectangle {
         spacing: 14
         RowLayout {
             Layout.fillWidth: true
-            Label { text: qsTr("Результат инвестиций"); color: panel.ink; font.pixelSize: 20; font.bold: true; Layout.fillWidth: true }
+            Label { text: qsTr("Доходность"); color: panel.ink; font.pixelSize: 20; font.bold: true; Layout.fillWidth: true }
             ComboBox {
                 id: account
                 Layout.preferredWidth: 290

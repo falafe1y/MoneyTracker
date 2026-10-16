@@ -279,7 +279,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath, const QByteArr
         return;
     }
 
-    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !migrateLedgerSchema() || !migrateTaxKind() || !migrateCurrencySchema() || !migrateAnalyticsHistorySchema() || !seedDefaults()) {
+    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !migrateLedgerSchema() || !migrateTaxKind() || !migrateCurrencySchema() || !migrateCreditDebtFlag() || !migrateAnalyticsHistorySchema() || !seedDefaults()) {
         database_.close();
     }
 }
@@ -1039,7 +1039,7 @@ QVector<Account> FinanceRepository::loadAccounts()
     QSqlQuery query(database_);
     if (!query.exec(QStringLiteral(
             "SELECT id, name, asset_type, account_type, currency, "
-            "       initial_balance_minor, credit_limit_minor "
+            "       initial_balance_minor, credit_limit_minor, counts_debt "
             "FROM accounts WHERE is_archived = 0 "
             "ORDER BY asset_type, created_at, name COLLATE NOCASE"))) {
         setLastError(query.lastError().text());
@@ -1054,7 +1054,8 @@ QVector<Account> FinanceRepository::loadAccounts()
             static_cast<AccountType>(query.value(3).toInt()),
             currencyFromCode(query.value(4).toString()),
             query.value(5).toLongLong(),
-            query.value(6).toLongLong()));
+            query.value(6).toLongLong(),
+            query.value(7).toInt() != 0));
     }
     return result;
 }
@@ -2080,8 +2081,8 @@ bool FinanceRepository::insertAccount(const Account& account)
     QSqlQuery query(database_);
     query.prepare(QStringLiteral(
         "INSERT INTO accounts(id, name, asset_type, account_type, currency, "
-        "initial_balance_minor, credit_limit_minor, is_archived, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)"));
+        "initial_balance_minor, credit_limit_minor, counts_debt, is_archived, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)"));
     query.addBindValue(account.id());
     query.addBindValue(account.name());
     query.addBindValue(static_cast<int>(account.assetType()));
@@ -2089,6 +2090,7 @@ bool FinanceRepository::insertAccount(const Account& account)
     query.addBindValue(currencyCode(account.currency()));
     query.addBindValue(account.initialBalanceMinor());
     query.addBindValue(account.creditLimitMinor());
+    query.addBindValue(account.countsDebt() ? 1 : 0);
     query.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());
 
     if (!query.exec()) {
@@ -2133,7 +2135,7 @@ bool FinanceRepository::updateAccount(const Account& account)
     query.prepare(QStringLiteral(
         "UPDATE accounts "
         "SET name = ?, asset_type = ?, account_type = ?, currency = ?, "
-        "    initial_balance_minor = ?, credit_limit_minor = ? "
+        "    initial_balance_minor = ?, credit_limit_minor = ?, counts_debt = ? "
         "WHERE id = ? AND is_archived = 0 "
         "  AND (currency = ? OR NOT EXISTS ("
         "      SELECT 1 FROM transactions WHERE account_id = ?"
@@ -2145,6 +2147,7 @@ bool FinanceRepository::updateAccount(const Account& account)
     query.addBindValue(currencyCode(account.currency()));
     query.addBindValue(account.initialBalanceMinor());
     query.addBindValue(account.creditLimitMinor());
+    query.addBindValue(account.countsDebt() ? 1 : 0);
     query.addBindValue(account.id());
     query.addBindValue(currencyCode(account.currency()));
     query.addBindValue(account.id());
@@ -4406,6 +4409,31 @@ bool FinanceRepository::migrateCurrencySchema()
     if (!database_.commit()) return fail(database_.lastError().text());
     if (!query.exec(QStringLiteral("PRAGMA foreign_keys = ON"))) {
         setLastError(query.lastError().text());
+        return false;
+    }
+    return true;
+}
+
+bool FinanceRepository::migrateCreditDebtFlag()
+{
+    QSqlQuery columns(database_);
+    if (!columns.exec(QStringLiteral("PRAGMA table_info(accounts)"))) {
+        setLastError(columns.lastError().text());
+        return false;
+    }
+    bool present = false;
+    while (columns.next()) {
+        present = present || columns.value(1).toString() == QStringLiteral("counts_debt");
+    }
+    columns.finish();
+    if (present) {
+        return true;
+    }
+    QSqlQuery alter(database_);
+    if (!alter.exec(QStringLiteral(
+            "ALTER TABLE accounts ADD COLUMN counts_debt INTEGER NOT NULL DEFAULT 1 "
+            "CHECK(counts_debt IN (0,1))"))) {
+        setLastError(alter.lastError().text());
         return false;
     }
     return true;

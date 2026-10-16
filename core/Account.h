@@ -28,7 +28,8 @@ public:
         AccountType type,
         Currency currency,
         qint64 initialBalanceMinor = 0,
-        qint64 creditLimitMinor = 0
+        qint64 creditLimitMinor = 0,
+        bool countsDebt = true
         )
         : id_(std::move(id))
         , name_(std::move(name))
@@ -37,6 +38,7 @@ public:
         , currency_(currency)
         , initialBalanceMinor_(initialBalanceMinor)
         , creditLimitMinor_(creditLimitMinor)
+        , countsDebt_(countsDebt)
     {
     }
 
@@ -87,6 +89,19 @@ public:
             : 0;
     }
 
+    bool countsDebt() const noexcept
+    {
+        return countsDebt_;
+    }
+
+    // Money of the account that the totals count: a credit card that does not count its debt keeps only a positive balance
+    qint64 countedBalanceMinor(const qint64 currentBalanceMinor) const noexcept
+    {
+        return isCreditCard() && !countsDebt_ && currentBalanceMinor < 0
+            ? 0
+            : currentBalanceMinor;
+    }
+
     qint64 availableCreditMinor(const qint64 currentBalanceMinor) const noexcept
     {
         if (!isCreditCard()) {
@@ -104,4 +119,5 @@ private:
     Currency currency_;
     qint64 initialBalanceMinor_;
     qint64 creditLimitMinor_;
+    bool countsDebt_;
 };

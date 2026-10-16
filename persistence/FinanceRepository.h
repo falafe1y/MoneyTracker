@@ -75,7 +75,11 @@ public:
     QVariantList loadPositionHistory(const QString& positionId);
     QVariantList loadPriceHistory(AssetDailyValuation::Kind kind, const QString& assetId);
     QVariantList loadFxHistory(const QString& currency);
+    bool saveHistoricalFxRates(const QVector<HistoricalFxRate>& rates);
+    qint64 loadCryptoHistoryFromMs(const QString& exchangeId) const;
+    bool saveCryptoHistoryFromMs(const QString& exchangeId, qint64 fromMs);
     QVariantList loadPerformanceAccounts();
+    QVariantMap loadAccountCreationDates();
     QVariantList loadAllPositionHistory();
     QString loadPerformanceInflation() const;
     bool savePerformanceInflation(const QString& value);
@@ -292,6 +296,7 @@ private:
     bool migrateTaxKind();
     bool migrateBankImportSchema();
     bool migrateCurrencySchema();
+    bool migrateCreditDebtFlag();
     bool seedDefaults();
     void setLastError(const QString& error);
 

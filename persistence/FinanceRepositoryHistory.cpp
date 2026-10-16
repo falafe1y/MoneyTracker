@@ -335,6 +335,12 @@ QVariantList FinanceRepository::loadPerformanceAccounts() {
     if(!q.exec("SELECT id,name,currency,initial_balance_minor,created_at,account_type FROM accounts WHERE is_archived=0 AND account_type IN (6,7) ORDER BY created_at,id")){setLastError(q.lastError().text());return result;}
     while(q.next())result.append(rowMap(q));return result;
 }
+QVariantMap FinanceRepository::loadAccountCreationDates() {
+    QVariantMap result; QSqlQuery q(database_);
+    if(!q.exec("SELECT id,created_at FROM accounts")){setLastError(q.lastError().text());return result;}
+    while(q.next())result.insert(q.value(0).toString(),q.value(1).toLongLong());
+    return result;
+}
 QVariantList FinanceRepository::loadAllPositionHistory() {
     QVariantList result; QSqlQuery q(database_);
     if(!q.exec("SELECT * FROM investment_position_history ORDER BY sequence")){setLastError(q.lastError().text());return result;}
@@ -390,4 +396,58 @@ bool FinanceRepository::saveBenchmarkHistory(const QVariantMap& descriptor,const
     q.prepare("INSERT OR REPLACE INTO benchmark_history_ranges(benchmark_key,from_date,to_date,observed_at) VALUES(?,?,?,?)");q.addBindValue(key);q.addBindValue(from.toString(Qt::ISODate));q.addBindValue(to.toString(Qt::ISODate));q.addBindValue(QDateTime::currentMSecsSinceEpoch());
     if(!q.exec()){setLastError(q.lastError().text());return false;}
     return saveBenchmarkSelection(descriptor) && atomic.commit();
+}
+
+bool FinanceRepository::saveHistoricalFxRates(const QVector<HistoricalFxRate>& rates)
+{
+    if (rates.isEmpty())
+        return true;
+    HistorySavepoint atomic(database_);
+    if (!atomic.active()) {
+        setLastError(database_.lastError().text());
+        return false;
+    }
+    for (const auto& rate : rates) {
+        if (rate.currency.isEmpty() || !rate.rateDate.isValid() || !rate.observedAtUtc.isValid()
+            || rate.source.isEmpty() || rate.rubPerUnitMicros <= 0) {
+            setLastError(QStringLiteral("Некорректный исторический курс"));
+            return false;
+        }
+        QSqlQuery q(database_);
+        q.prepare("INSERT INTO fx_rate_history(currency,rate_date,source,rub_per_unit_micros,observed_at) VALUES(?,?,?,?,?) "
+                  "ON CONFLICT(currency,rate_date,source) DO UPDATE SET rub_per_unit_micros=excluded.rub_per_unit_micros,observed_at=excluded.observed_at "
+                  "WHERE excluded.observed_at>=fx_rate_history.observed_at");
+        q.addBindValue(rate.currency);
+        q.addBindValue(rate.rateDate.toString(Qt::ISODate));
+        q.addBindValue(rate.source);
+        q.addBindValue(rate.rubPerUnitMicros);
+        q.addBindValue(rate.observedAtUtc.toMSecsSinceEpoch());
+        if (!q.exec()) {
+            setLastError(q.lastError().text());
+            return false;
+        }
+    }
+    return atomic.commit();
+}
+
+// The first day of the exchange history that was read completely; 0 while the exchange was never read that far back
+qint64 FinanceRepository::loadCryptoHistoryFromMs(const QString& exchangeId) const
+{
+    QSqlQuery q(database_);
+    q.prepare("SELECT value FROM settings WHERE key=?");
+    q.addBindValue(QStringLiteral("crypto_history_from:") + exchangeId);
+    return q.exec() && q.next() ? q.value(0).toLongLong() : 0;
+}
+
+bool FinanceRepository::saveCryptoHistoryFromMs(const QString& exchangeId, qint64 fromMs)
+{
+    QSqlQuery q(database_);
+    q.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+    q.addBindValue(QStringLiteral("crypto_history_from:") + exchangeId);
+    q.addBindValue(QString::number(fromMs));
+    if (!q.exec()) {
+        setLastError(q.lastError().text());
+        return false;
+    }
+    return true;
 }
