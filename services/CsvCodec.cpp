@@ -59,8 +59,9 @@ QString decodeBytes(
         } else if (bytes.startsWith("\xFE\xFF")) {
             actual = CsvCodec::Encoding::Utf16Be;
         } else {
+            // Qt reports an invalid sequence only for a decoded text that is kept, so the result must be used
             QStringDecoder decoder(QStringConverter::Utf8);
-            decoder.decode(bytes);
+            [[maybe_unused]] const QString probe = decoder.decode(bytes);
             actual = decoder.hasError()
                 ? CsvCodec::Encoding::Windows1251
                 : CsvCodec::Encoding::Utf8;
