@@ -95,6 +95,7 @@ qt_add_qml_module(vexa
         ui/computer/accounts/InvestmentPositionDialog.qml
         ui/computer/accounts/InvestmentPositionsPanel.qml
         ui/computer/operations/BankCsvImportDialog.qml
+        ui/computer/operations/BrokerOperationDialog.qml
         ui/computer/operations/InvestmentOperationDialog.qml
         ui/computer/operations/RecurringTransactionsDialog.qml
         ui/computer/budgets/BudgetDialog.qml

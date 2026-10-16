@@ -23,10 +23,10 @@ private slots:
     void cnyAccountImportAndSettingsSurviveRestart();
 };
 namespace {
-bool seed(const QString& path) {
+bool seed(const QString& path, qint64 openingMinor = 0) {
     FinanceRepository r(path);
     return r.isOpen() && r.saveAutomaticCurrencyRates(false) &&
-        r.insertAccount({"bank","Банк",AssetType::Fiat,AccountType::DebitCard,Currency::RUB});
+        r.insertAccount({"bank","Банк",AssetType::Fiat,AccountType::DebitCard,Currency::RUB,openingMinor});
 }
 QVariantMap profile() {
     return {{"id","bank-profile"},{"name","Банк"},{"accountId","bank"},{"incomeCategoryId","salary"},
@@ -249,7 +249,8 @@ void BankImportControllerTest::transferValidationAndCrossCurrencyAmounts() {
     QCOMPARE(r.loadTransactions().size(),4);
 }
 void BankImportControllerTest::repeatedMatchAndLinkFailureRollBack() {
-    QTemporaryDir dir;const auto path=dir.filePath("data.db"),file=dir.filePath("bank.csv");QVERIFY(seed(path));QVERIFY(seedSecond(path));
+    // The manual transfer below moves money that is on the bank account: a transfer cannot exceed the balance
+    QTemporaryDir dir;const auto path=dir.filePath("data.db"),file=dir.filePath("bank.csv");QVERIFY(seed(path,100000));QVERIFY(seedSecond(path));
     FinanceController c(nullptr,path);QVERIFY(c.saveBankCsvProfile(profile()).value("ok").toBool());
     QVERIFY(c.addTransfer(10000,"Ручной перевод","bank","second",QDateTime(QDate(2026,10,1),QTime(12,0))));
     QVERIFY(csv(file,"01.10.2026;-100;Перевод;one;;;RUB;\n01.10.2026;-100;Перевод;two;;;RUB;\n"));

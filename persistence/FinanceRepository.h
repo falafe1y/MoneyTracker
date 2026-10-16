@@ -239,10 +239,12 @@ public:
     bool saveInvestmentBundle(const InvestmentInstrument& instrument,
         const InvestmentPosition& position, const std::optional<InvestmentQuote>& quote,
         bool editing, const std::optional<InvestmentOperation>& operation = {},
-        const std::optional<qint64>& openingCostMinor = {}, bool clearCostBasis = false);
+        const std::optional<qint64>& openingCostMinor = {}, bool clearCostBasis = false,
+        const QVector<InvestmentOperation>& charges = {});
     bool bookInvestmentOperation(const InvestmentOperation& operation,
         const InvestmentPosition& expected, const InvestmentPosition& updated, bool close,
-        const std::optional<InvestmentQuote>& quote = {});
+        const std::optional<InvestmentQuote>& quote = {}, const QVector<InvestmentOperation>& charges = {});
+    bool insertAccountCharge(const InvestmentOperation& operation);
     bool hasInvestmentOperations(const QString& positionId) const;
     bool updateCategoryName(const QString& id, const QString& name);
     bool archiveCategory(const QString& id);
@@ -286,6 +288,8 @@ private:
     bool initializeSchema();
     bool migrateLegacySchema();
     bool migrateInvestmentSchema();
+    bool migrateLedgerSchema();
+    bool migrateTaxKind();
     bool migrateBankImportSchema();
     bool migrateCurrencySchema();
     bool seedDefaults();

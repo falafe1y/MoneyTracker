@@ -592,6 +592,12 @@ ApplicationWindow {
     }
 
     function transactionSummary(row) {
+        // A transfer names its side: "Перевод НА …" on the outgoing row, "Перевод С …" on the incoming one
+        if (row.type === "transfer" && row.transferLabel) {
+            if (row.investmentTransfer || !row.rawDescription)
+                return row.transferLabel;
+            return row.transferLabel + " · " + row.rawDescription;
+        }
         if (row.recipientSource)
             return row.recipientName || qsTr("Получатель не определён");
         return row.rawDescription || row.description || "—";
@@ -651,6 +657,10 @@ ApplicationWindow {
             const text = (row.rawDescription + " " + row.categoryName + " " + row.accountName).toLowerCase();
             if (!query || text.indexOf(query) >= 0) result.push(row);
         }
+        // Deposits and brokerage accounts keep their fiat-style income, expense and transfer rows too
+        const cashRows = visibleTransactions();
+        for (let k = 0; k < cashRows.length; ++k)
+            result.push(Object.assign({}, cashRows[k], {date: new Date(cashRows[k].date)}));
         result.sort(function(a, b) { return b.date.getTime() - a.date.getTime(); });
         return result;
     }
@@ -697,22 +707,23 @@ ApplicationWindow {
             || operationDateDialog.visible
             || categoryDialog.visible
             || investmentPositionDialog.visible
+            || brokerOperationDialog.visible
             || bankCsvImportDialog.visible
             || recurringTransactionsDialog.visible
             || clearDataDialog.visible
             || backupDialogs.active;
     }
 
-    function selectedInvestmentAccountId() {
-        const accounts = financeController.investmentAccounts;
+    function selectedInvestmentAccount() {
+        const accounts = financeController.accounts;
         for (let i = 0; i < accounts.length; ++i)
             if (accounts[i].id === financeController.selectedAccountId)
-                return accounts[i].id;
-        return "";
+                return accounts[i];
+        return null;
     }
 
-    function selectedInvestmentAccountAcceptsPositions() {
-        return selectedInvestmentAccountId().length > 0;
+    function hasSelectedInvestmentAccount() {
+        return selectedInvestmentAccount() !== null;
     }
 
     function openNewOperationForSelectedAsset() {
@@ -720,12 +731,47 @@ ApplicationWindow {
             operationDialog.openForNew();
             return;
         }
-        if (financeController.selectedAsset === "investment"
-            && selectedInvestmentAccountAcceptsPositions()) {
-            investmentPositionDialog.openForNewPosition(
-                selectedInvestmentAccountId()
-            );
+        const account = selectedInvestmentAccount();
+        if (financeController.selectedAsset !== "investment" || !account)
+            return;
+        // A brokerage account takes purchases, sales and transfers; a deposit takes the same operations as fiat
+        if (account.type === "brokerage")
+            brokerOperationDialog.openFor(account.id);
+        else
+            operationDialog.openForNew();
+    }
+
+    function brokerageInfo(id) {
+        const accounts = financeController.investmentAccounts;
+        for (let i = 0; i < accounts.length; ++i)
+            if (accounts[i].id === id)
+                return accounts[i];
+        return null;
+    }
+
+    function brokerageLine(row) {
+        const info = brokerageInfo(row.id);
+        if (!info)
+            return "";
+        return qsTr("Свободно: %1 · заблокировано: %2")
+            .arg(root.money(info.freeNowMinor, row.currency, false))
+            .arg(root.money(info.blockedMarginMinor, row.currency, false));
+    }
+
+    // Free money of all brokerage accounts; only when every account keeps its money in the application currency
+    function brokerageTotalLine() {
+        if (financeController.selectedAsset !== "investment")
+            return "";
+        const accounts = financeController.investmentAccounts;
+        let total = 0;
+        for (let i = 0; i < accounts.length; ++i) {
+            if (accounts[i].currency !== financeController.appCurrency)
+                return "";
+            total += accounts[i].freeNowMinor;
         }
+        return accounts.length > 0
+            ? qsTr("Свободно: %1").arg(root.money(total, financeController.appCurrency, false))
+            : "";
     }
 
     Shortcut {
@@ -737,7 +783,7 @@ ApplicationWindow {
               && !transactionContextMenu.visible
               && (financeController.selectedAsset === "fiat"
                   || (financeController.selectedAsset === "investment"
-                      && root.selectedInvestmentAccountAcceptsPositions()))
+                      && root.hasSelectedInvestmentAccount()))
         onActivated: root.openNewOperationForSelectedAsset()
     }
 
@@ -1837,6 +1883,14 @@ ApplicationWindow {
                                                 font.weight: Font.Bold
                                                 elide: Text.ElideRight
                                             }
+                                            Text {
+                                                width: parent.width
+                                                text: modelData.id === "" ? root.brokerageTotalLine() : root.brokerageLine(modelData)
+                                                visible: text.length > 0
+                                                color: root.muted
+                                                font.pixelSize: 12
+                                                elide: Text.ElideRight
+                                            }
                                         }
                                     }
                                 }
@@ -2487,16 +2541,14 @@ ApplicationWindow {
                     font.weight: Font.Bold
                     implicitWidth: 224
                     visible: !transactionBlock.addInvestmentPositionAction
-                          || root.selectedInvestmentAccountAcceptsPositions()
+                          || root.hasSelectedInvestmentAccount()
                     enabled: !transactionBlock.addInvestmentPositionAction
-                          || root.selectedInvestmentAccountAcceptsPositions()
+                          || root.hasSelectedInvestmentAccount()
                     onClicked: {
                         if (transactionBlock.projectId.length > 0)
                             operationDialog.openForNew(transactionBlock.projectId);
                         else if (transactionBlock.addInvestmentPositionAction)
-                            investmentPositionDialog.openForNewPosition(
-                                financeController.selectedAccountId
-                            );
+                            root.openNewOperationForSelectedAsset();
                         else
                             operationDialog.openForNew();
                     }
@@ -3678,7 +3730,7 @@ ApplicationWindow {
                         || (financeController.selectedAsset === "investment"
                             && financeController.selectedAccountId === modelData.id)
                     width: 300
-                    height: modelData.isCrypto ? 156 : 132
+                    height: modelData.isCrypto ? 156 : modelData.type === "brokerage" ? 146 : 132
                     color: selected ? root.accent : root.panel
                     border.color: selected ? root.accent : root.line
                     ColumnLayout {
@@ -3708,6 +3760,16 @@ ApplicationWindow {
                                  : root.accent
                             font.pixelSize: modelData.isCreditCard ? 20 : 25
                             font.weight: Font.Bold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: modelData.type === "brokerage"
+                            text: root.brokerageLine(modelData)
+                            color: accountCard.selected
+                                 ? root.paleText
+                                 : root.muted
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
                         }
                         Text {
                             visible: modelData.isCreditCard
@@ -5109,6 +5171,18 @@ ApplicationWindow {
         errorColor: root.red
     }
 
+    BrokerOperationDialog {
+        id: brokerOperationDialog
+        controller: financeController
+        panelColor: root.panel
+        softColor: root.soft
+        textColor: root.accent
+        mutedColor: root.muted
+        lineColor: root.line
+        accentColor: root.accent
+        errorColor: root.red
+    }
+
     InvestmentPositionDialog {
         id: investmentPositionDialog
         controller: financeController
@@ -6249,7 +6323,7 @@ ApplicationWindow {
             text: qsTr("Редактировать")
             enabled: transactionContextMenu.transactionData !== null
                   && !transactionContextMenu.transactionData.transactionId
-                  && transactionContextMenu.transactionData.type !== "investment_cash"
+                  && transactionContextMenu.transactionData.type !== "investment_cash" && !transactionContextMenu.transactionData.investmentTransfer
             onTriggered: {
                 const row = transactionContextMenu.transactionData;
                 if (!row)
@@ -6276,7 +6350,7 @@ ApplicationWindow {
             text: qsTr("Удалить")
             destructive: true
             enabled: transactionContextMenu.transactionData !== null
-                     && transactionContextMenu.transactionData.type !== "investment_cash"
+                     && transactionContextMenu.transactionData.type !== "investment_cash" && !transactionContextMenu.transactionData.investmentTransfer
             onTriggered: {
                 const row = transactionContextMenu.transactionData;
                 if (!row) return;

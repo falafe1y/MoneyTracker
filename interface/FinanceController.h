@@ -443,6 +443,7 @@ public:
     bool investmentValuationIncomplete() const;
     Q_INVOKABLE QVariantMap saveInvestmentPosition(const QVariantMap& values);
     Q_INVOKABLE QVariantMap recordInvestmentOperation(const QVariantMap& values);
+    Q_INVOKABLE QVariantMap recordBrokerCharge(const QVariantMap& values);
     QVariantList investmentSearchResults() const;
     bool investmentSearchBusy() const;
     bool investmentQuoteBusy() const;
@@ -732,8 +733,9 @@ private:
     void loadNotes(bool migrateLegacyFile = true);
     void cancelPendingAssetRequests();
 
-    qint64 accountBalanceMinor(const Account& account) const;
+    qint64 accountBalanceMinor(const Account& account, bool honorDateFilter = true) const;
     qint64 investmentAccountValueMinor(const QString& accountId) const;
+    qint64 brokerageFreeNowMinor(const Account& account) const;
     InvestmentValuation investmentPositionValue(const InvestmentPosition& position) const;
     void reloadInvestments();
     int accountTransactionCount(const QString& accountId) const;
@@ -780,6 +782,11 @@ private:
     QString accountDisplayName(const Account& account) const;
     QString categoryDisplayName(const Category& category) const;
     QString transactionDisplayDescription(const Transaction& transaction) const;
+    QString transferSideLabel(const Transaction& transaction) const;
+    QVariantList investmentTradeTransferRows(
+        const InvestmentOperation& operation,
+        const Account& account
+        ) const;
 
     static Currency currencyFromString(
         const QString& currency

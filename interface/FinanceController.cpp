@@ -3055,6 +3055,7 @@ QVariantList FinanceController::allAccounts() const
         item["id"] = account.id();
         item["name"] = accountDisplayName(account);
         item["rawName"] = account.name();
+        item["type"] = accountTypeToString(account.type());
         item["asset"] = assetTypeToString(account.assetType());
         item["assetTitle"] = account.assetType() == AssetType::Fiat
             ? tr("Фиат")
@@ -3067,6 +3068,8 @@ QVariantList FinanceController::allAccounts() const
             + QStringLiteral(" · ") + currencyCode(account.currency());
         const qint64 balanceMinor = accountBalanceMinor(account);
         item["balanceMinor"] = balanceMinor;
+        // The money there is now: a transfer or a purchase needs it, whatever period the list shows
+        item["currentBalanceMinor"] = accountBalanceMinor(account, false);
         item["initialBalanceMinor"] = account.initialBalanceMinor();
         item["isDeposit"] = account.type() == AccountType::Deposit;
         if (const DepositSettings* deposit =
@@ -3273,6 +3276,7 @@ QVariantList FinanceController::investmentAccounts() const
         const auto cash=saturatedCapitalSubtract(accountBalanceMinor(account),positions);
         qint64 blocked=0;for(const auto& p:investmentPositions_)if(p.accountId()==account.id())blocked=saturatedCapitalAdd(blocked,p.settings().blockedMarginMinor);
         item["cashMinor"]=cash;item["blockedMarginMinor"]=blocked;item["freeCashMinor"]=saturatedCapitalSubtract(cash,blocked);
+        item["freeNowMinor"]=brokerageFreeNowMinor(account);
         result.append(item);
     }
     return result;
@@ -3330,7 +3334,7 @@ QVariantList FinanceController::investmentSearchResults() const
         item["type"]=static_cast<int>(instrument.type());item["typeName"]=investmentTypeName(instrument.type());
         item["boardId"]=instrument.primaryBoardId();item["hasPrice"]=instrument.hasQuote();
         item["priceText"]=instrument.hasQuote()?formatMicros(instrument.priceMicros()):QString();
-        item["currency"]=instrument.currencyCode();item["selected"]=index==selectedInvestmentSearchIndex_;result.append(item);
+        item["priceMicros"]=instrument.hasQuote()?QVariant(instrument.priceMicros()):QVariant();item["currency"]=instrument.currencyCode();item["selected"]=index==selectedInvestmentSearchIndex_;result.append(item);
     }return result;
 }
 
@@ -4790,6 +4794,55 @@ bool FinanceController::addProjectTransaction(
         projectId);
 }
 
+QVariantList FinanceController::investmentTradeTransferRows(
+    const InvestmentOperation& operation,
+    const Account& account
+    ) const
+{
+    const auto instrument = std::find_if(investmentInstruments_.cbegin(), investmentInstruments_.cend(),
+        [&operation](const InvestmentInstrument& candidate) { return candidate.id() == operation.instrumentId; });
+    const QString symbol = instrument == investmentInstruments_.cend()
+        ? operation.instrumentId
+        : instrument->symbol();
+    const bool sold = operation.kind == QStringLiteral("sell");
+    const QString holding = QStringLiteral("%1 ×%2").arg(
+        symbol, formatMicros(qAbs(operation.quantityDeltaMicros)));
+    const QString cash = tr("денежные средства");
+    const qint64 amount = qAbs(operation.cashDeltaMinor);
+    const QString currency = currencyCode(account.currency());
+    const QString accountName = accountDisplayName(account);
+
+    const auto half = [&](const QString& idSuffix, const QString& direction, const QString& label)
+    {
+        return QVariantMap{
+            {"id", operation.id + idSuffix},
+            {"accountId", operation.accountId},
+            {"positionId", operation.positionId},
+            {"accountName", accountName},
+            {"type", QStringLiteral("transfer")},
+            {"direction", direction},
+            {"investmentTransfer", true},
+            {"transferLabel", label},
+            {"description", label},
+            {"kind", operation.kind},
+            {"amount", amount},
+            {"currency", currency},
+            {"categoryName", tr("Перевод")},
+            {"rawDescription", operation.description},
+            {"date", operation.occurredAtUtc},
+            {"feeMinor", operation.feeMinor ? QVariant(*operation.feeMinor) : QVariant()},
+            {"taxMinor", operation.taxMinor ? QVariant(*operation.taxMinor) : QVariant()}};
+    };
+    // Cash half: money comes in on a sale and goes out on a purchase.
+    // Holding half: the instrument leaves on a sale and arrives on a purchase. Both halves have the same size,
+    // so the account's transfer rows net to zero; only commissions (already in the cash amount) differ.
+    return QVariantList{
+        QVariant(half(QStringLiteral("-cash"), sold ? QStringLiteral("in") : QStringLiteral("out"),
+            sold ? tr("Перевод С %1").arg(holding) : tr("Перевод НА %1").arg(holding))),
+        QVariant(half(QStringLiteral("-position"), sold ? QStringLiteral("out") : QStringLiteral("in"),
+            sold ? tr("Перевод НА %1").arg(cash) : tr("Перевод С %1").arg(cash)))};
+}
+
 bool FinanceController::addTransfer(
     const qint64 sourceMinorUnits,
     const QString& description,
@@ -4811,6 +4864,18 @@ bool FinanceController::addTransfer(
         if (account.id() == targetAccountId) target = &account;
     }
     if (!source || !target) {
+        return false;
+    }
+
+    // Money is not created by transfers: a source holds the amount. A credit card is a credit line, not a source (ADR-017).
+    if (source->type() != AccountType::CreditCard && source->type() != AccountType::Brokerage &&
+        sourceMinorUnits > accountBalanceMinor(*source, false)) {
+        return false;
+    }
+
+    // Only free money may leave a brokerage account: the margin blocked by its positions stays there.
+    if (source->assetType() == AssetType::Investment && source->type() == AccountType::Brokerage &&
+        sourceMinorUnits > brokerageFreeNowMinor(*source)) {
         return false;
     }
 
@@ -5232,17 +5297,17 @@ const DepositSettings* FinanceController::depositSettingsForAccount(
     return settings == depositSettings_.cend() ? nullptr : &*settings;
 }
 
-qint64 FinanceController::accountBalanceMinor(const Account& account) const
+qint64 FinanceController::accountBalanceMinor(const Account& account, const bool honorDateFilter) const
 {
     qint64 balance=account.initialBalanceMinor();
     for(const auto& transaction:transactions_){
         if(transaction.accountId()!=account.id())continue;
-        if(dateFilterActive() && !TransactionDateFilter::isOnOrBefore(transaction,dateFilterTo_))continue;
+        if(honorDateFilter && dateFilterActive() && !TransactionDateFilter::isOnOrBefore(transaction,dateFilterTo_))continue;
         balance=saturatedCapitalAdd(balance,transaction.type()==TransactionType::Income?transaction.money().minorUnits():-transaction.money().minorUnits());
     }
     if(account.assetType()==AssetType::Investment){
         for(const auto& op:investmentOperations_){if(op.accountId!=account.id())continue;
-            if(dateFilterActive() && op.occurredAtUtc.toLocalTime().date()>dateFilterTo_)continue;
+            if(honorDateFilter && dateFilterActive() && op.occurredAtUtc.toLocalTime().date()>dateFilterTo_)continue;
             balance=saturatedCapitalAdd(balance,op.cashDeltaMinor);
         }
         balance=saturatedCapitalAdd(balance,investmentAccountValueMinor(account.id()));
@@ -5255,6 +5320,16 @@ qint64 FinanceController::investmentAccountValueMinor(const QString& id) const
     qint64 total=0;for(const auto& p:investmentPositions_)if(p.accountId()==id){
         const auto value=investmentPositionValue(p);if(value.available)total=saturatedCapitalAdd(total,value.valueMinor);
     }return total;
+}
+
+// Money of a brokerage account that is free now: cash minus the margin blocked by its positions. The date filter does
+// not apply, because a transfer or a withdrawal happens at the present moment.
+qint64 FinanceController::brokerageFreeNowMinor(const Account& account) const
+{
+    const auto cash=saturatedCapitalSubtract(accountBalanceMinor(account,false),investmentAccountValueMinor(account.id()));
+    qint64 blocked=0;
+    for(const auto& p:investmentPositions_)if(p.accountId()==account.id())blocked=saturatedCapitalAdd(blocked,p.settings().blockedMarginMinor);
+    return saturatedCapitalSubtract(cash,blocked);
 }
 
 InvestmentValuation FinanceController::investmentPositionValue(const InvestmentPosition& p) const
@@ -5283,6 +5358,8 @@ void FinanceController::reloadInvestments()
 {
     investmentInstruments_=repository_.loadInvestmentInstruments();investmentPositions_=repository_.loadInvestmentPositions();
     investmentQuotes_=repository_.loadInvestmentQuotes();investmentOperations_=repository_.loadInvestmentOperations();
+    // Investment operations are journal rows too: income, expense and balance totals follow them.
+    summary_=repository_.loadSummary();
     emit investmentPositionsChanged();emit accountsChanged();emit transactionsChanged();emit balanceChanged();
 }
 
@@ -5958,45 +6035,52 @@ QString FinanceController::transactionDisplayDescription(
     const Transaction& transaction
     ) const
 {
-    const QString description = transaction.description();
     if (!isTransfer(transaction)) {
-        return description;
+        return transaction.description();
     }
+    // Each half names the other side: "Перевод НА" on the outgoing row, "Перевод С" on the incoming one.
+    const QString label = transferSideLabel(transaction);
+    if (!label.isEmpty()) {
+        return label;
+    }
+    return transaction.description().isEmpty() ? tr("Перевод") : transaction.description();
+}
 
+QString FinanceController::transferSideLabel(
+    const Transaction& transaction
+    ) const
+{
     const QString idPrefix = transferId(transaction);
     if (idPrefix.isEmpty()) {
-        return description.isEmpty() ? tr("Перевод") : description;
+        return {};
     }
-
-    const Transaction* outgoing = nullptr;
-    const Transaction* incoming = nullptr;
+    const bool outgoing = transaction.categoryId() == QStringLiteral("transfer-out");
+    const QString counterpartId = idPrefix + (outgoing ? QStringLiteral("-in") : QStringLiteral("-out"));
+    const QString counterpartCategory = outgoing
+        ? QStringLiteral("transfer-in") : QStringLiteral("transfer-out");
+    const Transaction* counterpart = nullptr;
     for (const Transaction& candidate : transactions_) {
-        if (candidate.id() == idPrefix + QStringLiteral("-out"))
-            outgoing = &candidate;
-        else if (candidate.id() == idPrefix + QStringLiteral("-in"))
-            incoming = &candidate;
+        if (candidate.id() == counterpartId && candidate.categoryId() == counterpartCategory) {
+            counterpart = &candidate;
+            break;
+        }
     }
-    if (!outgoing || !incoming) {
-        return description.isEmpty() ? tr("Перевод") : description;
+    if (!counterpart) {
+        return {};
     }
-
-    const Account* source = nullptr;
-    const Account* target = nullptr;
+    const Account* other = nullptr;
     for (const Account& account : accounts_) {
-        if (account.id() == outgoing->accountId()) source = &account;
-        if (account.id() == incoming->accountId()) target = &account;
+        if (account.id() == counterpart->accountId()) {
+            other = &account;
+            break;
+        }
     }
-    if (!source || !target) {
-        return description.isEmpty() ? tr("Перевод") : description;
+    if (!other) {
+        return {};
     }
-
-    const QString legacyDefault = QStringLiteral("Перевод: %1 → %2")
-        .arg(source->name(), target->name());
-    if (!description.isEmpty() && description != legacyDefault) {
-        return description;
-    }
-    return tr("Перевод: %1 → %2")
-        .arg(accountDisplayName(*source), accountDisplayName(*target));
+    return outgoing
+        ? tr("Перевод НА %1").arg(accountDisplayName(*other))
+        : tr("Перевод С %1").arg(accountDisplayName(*other));
 }
 
 QVariantMap FinanceController::transactionToVariant(
@@ -6031,6 +6115,9 @@ QVariantMap FinanceController::transactionToVariant(
     item[QStringLiteral("date")] = transaction.date().toString(Qt::ISODate);
     item[QStringLiteral("description")] =
         transactionDisplayDescription(transaction);
+    item[QStringLiteral("transferLabel")] = transfer
+        ? item[QStringLiteral("description")].toString()
+        : QString();
     item[QStringLiteral("rawDescription")] = transaction.description();
     item[QStringLiteral("recipientName")] = transaction.recipient().name;
     item[QStringLiteral("recipientKey")] = transaction.recipient().key;
@@ -6485,7 +6572,7 @@ QVariantMap investmentTermsToVariant(const InvestmentTerms& t)
             (t.quoteSource=="settleprice_clr" || t.quoteSource=="prevsettleprice") ? QCoreApplication::translate("FinanceController","Расчётная цена") :
             t.quoteSource=="last" ? QCoreApplication::translate("FinanceController","Последняя сделка") :
             QCoreApplication::translate("FinanceController","Цена биржи")},{"quantityUnit",t.quantityUnit},
-        {"faceValueText",formatMicros(t.faceValueMicros)},{"accruedInterestText",t.accruedInterestMicros<0?QString():formatMicros(t.accruedInterestMicros)},
+        {"faceValueMicros",t.faceValueMicros},{"faceValueText",formatMicros(t.faceValueMicros)},{"accruedInterestText",t.accruedInterestMicros<0?QString():formatMicros(t.accruedInterestMicros)},
         {"priceStepText",formatMicros(t.priceStepMicros)},{"stepValueText",formatMicros(t.stepValueMicros)},
         {"multiplierText",formatMicros(t.multiplierMicros)},{"lotSizeText",formatMicros(t.lotSizeMicros)},
         {"settlementPriceText",formatMicros(t.settlementPriceMicros)},{"strikeText",formatMicros(t.strikeMicros)},
@@ -6529,6 +6616,7 @@ QString investmentOperationName(const QString& kind)
     if(kind=="dividend")return QCoreApplication::translate("FinanceController","Дивиденды / выплата фонда");
     if(kind=="amortization")return QCoreApplication::translate("FinanceController","Частичное погашение номинала");
     if(kind=="fee")return QCoreApplication::translate("FinanceController","Комиссия");
+    if(kind=="tax")return QCoreApplication::translate("FinanceController","Налог");
     if(kind=="margin")return QCoreApplication::translate("FinanceController","Расчёт вариационной маржи");
     return QCoreApplication::translate("FinanceController","Погашение / исполнение контракта");
 }
@@ -6552,6 +6640,33 @@ bool readOperationCharges(const QVariantMap& values, InvestmentOperation& op)
         op.feeMinor=paid-tax;
     }
     return true;
+}
+}
+
+namespace {
+// Commission and tax of a trade are rows of their own: same position, same date, no change of the holding.
+// A purchase has a commission only; a sale has a commission and, optionally, a tax.
+QString tradeCharges(const QVariantMap& values, const InvestmentOperation& trade, const QString& symbol, QVector<InvestmentOperation>& charges)
+{
+    const auto add=[&](const char* key,const char* kind,const QString& label)->bool{
+        const auto text=values.value(key).toString().trimmed();
+        if(text.isEmpty())return true;
+        qint64 amount=0;if(!parseSignedInvestmentNumber(text,amount,true) || amount<0)return false;
+        if(amount>0)charges.append(InvestmentOperation{QUuid::createUuid().toString(QUuid::WithoutBraces),trade.accountId,trade.positionId,
+            trade.instrumentId,kind,-amount,0,trade.occurredAtUtc,label+QStringLiteral(" · ")+symbol});
+        return true;};
+    if(!add("fee","fee",QCoreApplication::translate("FinanceController","Комиссия брокера")))
+        return QCoreApplication::translate("FinanceController","Комиссия должна быть неотрицательным числом");
+    if(trade.kind!="sell"){
+        // A purchase has no tax of its own: a tax is an operation of its own. A zero tax is no tax.
+        qint64 tax=0;const auto text=values.value("tax").toString().trimmed();
+        if(!text.isEmpty() && (!parseSignedInvestmentNumber(text,tax,true) || tax!=0))
+            return QCoreApplication::translate("FinanceController","Налог при покупке не записывается: внесите его отдельной операцией");
+        return {};
+    }
+    if(!add("tax","tax",QCoreApplication::translate("FinanceController","Налог")))
+        return QCoreApplication::translate("FinanceController","Налог должен быть неотрицательным числом");
+    return {};
 }
 }
 
@@ -6658,15 +6773,31 @@ QVariantMap FinanceController::saveInvestmentPosition(const QVariantMap& v)
     const auto value=valueInvestmentPosition(position,quote?&*quote:nullptr,terms,fx);
     if(!value.available)return fail(value.error);
     std::optional<InvestmentOperation> operation;
+    QVector<InvestmentOperation> charges;
     if(!editing && v.value("purchase").toBool()){
         qint64 cash=0;if(!parseSignedInvestmentNumber(v.value("cashAmount").toString(),cash,true))return fail(tr("Укажите фактическое изменение денег, со знаком"));
         if((type!=InvestmentInstrumentType::Future && terms.pricing!="margined_option") &&
             ((settings.direction==1 && cash>=0) || (settings.direction==-1 && cash<=0)))return fail(tr("Покупка уменьшает деньги, продажа опциона увеличивает; укажите соответствующий знак"));
-        operation=InvestmentOperation{QUuid::createUuid().toString(QUuid::WithoutBraces),accountId,position.id(),instrumentId,"buy",cash,quantity,now,
-            tr("Открытие позиции: %1").arg(symbol)};
+        // The purchase is dated by the user (not later than now); without a date it is the moment of saving.
+        auto when=now;
+        if(!v.value("date").toString().trimmed().isEmpty()){
+            when=parseInvestmentDate(v.value("date").toString());
+            if(!when.isValid() || when>QDateTime::currentDateTime())return fail(tr("Укажите дату и время фактической операции"));
+            when=when.toUTC();
+        }
+        const auto purchaseNote=v.value("description").toString().trimmed();
+        operation=InvestmentOperation{QUuid::createUuid().toString(QUuid::WithoutBraces),accountId,position.id(),instrumentId,"buy",cash,quantity,when,
+            purchaseNote.isEmpty()?tr("Открытие позиции: %1").arg(symbol):purchaseNote};
+        const auto chargeError=tradeCharges(v,*operation,symbol,charges);
+        if(!chargeError.isEmpty())return fail(chargeError);
+        // The purchase needs free money for its amount, as a transfer does (ADR-005); its commission may take the account below zero (ADR-008).
+        if(cash<0){
+            const auto free=brokerageFreeNowMinor(*account);
+            if(free<-cash)return fail(tr("Свободных денег на счёте %1 %2, а покупка списывает %3")
+                .arg(QString::number(free/100.0,'f',2),currencyCode(account->currency()),QString::number(-cash/100.0,'f',2)));
+        }
     }
     if(operation){
-        if(!readOperationCharges(v,*operation))return fail(tr("Укажите неотрицательные комиссию и удержания, до 2 знаков после запятой"));
         operation->tradePriceMicros=average;operation->tradeCurrency=terms.currencyCode;
     }
     std::optional<qint64> openingCost;
@@ -6680,7 +6811,7 @@ QVariantMap FinanceController::saveInvestmentPosition(const QVariantMap& v)
     const InvestmentInstrument instrument(instrumentId,symbol,isin,name,type,valuationCurrency,market,board,terms);
     if(!repository_.saveInvestmentBundle(instrument,position,quote,editing,operation,openingCost,
         editing && v.contains("costBasis") && v.value("costBasis").toString().trimmed().isEmpty()
-        && !repository_.investmentCostBasis(id).isNull()))return fail(tr("Не удалось сохранить позицию: %1").arg(repository_.lastError()));
+        && !repository_.investmentCostBasis(id).isNull(),charges))return fail(tr("Не удалось сохранить позицию: %1").arg(repository_.lastError()));
     reloadInvestments();return {{"ok",true}};
 }
 
@@ -6692,7 +6823,7 @@ QVariantMap FinanceController::recordInvestmentOperation(const QVariantMap& v)
     if(p==investmentPositions_.cend())return fail(tr("Позиция не найдена"));
     const auto i=std::find_if(investmentInstruments_.cbegin(),investmentInstruments_.cend(),[&](const auto& i){return i.id()==p->instrumentId();});
     if(i==investmentInstruments_.cend())return fail(tr("Инструмент не найден"));
-    const QStringList kinds{"buy","sell","coupon","dividend","amortization","fee","margin","expiry"};
+    const QStringList kinds{"buy","sell","coupon","dividend","amortization","fee","tax","margin","expiry"};
     if(!kinds.contains(kind))return fail(tr("Неизвестный вид операции"));
     auto date=parseInvestmentDate(v.value("date").toString());
     if(!date.isValid() || date>QDateTime::currentDateTime())return fail(tr("Укажите дату и время фактической операции"));date=date.toUTC();
@@ -6703,6 +6834,7 @@ QVariantMap FinanceController::recordInvestmentOperation(const QVariantMap& v)
     qint64 cash=0;if(!parseSignedInvestmentNumber(v.value("cashAmount").toString(),cash,true))return fail(tr("Укажите фактическое изменение денег со знаком, до 2 знаков после запятой"));
     if((kind=="coupon" || kind=="dividend" || kind=="amortization") && cash<=0)return fail(tr("Выплата должна увеличивать денежный остаток"));
     if(kind=="fee" && cash>=0)return fail(tr("Комиссия должна уменьшать денежный остаток"));
+    if(kind=="tax" && cash>=0)return fail(tr("Налог должен уменьшать денежный остаток"));
     if((kind=="coupon" || kind=="amortization") && i->type()!=InvestmentInstrumentType::Bond)return fail(tr("Эта операция доступна для облигаций"));
     if(kind=="dividend" && i->type()!=InvestmentInstrumentType::Stock && i->type()!=InvestmentInstrumentType::PreferredStock &&
         i->type()!=InvestmentInstrumentType::DepositaryReceipt && i->type()!=InvestmentInstrumentType::Etf && i->type()!=InvestmentInstrumentType::Fund)
@@ -6778,13 +6910,51 @@ QVariantMap FinanceController::recordInvestmentOperation(const QVariantMap& v)
     InvestmentOperation op{QUuid::createUuid().toString(QUuid::WithoutBraces),p->accountId(),id,p->instrumentId(),kind,cash,delta,date,
         v.value("description").toString().trimmed().isEmpty()?investmentOperationName(kind)+QStringLiteral(" · ")+i->symbol():v.value("description").toString()};
     if(!readOperationCharges(v,op))return fail(tr("Комиссия и удержания должны быть неотрицательными и соответствовать фактическому списанию"));
+    // A purchase or a sale keeps the gross amount; its commission and, for a sale, its tax are separate expenses of the same position.
+    QVector<InvestmentOperation> charges;
+    if(kind=="buy" || kind=="sell"){
+        op.feeMinor.reset();op.taxMinor.reset();
+        const auto chargeError=tradeCharges(v,op,i->symbol(),charges);
+        if(!chargeError.isEmpty())return fail(chargeError);
+    }
+    // A purchase needs free money for its amount, as a transfer does (ADR-005). Its commission and a tax are paid from
+    // the free money of the account too, and without enough of it the account goes below zero (ADR-008).
+    if(kind=="buy" && cash<0){
+        const auto brokerage=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==p->accountId();});
+        if(brokerage==accounts_.cend())return fail(tr("Счёт не найден"));
+        const auto free=brokerageFreeNowMinor(*brokerage);
+        if(free<-cash)return fail(tr("Свободных денег на счёте %1 %2, а покупка списывает %3")
+            .arg(QString::number(free/100.0,'f',2),currencyCode(brokerage->currency()),QString::number(-cash/100.0,'f',2)));
+    }
+    // A long position gains no money from a purchase and pays none out on a sale. A manual position has no quote to check it.
+    if(settings.direction==1 && !margined && ((kind=="buy" && cash>0) || (kind=="sell" && cash<0)))
+        return fail(tr("Знак денег не соответствует направлению сделки"));
     const auto tradePrice=v.value("price").toString().trimmed();
     if(!tradePrice.isEmpty()){
         qint64 price=0;if(!parseSignedInvestmentNumber(tradePrice,price) || (price<0 && i->type()!=InvestmentInstrumentType::Future))return fail(tr("Некорректная цена операции"));
         op.tradePriceMicros=price;op.tradeCurrency=terms.currencyCode;
     }
-    if(!repository_.bookInvestmentOperation(op,*p,updated,close,adjustedQuote))return fail(tr("Не удалось сохранить операцию: %1").arg(repository_.lastError()));
+    if(!repository_.bookInvestmentOperation(op,*p,updated,close,adjustedQuote,charges))return fail(tr("Не удалось сохранить операцию: %1").arg(repository_.lastError()));
     reloadInvestments();if(kind=="coupon" || kind=="amortization")refreshInvestmentQuotes();return {{"ok",true}};
+}
+
+// A commission or a tax of the brokerage account itself, without a purchase or a sale: money leaves the account (ADR-008).
+QVariantMap FinanceController::recordBrokerCharge(const QVariantMap& v)
+{
+    const auto fail=[](const QString& e){return QVariantMap{{"ok",false},{"error",e}};};
+    const auto accountId=v.value("accountId").toString(),kind=v.value("kind").toString();
+    const auto brokerage=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==accountId && a.type()==AccountType::Brokerage;});
+    if(brokerage==accounts_.cend())return fail(tr("Выберите брокерский счёт"));
+    if(kind!="fee" && kind!="tax")return fail(tr("Неизвестный вид операции"));
+    auto date=parseInvestmentDate(v.value("date").toString());
+    if(!date.isValid() || date>QDateTime::currentDateTime())return fail(tr("Укажите дату и время фактической операции"));date=date.toUTC();
+    qint64 amount=0;if(!parseSignedInvestmentNumber(v.value("amount").toString(),amount,true) || amount<=0)return fail(tr("Укажите сумму больше нуля"));
+    // Paid from the free money of this brokerage account: without enough of it the account goes below zero (ADR-008)
+    const auto description=v.value("description").toString().trimmed();
+    const InvestmentOperation op{QUuid::createUuid().toString(QUuid::WithoutBraces),accountId,QString(),QString(),kind,-amount,0,date,
+        description.isEmpty()?investmentOperationName(kind):description};
+    if(!repository_.insertAccountCharge(op))return fail(tr("Не удалось сохранить операцию: %1").arg(repository_.lastError()));
+    reloadInvestments();return {{"ok",true}};
 }
 
 QVariantList FinanceController::investmentOperations() const
@@ -6795,6 +6965,12 @@ QVariantList FinanceController::investmentOperations() const
         if(dateFilterActive() && (op.occurredAtUtc.toLocalTime().date()<dateFilterFrom_ || op.occurredAtUtc.toLocalTime().date()>dateFilterTo_))continue;
         const auto a=std::find_if(accounts_.cbegin(),accounts_.cend(),[&](const auto& a){return a.id()==op.accountId;});
         if(a==accounts_.cend())continue;
+        // A purchase or a sale moves value between the cash and the holding of one account: it is a transfer
+        // with two halves, not income or expense.
+        if(op.kind==QStringLiteral("buy") || op.kind==QStringLiteral("sell")){
+            result+=investmentTradeTransferRows(op,*a);
+            continue;
+        }
         result.append(QVariantMap{{"id",op.id},{"accountId",op.accountId},{"positionId",op.positionId},{"accountName",accountDisplayName(*a)},
             {"type","investment_cash"},{"kind",op.kind},{"amount",op.cashDeltaMinor},{"currency",currencyCode(a->currency())},
             {"categoryName",investmentOperationName(op.kind)},{"rawDescription",op.description},{"date",op.occurredAtUtc},

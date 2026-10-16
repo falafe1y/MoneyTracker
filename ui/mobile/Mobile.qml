@@ -258,6 +258,12 @@ ApplicationWindow {
     }
 
     function transactionSummary(row) {
+        // A transfer names its side: "Перевод НА …" on the outgoing row, "Перевод С …" on the incoming one
+        if (row.type === "transfer" && row.transferLabel) {
+            if (row.investmentTransfer || !row.rawDescription)
+                return row.transferLabel;
+            return row.transferLabel + " · " + row.rawDescription;
+        }
         if (row.recipientSource)
             return row.recipientName || qsTr("Получатель не определён");
         return row.rawDescription || row.description || "—";
@@ -3572,7 +3578,7 @@ ApplicationWindow {
             width: transactionContextMenu.availableWidth
             text: qsTr("Редактировать")
             enabled: transactionContextMenu.transactionData !== null
-                     && transactionContextMenu.transactionData.type !== "investment_cash"
+                     && transactionContextMenu.transactionData.type !== "investment_cash" && !transactionContextMenu.transactionData.investmentTransfer
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     operationDialog.openForEdit(transactionContextMenu.transactionData);
@@ -3594,7 +3600,7 @@ ApplicationWindow {
             text: qsTr("Удалить")
             destructive: true
             enabled: transactionContextMenu.transactionData !== null
-                     && transactionContextMenu.transactionData.type !== "investment_cash"
+                     && transactionContextMenu.transactionData.type !== "investment_cash" && !transactionContextMenu.transactionData.investmentTransfer
             onTriggered: {
                 if (transactionContextMenu.transactionData)
                     deleteTransactionDialog.openFor(transactionContextMenu.transactionData);

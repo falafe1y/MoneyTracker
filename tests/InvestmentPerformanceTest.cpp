@@ -28,6 +28,41 @@ class InvestmentPerformanceTest : public QObject {
         for(const auto& item:report.value("dataQuality").toMap().value("items").toList())if(item.toMap().value("code")==code)return item.toMap();return {};
     }
 private slots:
+    void transferBetweenBrokersIsWithdrawalForOneAndNothingForBoth(){
+        // Day 1: 10 000 on broker A and nothing on broker B; day 2: 1 000 moves from A to B
+        auto one=input();
+        one.accounts={{"a","Брокер A","RUB",time(1).addDays(-10).toMSecsSinceEpoch(),0},{"b","Брокер B","RUB",time(1).addDays(-10).toMSecsSinceEpoch(),0}};
+        one.valuations={row(1,"cash:a",10000),row(1,"cash:b",0,QVariant(),"b"),row(2,"cash:a",9000),row(2,"cash:b",1000,QVariant(),"b")};
+        one.transactions.append({"t-out","a","transfer-out",Money(1000,Currency::RUB),TransactionType::Expense,time(2).addSecs(-3600)});
+        one.transactions.append({"t-in","b","transfer-in",Money(1000,Currency::RUB),TransactionType::Income,time(2).addSecs(-3600)});
+        // Broker A alone is the portfolio: the transfer leaves it, so it is a withdrawal and not a loss
+        one.accountId="a";
+        const auto alone=InvestmentPerformanceCalculator::calculate(one);
+        QCOMPARE(alone.value("externalFlowMinor").toLongLong(),qint64(-1000));
+        QCOMPARE(alone.value("gainMinor").toLongLong(),qint64(0));
+        // Both brokers are one portfolio: the transfer stays inside it, so it is not a flow
+        one.accountId="";
+        const auto both=InvestmentPerformanceCalculator::calculate(one);
+        QCOMPARE(both.value("externalFlowMinor").toLongLong(),qint64(0));
+        QCOMPARE(both.value("gainMinor").toLongLong(),qint64(0));
+    }
+    void bankFeeOnDepositIsLossButOtherExpenseIsWithdrawal(){
+        // Day 1: 10 000 on the deposit; day 2: 100 leaves it
+        auto fee=input();
+        fee.valuations={row(1,"cash:a",10000),row(2,"cash:a",9900)};
+        fee.transactions.append({"fee","a","bank_fee",Money(100,Currency::RUB),TransactionType::Expense,time(2).addSecs(-3600)});
+        const auto bankFee=InvestmentPerformanceCalculator::calculate(fee);
+        // The bank's commission lowers the value of the deposit: a loss, not money that left the portfolio
+        QCOMPARE(bankFee.value("externalFlowMinor").toLongLong(),qint64(0));
+        QCOMPARE(bankFee.value("gainMinor").toLongLong(),qint64(-100));
+        auto tax=input();
+        tax.valuations=fee.valuations;
+        tax.transactions.append({"tax","a","other_expense",Money(100,Currency::RUB),TransactionType::Expense,time(2).addSecs(-3600)});
+        const auto spent=InvestmentPerformanceCalculator::calculate(tax);
+        // Any other expense paid from the deposit is money that left the portfolio
+        QCOMPARE(spent.value("externalFlowMinor").toLongLong(),qint64(-100));
+        QCOMPARE(spent.value("gainMinor").toLongLong(),qint64(0));
+    }
     void depositUsesSameFlowsAndShowsMoneyDifference(){
         auto i=input();i.depositAnnualRateUnits=365000;i.depositCapitalization="none";
         i.valuations={row(1,"cash:a",10000),row(2,"cash:a",16500)};

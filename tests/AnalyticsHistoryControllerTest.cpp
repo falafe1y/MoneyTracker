@@ -69,14 +69,14 @@ private slots:
         {FinanceController c(nullptr,path);c.setSelectedAsset("investment");
          auto result=c.saveInvestmentPosition({{"accountId","broker"},{"searchIndex",-2},{"instrumentType",0},{"name","Акция"},{"symbol","TEST"},
             {"quantity","3"},{"averagePrice","100"},{"manualValuation",true},{"manualValue","300"},
-            {"purchase",true},{"cashAmount","-301"},{"fee","1"},{"tax","0"}});
+            {"purchase",true},{"cashAmount","-300"},{"fee","1"},{"tax","0"}});
          QVERIFY2(result.value("ok").toBool(),qPrintable(result.value("error").toString()));
          const auto p=c.investmentPositions().at(0).toMap();QCOMPARE(p.value("costBasisMinor").toLongLong(),qint64(30100));
          result=c.recordInvestmentOperation({{"positionId",p.value("id")},{"kind","sell"},{"date",QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
-            {"quantity","1"},{"cashAmount","109"},{"price","110"},{"remainingValue","220"},{"fee","1"},{"tax",""}});
+            {"quantity","1"},{"cashAmount","110"},{"price","110"},{"remainingValue","220"},{"fee","1"},{"tax",""}});
          QVERIFY2(result.value("ok").toBool(),qPrintable(result.value("error").toString()));}
-        FinanceRepository r(path);const auto ops=r.loadInvestmentOperations();QCOMPARE(ops.size(),2);
-        for(const auto& op:ops)if(op.kind=="sell"){QCOMPARE(op.feeMinor.value_or(-1),qint64(100));QVERIFY(!op.taxMinor);}
+        FinanceRepository r(path);const auto ops=r.loadInvestmentOperations();QCOMPARE(ops.size(),4);
+        for(const auto& op:ops){if(op.kind=="buy")QCOMPARE(op.cashDeltaMinor,qint64(-30'000));if(op.kind=="sell")QVERIFY(!op.feeMinor);if(op.kind=="fee")QCOMPARE(op.cashDeltaMinor,qint64(-100));}
         const auto history=r.loadPositionHistory(r.loadInvestmentPositions().at(0).id());
         QCOMPARE(history.last().toMap().value("realized_net_minor").toLongLong(),qint64(867));
         for(const auto& value:r.loadDailyValuations(AssetDailyValuation::Investment))if(value.toMap().value("source_id").toString()=="cash:broker")

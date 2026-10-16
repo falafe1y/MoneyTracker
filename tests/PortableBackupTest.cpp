@@ -136,7 +136,7 @@ private slots:
         {
             auto db = addCipherDatabase(connection); db.setDatabaseName(path); QVERIFY(db.open());
             QSqlQuery q(db); QVERIFY(q.exec("PRAGMA foreign_keys=OFF"));
-            QVERIFY(q.exec("INSERT INTO transactions(id,account_id,category_id,type,amount_minor,occurred_at,created_at) VALUES('orphan','missing','missing-category',0,100,1,1)"));
+            QVERIFY(q.exec("INSERT INTO transactions(id,account_id,category_id,type,amount_minor,occurred_at,created_at,kind) VALUES('orphan','missing','missing-category',0,100,1,1,'income')"));
         }
         QSqlDatabase::removeDatabase(connection);
         QVERIFY(PortableBackup::exportFile({path}, output, dir.filePath("work"), Password, false, "test").ok);

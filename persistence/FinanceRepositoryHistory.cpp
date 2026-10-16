@@ -53,13 +53,12 @@ bool FinanceRepository::migrateAnalyticsHistorySchema() {
     QSqlQuery q(database_);
     const auto exec=[&](const QString& sql){if(q.exec(sql))return true;setLastError(q.lastError().text());return false;};
     const auto ensure=[&](const QString& column,const QString& definition){
-        if(!exec("PRAGMA table_info(investment_operations)"))return false;
+        if(!exec("PRAGMA table_info(transactions)"))return false;
         while(q.next())if(q.value(1).toString()==column){q.finish();return true;}
-        q.finish();return exec("ALTER TABLE investment_operations ADD COLUMN "+column+" "+definition);
+        q.finish();return exec("ALTER TABLE transactions ADD COLUMN "+column+" "+definition);
     };
     if(!ensure("fee_minor","INTEGER CHECK(fee_minor>=0)")
        || !ensure("tax_minor","INTEGER CHECK(tax_minor>=0)")
-       || !ensure("trade_price_micros","INTEGER")
        || !ensure("trade_currency","TEXT"))return false;
     const QString definition=
         "(snapshot_date TEXT NOT NULL CHECK(length(snapshot_date)=10),source_id TEXT NOT NULL,"
@@ -121,7 +120,7 @@ bool FinanceRepository::migrateAnalyticsHistorySchema() {
     if(!exec(positionStateQuery+" WHERE p.is_archived=0 AND EXISTS (SELECT 1 FROM investment_position_history h "
         "WHERE h.position_id=p.id AND h.sequence=(SELECT max(sequence) FROM investment_position_history WHERE position_id=p.id) "
         "AND h.event IN ('opening','baseline') AND h.cost_basis_minor IS NULL) "
-        "AND NOT EXISTS (SELECT 1 FROM investment_operations o WHERE o.position_id=p.id)"))return false;
+        "AND NOT EXISTS (SELECT 1 FROM transactions o WHERE o.position_id=p.id)"))return false;
     while(q.next())if(!averageAcquisitionCost(rowMap(q)).isNull())positions.append(q.value("id").toString());q.finish();
     for(const auto& id:positions)if(!appendPositionState(id,"correction"))return false;
     const qint64 now=QDateTime::currentMSecsSinceEpoch();
@@ -333,7 +332,7 @@ QVariantList FinanceRepository::loadFxHistory(const QString& currency) {
 
 QVariantList FinanceRepository::loadPerformanceAccounts() {
     QVariantList result; QSqlQuery q(database_);
-    if(!q.exec("SELECT id,name,currency,initial_balance_minor,created_at FROM accounts WHERE is_archived=0 AND account_type IN (6,7) ORDER BY created_at,id")){setLastError(q.lastError().text());return result;}
+    if(!q.exec("SELECT id,name,currency,initial_balance_minor,created_at,account_type FROM accounts WHERE is_archived=0 AND account_type IN (6,7) ORDER BY created_at,id")){setLastError(q.lastError().text());return result;}
     while(q.next())result.append(rowMap(q));return result;
 }
 QVariantList FinanceRepository::loadAllPositionHistory() {

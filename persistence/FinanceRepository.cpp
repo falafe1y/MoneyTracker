@@ -117,12 +117,22 @@ TransferComponentIds transferComponentIds(
     };
 }
 
+// Kind of a money row: a transfer leg, or plain income or expense. Investment kinds never come through here.
+QString fiatKindFor(const QString& categoryId, const int type)
+{
+    if (categoryId == QStringLiteral("transfer-in") || categoryId == QStringLiteral("transfer-out")) {
+        return QStringLiteral("transfer");
+    }
+    return type == 0 ? QStringLiteral("income") : QStringLiteral("expense");
+}
+
 void prepareTransactionInsert(QSqlQuery& query)
 {
     query.prepare(QStringLiteral(
         "INSERT INTO transactions(id, account_id, category_id, type, "
-        "amount_minor, occurred_at, description, project_id, created_at, recipient_json) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        "amount_minor, occurred_at, description, project_id, created_at, recipient_json, "
+        "kind, operation_id, quantity_micros) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"));
 }
 
 bool insertTransactionRow(
@@ -145,6 +155,10 @@ bool insertTransactionRow(
     }
     query.bindValue(8, createdAt);
     query.bindValue(9, transaction.recipient().serialize());
+    query.bindValue(10, fiatKindFor(transaction.categoryId(), transaction.type() == TransactionType::Income ? 0 : 1));
+    // Both legs of a transfer share the identifier without the "-out" / "-in" suffix.
+    const auto components = transferComponentIds(transaction.id(), transaction.categoryId());
+    query.bindValue(11, components.valid ? QVariant(components.outgoing.left(components.outgoing.size() - 4)) : QVariant());
     return query.exec();
 }
 
@@ -219,7 +233,7 @@ bool deleteOperationRows(
         deletion.addBindValue(componentIds.incoming);
     } else {
         deletion.prepare(QStringLiteral(
-            "DELETE FROM transactions WHERE id = ?"));
+            "DELETE FROM transactions WHERE id = ? AND kind IN ('income','expense','transfer')"));
         deletion.addBindValue(id);
     }
 
@@ -265,7 +279,7 @@ FinanceRepository::FinanceRepository(const QString& databasePath, const QByteArr
         return;
     }
 
-    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !migrateCurrencySchema() || !migrateAnalyticsHistorySchema() || !seedDefaults()) {
+    if (!initializeSchema() || !migrateLegacySchema() || !migrateInvestmentSchema() || !migrateBankImportSchema() || !migrateLedgerSchema() || !migrateTaxKind() || !migrateCurrencySchema() || !migrateAnalyticsHistorySchema() || !seedDefaults()) {
         database_.close();
     }
 }
@@ -445,7 +459,6 @@ bool FinanceRepository::restoreDatabase(const QString& sourcePath,
                 QStringLiteral("crypto_transactions"), QStringLiteral("crypto_wallet_names"),
                 QStringLiteral("crypto_exchanges"), QStringLiteral("crypto_prices"),
                 QStringLiteral("investment_positions"), QStringLiteral("investment_quotes"),
-                QStringLiteral("investment_operations"),
                 QStringLiteral("capital_snapshots"), QStringLiteral("bank_csv_profiles"),
                 QStringLiteral("bank_category_rules"), QStringLiteral("bank_recipient_rules"),
                 QStringLiteral("bank_import_links"), QStringLiteral("settings"),
@@ -584,7 +597,6 @@ bool FinanceRepository::clearAllUserData()
         QStringLiteral("DELETE FROM crypto_exchanges"),
         QStringLiteral("DELETE FROM crypto_wallet_names"),
         QStringLiteral("DELETE FROM crypto_transactions"),
-        QStringLiteral("DELETE FROM investment_operations"),
         QStringLiteral("DELETE FROM investment_quotes"),
         QStringLiteral("DELETE FROM investment_positions"),
         QStringLiteral("DELETE FROM budget_accounts"),
@@ -651,6 +663,7 @@ QVector<Transaction> FinanceRepository::loadTransactions()
             "SELECT t.id, t.account_id, t.category_id, t.amount_minor, "
             "t.type, t.occurred_at, t.description, a.currency, t.project_id, t.recipient_json "
             "FROM transactions t JOIN accounts a ON a.id = t.account_id "
+            "WHERE t.kind IN ('income','expense','transfer') "
             "ORDER BY t.occurred_at DESC, t.created_at DESC"))) {
         setLastError(query.lastError().text());
         return result;
@@ -1362,7 +1375,7 @@ FinanceRepository::Summary FinanceRepository::loadSummary()
     if (!query.exec(QStringLiteral(
             "SELECT t.type, a.currency, SUM(t.amount_minor), t.category_id "
             "FROM transactions t JOIN accounts a ON a.id = t.account_id "
-            "WHERE a.is_archived = 0 "
+            "WHERE a.is_archived = 0 AND t.kind IN ('income','expense','coupon','dividend','fee','tax') "
             "GROUP BY t.type, a.currency, t.category_id"))) {
         setLastError(query.lastError().text());
         return summary;
@@ -1578,8 +1591,8 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
     query.prepare(QStringLiteral(
         "UPDATE transactions "
         "SET account_id = ?, category_id = ?, type = ?, amount_minor = ?, "
-        "    occurred_at = ?, description = ?, project_id = ?, recipient_json = ? "
-        "WHERE id = ?"));
+        "    occurred_at = ?, description = ?, project_id = ?, recipient_json = ?, kind = ? "
+        "WHERE id = ? AND kind IN ('income','expense','transfer')"));
     query.addBindValue(transaction.accountId());
     query.addBindValue(transaction.categoryId());
     query.addBindValue(transaction.type() == TransactionType::Income ? 0 : 1);
@@ -1592,6 +1605,7 @@ bool FinanceRepository::updateTransaction(const Transaction& transaction)
         query.addBindValue(transaction.projectId());
     }
     query.addBindValue(transaction.recipient().serialize());
+    query.addBindValue(fiatKindFor(transaction.categoryId(), transaction.type() == TransactionType::Income ? 0 : 1));
     query.addBindValue(transaction.id());
 
     if (!query.exec() || query.numRowsAffected() != 1) {
@@ -1718,6 +1732,8 @@ bool FinanceRepository::deleteHistoryRows(const QVariantList& rows)
     };
     for (const QVariant& value : rows) {
         const QVariantMap row = value.toMap();
+        if (row.value(QStringLiteral("investmentTransfer")).toBool())
+            return fail(QStringLiteral("Инвестиционная операция связана с количеством позиции; удаление отдельно от позиции не поддерживается"));
         const QString id = row.value(QStringLiteral("id")).toString();
         const QString type = row.value(QStringLiteral("type")).toString();
         const QString cryptoId = row.value(QStringLiteral("transactionId")).toString();
@@ -2121,8 +2137,8 @@ bool FinanceRepository::updateAccount(const Account& account)
         "WHERE id = ? AND is_archived = 0 "
         "  AND (currency = ? OR NOT EXISTS ("
         "      SELECT 1 FROM transactions WHERE account_id = ?"
-        "  )) AND (currency = ? OR NOT EXISTS (SELECT 1 FROM investment_operations WHERE account_id = ?)) "
-        "AND (account_type = ? OR NOT EXISTS (SELECT 1 FROM investment_operations WHERE account_id = ?))"));
+        "  )) AND (currency = ? OR NOT EXISTS (SELECT 1 FROM transactions WHERE account_id = ? AND kind IN ('buy','sell','coupon','dividend','amortization','fee','tax','margin','expiry'))) "
+        "AND (account_type = ? OR NOT EXISTS (SELECT 1 FROM transactions WHERE account_id = ? AND kind IN ('buy','sell','coupon','dividend','amortization','fee','tax','margin','expiry')))"));
     query.addBindValue(account.name());
     query.addBindValue(static_cast<int>(account.assetType()));
     query.addBindValue(static_cast<int>(account.type()));
@@ -3361,13 +3377,19 @@ bool FinanceRepository::initializeSchema()
         QStringLiteral("CREATE TABLE IF NOT EXISTS transactions ("
                        "id TEXT PRIMARY KEY, "
                        "account_id TEXT NOT NULL REFERENCES accounts(id), "
-                       "category_id TEXT NOT NULL REFERENCES categories(id), "
+                       "category_id TEXT REFERENCES categories(id), "
                        "type INTEGER NOT NULL CHECK(type IN (0,1)), "
-                       "amount_minor INTEGER NOT NULL CHECK(amount_minor > 0), "
+                       "amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), "
                        "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
                        "recipient_json TEXT NOT NULL DEFAULT '{}', "
                        "project_id TEXT REFERENCES projects(id) ON DELETE SET NULL, "
-                       "created_at INTEGER NOT NULL)"),
+                       "created_at INTEGER NOT NULL, "
+                       "kind TEXT NOT NULL CHECK(kind IN ('income','expense','transfer','buy','sell','coupon','dividend','amortization','fee','tax','margin','expiry')), "
+                       "operation_id TEXT, "
+                       "position_id TEXT REFERENCES investment_positions(id) ON DELETE SET NULL, "
+                       "instrument_id TEXT REFERENCES investment_instruments(id), "
+                       "quantity_micros INTEGER NOT NULL DEFAULT 0, "
+                       "price_micros INTEGER, trade_currency TEXT, fee_minor INTEGER, tax_minor INTEGER)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS deposit_settings ("
                        "account_id TEXT PRIMARY KEY "
                        "REFERENCES accounts(id) ON DELETE CASCADE, "
@@ -3483,15 +3505,6 @@ bool FinanceRepository::initializeSchema()
                        "price_micros INTEGER NOT NULL, "
                        "terms_json TEXT NOT NULL DEFAULT '{}', "
                        "quoted_at INTEGER NOT NULL)"),
-        QStringLiteral("CREATE TABLE IF NOT EXISTS investment_operations ("
-                       "id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id), "
-                       "position_id TEXT REFERENCES investment_positions(id) ON DELETE SET NULL, "
-                       "instrument_id TEXT NOT NULL REFERENCES investment_instruments(id), "
-                       "kind TEXT NOT NULL CHECK(kind IN ('buy','sell','coupon','dividend','amortization','fee','margin','expiry')), "
-                       "cash_delta_minor INTEGER NOT NULL, quantity_delta_micros INTEGER NOT NULL DEFAULT 0, "
-                       "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '')"),
-        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_investment_operations_account_date "
-                       "ON investment_operations(account_id, occurred_at DESC)"),
         QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
                        "idx_crypto_wallets_active_address "
                        "ON crypto_wallets(network, address) "
@@ -4103,6 +4116,7 @@ bool FinanceRepository::seedDefaults()
         {QStringLiteral("entertainment"), QStringLiteral("Развлечения"), 1},
         {QStringLiteral("shopping"), QStringLiteral("Покупки"), 1},
         {QStringLiteral("other_expense"), QStringLiteral("Другое"), 1},
+        {QStringLiteral("bank_fee"), QStringLiteral("Комиссия банка"), 1},
         {QStringLiteral("transfer-in"), QStringLiteral("Перевод"), 0},
         {QStringLiteral("transfer-out"), QStringLiteral("Перевод"), 1}};
     QSqlQuery category(database_);
@@ -4121,6 +4135,19 @@ bool FinanceRepository::seedDefaults()
                 return false;
             }
         }
+    }
+
+    // The bank's commission on a deposit is a built-in expense category. A database that already has categories but was
+    // created before this one gets it on open; an emptied database stays empty.
+    QSqlQuery bankFee(database_);
+    bankFee.prepare(QStringLiteral(
+        "INSERT OR IGNORE INTO categories(id,name,type,is_system,created_at) "
+        "SELECT 'bank_fee', 'Комиссия банка', 1, 1, ? WHERE EXISTS (SELECT 1 FROM categories)"));
+    bankFee.addBindValue(now);
+    if (!bankFee.exec()) {
+        setLastError(bankFee.lastError().text());
+        database_.rollback();
+        return false;
     }
 
     QSqlQuery setting(database_);
@@ -4436,9 +4463,11 @@ bool FinanceRepository::migrateInvestmentSchema()
 QVector<InvestmentOperation> FinanceRepository::loadInvestmentOperations()
 {
     QVector<InvestmentOperation> result; QSqlQuery q(database_);
-    if (!q.exec("SELECT o.id,o.account_id,o.position_id,o.instrument_id,o.kind,o.cash_delta_minor,"
-                "o.quantity_delta_micros,o.occurred_at,o.description,o.fee_minor,o.tax_minor,o.trade_price_micros,o.trade_currency FROM investment_operations o "
-                "JOIN accounts a ON a.id=o.account_id WHERE a.is_archived=0 ORDER BY o.occurred_at DESC,o.id")) {
+    if (!q.exec("SELECT t.id,t.account_id,t.position_id,t.instrument_id,t.kind,"
+                "CASE WHEN t.type=0 THEN t.amount_minor ELSE -t.amount_minor END,"
+                "t.quantity_micros,t.occurred_at,t.description,t.fee_minor,t.tax_minor,t.price_micros,t.trade_currency "
+                "FROM transactions t JOIN accounts a ON a.id=t.account_id WHERE a.is_archived=0 "
+                "AND t.kind IN ('buy','sell','coupon','dividend','amortization','fee','tax','margin','expiry') ORDER BY t.occurred_at DESC,t.id")) {
         setLastError(q.lastError().text()); return result;
     }
     while(q.next()) { InvestmentOperation op{q.value(0).toString(),q.value(1).toString(),q.value(2).toString(),q.value(3).toString(),
@@ -4454,27 +4483,31 @@ QVector<InvestmentOperation> FinanceRepository::loadInvestmentOperations()
 
 bool FinanceRepository::hasInvestmentOperations(const QString& id) const
 {
-    QSqlQuery q(database_);q.prepare("SELECT 1 FROM investment_operations WHERE position_id=? LIMIT 1");q.addBindValue(id);
+    QSqlQuery q(database_);q.prepare("SELECT 1 FROM transactions WHERE position_id=? AND kind IN ('buy','sell','coupon','dividend','amortization','fee','tax','margin','expiry') LIMIT 1");q.addBindValue(id);
     return q.exec() && q.next();
 }
 
 namespace {
 bool insertInvestmentOperation(QSqlDatabase& database, const InvestmentOperation& op, QString& error)
 {
-    if(op.id.isEmpty() || op.accountId.isEmpty() || op.instrumentId.isEmpty() || !op.occurredAtUtc.isValid()
+    if(op.id.isEmpty() || op.accountId.isEmpty() || (op.instrumentId.isEmpty() && op.kind!="fee" && op.kind!="tax") || !op.occurredAtUtc.isValid()
         || (op.feeMinor && *op.feeMinor<0) || (op.taxMinor && *op.taxMinor<0)) {
         error=QStringLiteral("Некорректная инвестиционная операция");return false;
     }
-    QSqlQuery q(database);q.prepare("INSERT INTO investment_operations(id,account_id,position_id,instrument_id,kind,"
-        "cash_delta_minor,quantity_delta_micros,occurred_at,description,fee_minor,tax_minor,trade_price_micros,trade_currency) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? "
+    QSqlQuery q(database);q.prepare("INSERT INTO transactions(id,account_id,category_id,type,amount_minor,occurred_at,"
+        "description,recipient_json,created_at,kind,position_id,instrument_id,quantity_micros,price_micros,"
+        "trade_currency,fee_minor,tax_minor) SELECT ?,?,NULL,?,?,?,?,'{}',?,?,?,?,?,?,?,?,? "
         "WHERE EXISTS (SELECT 1 FROM accounts WHERE id=? AND asset_type=2 AND account_type=6 AND is_archived=0)");
-    q.addBindValue(op.id);q.addBindValue(op.accountId);q.addBindValue(op.positionId.isEmpty()?QVariant():QVariant(op.positionId));
-    q.addBindValue(op.instrumentId);q.addBindValue(op.kind);q.addBindValue(op.cashDeltaMinor);q.addBindValue(op.quantityDeltaMicros);
+    q.addBindValue(op.id);q.addBindValue(op.accountId);
+    q.addBindValue(op.cashDeltaMinor>=0?0:1);q.addBindValue(op.cashDeltaMinor>=0?op.cashDeltaMinor:-op.cashDeltaMinor);
     q.addBindValue(op.occurredAtUtc.toMSecsSinceEpoch());q.addBindValue(op.description.isNull()?QStringLiteral(""):op.description);
-    q.addBindValue(op.feeMinor ? QVariant(*op.feeMinor) : QVariant());
-    q.addBindValue(op.taxMinor ? QVariant(*op.taxMinor) : QVariant());
+    q.addBindValue(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch());q.addBindValue(op.kind);
+    q.addBindValue(op.positionId.isEmpty()?QVariant():QVariant(op.positionId));
+    q.addBindValue(op.instrumentId.isEmpty()?QVariant():QVariant(op.instrumentId));q.addBindValue(op.quantityDeltaMicros);
     q.addBindValue(op.tradePriceMicros ? QVariant(*op.tradePriceMicros) : QVariant());
     q.addBindValue(op.tradeCurrency.isEmpty() ? QVariant() : QVariant(op.tradeCurrency));
+    q.addBindValue(op.feeMinor ? QVariant(*op.feeMinor) : QVariant());
+    q.addBindValue(op.taxMinor ? QVariant(*op.taxMinor) : QVariant());
     q.addBindValue(op.accountId);
     if(!q.exec() || q.numRowsAffected()!=1){error=q.lastError().isValid()?q.lastError().text():QStringLiteral("Счёт не найден");return false;}return true;
 }
@@ -4482,7 +4515,8 @@ bool insertInvestmentOperation(QSqlDatabase& database, const InvestmentOperation
 
 bool FinanceRepository::saveInvestmentBundle(const InvestmentInstrument& instrument,
     const InvestmentPosition& position, const std::optional<InvestmentQuote>& quote,
-    bool editing, const std::optional<InvestmentOperation>& operation, const std::optional<qint64>& openingCostMinor, bool clearCostBasis)
+    bool editing, const std::optional<InvestmentOperation>& operation, const std::optional<qint64>& openingCostMinor, bool clearCostBasis,
+    const QVector<InvestmentOperation>& charges)
 {
     if(operation && (editing || operation->positionId!=position.id() || operation->accountId!=position.accountId()
         || operation->instrumentId!=position.instrumentId() || operation->kind!="buy" || openingCostMinor)) {
@@ -4503,7 +4537,16 @@ bool FinanceRepository::saveInvestmentBundle(const InvestmentInstrument& instrum
     if(!(editing?updateInvestmentPosition(position):insertInvestmentPosition(position)))return fail();
     if(quote && !saveInvestmentQuote(*quote))return fail();
     if(operation){QString error;if(!insertInvestmentOperation(database_,*operation,error)){setLastError(error);return fail();}
-        if(!completePositionEvent(*operation,QVariant(qint64(0)),0,position.quantityMicros())) return fail();
+        // The position history books the purchase with its commission: the cost of the position includes it.
+        InvestmentOperation historyOp=*operation;
+        for(const auto& charge:charges)historyOp.cashDeltaMinor+=charge.cashDeltaMinor;
+        if(!completePositionEvent(historyOp,QVariant(qint64(0)),0,position.quantityMicros())) return fail();
+        for(const auto& charge:charges){
+            if(charge.positionId!=position.id() || charge.accountId!=position.accountId() || charge.instrumentId!=position.instrumentId() || charge.quantityDeltaMicros!=0){
+                setLastError(QStringLiteral("Комиссия относится к другой позиции"));return fail();
+            }
+            if(!insertInvestmentOperation(database_,charge,error)){setLastError(error);return fail();}
+        }
     } else if(openingCostMinor || clearCostBasis) {
         QSqlQuery cost(database_); cost.prepare("UPDATE investment_position_history SET cost_basis_minor=?,issues=? WHERE sequence=(SELECT max(sequence) FROM investment_position_history WHERE position_id=?)");
         cost.addBindValue(openingCostMinor?QVariant(*openingCostMinor):QVariant());
@@ -4515,7 +4558,7 @@ bool FinanceRepository::saveInvestmentBundle(const InvestmentInstrument& instrum
 
 bool FinanceRepository::bookInvestmentOperation(const InvestmentOperation& op,
     const InvestmentPosition& expected, const InvestmentPosition& updated, bool close,
-    const std::optional<InvestmentQuote>& quote)
+    const std::optional<InvestmentQuote>& quote, const QVector<InvestmentOperation>& charges)
 {
     if(op.positionId!=expected.id() || op.accountId!=expected.accountId() || op.instrumentId!=expected.instrumentId()
         || (close?0:updated.quantityMicros())-expected.quantityMicros()!=op.quantityDeltaMicros
@@ -4530,7 +4573,7 @@ bool FinanceRepository::bookInvestmentOperation(const InvestmentOperation& op,
         || InvestmentPositionSettings::deserialize(q.value(1).toString()).serialize()!=expected.settings().serialize())return fail(QStringLiteral("Позиция уже изменилась; откройте операцию заново"));
     q.finish();
     if(op.kind=="buy" || op.kind=="sell" || op.kind=="expiry" || op.kind=="margin") {
-        q.prepare("SELECT max(occurred_at) FROM investment_operations WHERE position_id=? AND kind IN ('buy','sell','expiry','margin')");q.addBindValue(expected.id());
+        q.prepare("SELECT max(occurred_at) FROM transactions WHERE position_id=? AND kind IN ('buy','sell','expiry','margin')");q.addBindValue(expected.id());
         if(!q.exec() || !q.next())return fail(q.lastError().text());
         if(!q.value(0).isNull() && q.value(0).toLongLong()/1000>op.occurredAtUtc.toSecsSinceEpoch())return fail(QStringLiteral("Изменение позиции предшествует последней записанной операции"));
         q.finish();
@@ -4539,8 +4582,222 @@ bool FinanceRepository::bookInvestmentOperation(const InvestmentOperation& op,
     if(!(close?archiveInvestmentPosition(expected.id()):updateInvestmentPosition(updated)))return fail(lastError_);
     if(quote && !saveInvestmentQuote(*quote))return fail(lastError_);
     QString error;if(!insertInvestmentOperation(database_,op,error))return fail(error);
-    if(!completePositionEvent(op,previousBasis,expected.quantityMicros(),close?0:updated.quantityMicros()))return fail(lastError_);
+    // The position history books a sale net of its commission and tax, which are rows of their own.
+    InvestmentOperation historyOp=op;
+    for(const auto& charge:charges)historyOp.cashDeltaMinor+=charge.cashDeltaMinor;
+    if(!completePositionEvent(historyOp,previousBasis,expected.quantityMicros(),close?0:updated.quantityMicros()))return fail(lastError_);
+    // Commission and tax of a sale are rows of their own: same position, same transaction, no change of the holding.
+    for(const auto& charge:charges){
+        if(charge.positionId!=op.positionId || charge.accountId!=op.accountId || charge.instrumentId!=op.instrumentId || charge.quantityDeltaMicros!=0)
+            return fail(QStringLiteral("Комиссия или налог относятся к другой позиции"));
+        if(!insertInvestmentOperation(database_,charge,error))return fail(error);
+    }
     if(!database_.commit())return fail(database_.lastError().text());return true;
+}
+
+bool FinanceRepository::migrateLedgerSchema()
+{
+    // One journal: every money or position movement is a row of transactions. Investment operations move there one
+    // row each, and transfer legs keep the identifier of their pair in operation_id.
+    const auto hasTable = [this](const QString& table) {
+        QSqlQuery query(database_);
+        query.prepare(QStringLiteral("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"));
+        query.addBindValue(table);
+        return query.exec() && query.next();
+    };
+    const auto hasColumn = [this](const QString& table, const QString& name) {
+        QSqlQuery columns(database_);
+        columns.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table));
+        while (columns.next()) {
+            if (columns.value(1).toString() == name) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const bool rebuildJournal = !hasColumn(QStringLiteral("transactions"), QStringLiteral("kind"));
+    const bool mergeInvestments = hasTable(QStringLiteral("investment_operations"));
+    if (rebuildJournal || mergeInvestments) {
+        // Foreign keys stay off while tables are rebuilt; child tables keep referring to the name "transactions".
+        QSqlQuery query(database_);
+        if (!query.exec(QStringLiteral("PRAGMA foreign_keys = OFF")) || !database_.transaction()) {
+            setLastError(query.lastError().isValid() ? query.lastError().text() : database_.lastError().text());
+            return false;
+        }
+        const QString target = rebuildJournal ? QStringLiteral("transactions_journal") : QStringLiteral("transactions");
+        QStringList steps;
+        if (rebuildJournal) {
+            steps << QStringLiteral(
+                "CREATE TABLE transactions_journal ("
+                "id TEXT PRIMARY KEY, "
+                "account_id TEXT NOT NULL REFERENCES accounts(id), "
+                "category_id TEXT REFERENCES categories(id), "
+                "type INTEGER NOT NULL CHECK(type IN (0,1)), "
+                "amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), "
+                "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
+                "recipient_json TEXT NOT NULL DEFAULT '{}', "
+                "project_id TEXT REFERENCES projects(id) ON DELETE SET NULL, "
+                "created_at INTEGER NOT NULL, "
+                "kind TEXT NOT NULL CHECK(kind IN ('income','expense','transfer','buy','sell','coupon','dividend','amortization','fee','tax','margin','expiry')), "
+                "operation_id TEXT, "
+                "position_id TEXT REFERENCES investment_positions(id) ON DELETE SET NULL, "
+                "instrument_id TEXT REFERENCES investment_instruments(id), "
+                "quantity_micros INTEGER NOT NULL DEFAULT 0, "
+                "price_micros INTEGER, trade_currency TEXT, fee_minor INTEGER, tax_minor INTEGER)");
+            steps << QStringLiteral(
+                "INSERT INTO transactions_journal(id, account_id, category_id, type, amount_minor, occurred_at, description, "
+                "recipient_json, project_id, created_at, kind, operation_id, quantity_micros) "
+                "SELECT id, account_id, category_id, type, amount_minor, occurred_at, description, recipient_json, project_id, "
+                "created_at, "
+                "CASE WHEN category_id IN ('transfer-in','transfer-out') THEN 'transfer' WHEN type = 0 THEN 'income' ELSE 'expense' END, "
+                "CASE WHEN category_id = 'transfer-out' AND id LIKE '%-out' THEN substr(id, 1, length(id) - 4) "
+                "WHEN category_id = 'transfer-in' AND id LIKE '%-in' THEN substr(id, 1, length(id) - 3) END, 0 "
+                "FROM transactions");
+        }
+        if (mergeInvestments) {
+            // Databases from before the analytics history have no charge or trade columns yet.
+            const QList<QPair<QString, QString>> columns{
+                {QStringLiteral("fee_minor"), QStringLiteral("INTEGER CHECK(fee_minor>=0)")},
+                {QStringLiteral("tax_minor"), QStringLiteral("INTEGER CHECK(tax_minor>=0)")},
+                {QStringLiteral("trade_price_micros"), QStringLiteral("INTEGER")},
+                {QStringLiteral("trade_currency"), QStringLiteral("TEXT")}};
+            for (const auto& column : columns) {
+                if (!hasColumn(QStringLiteral("investment_operations"), column.first)) {
+                    steps << QStringLiteral("ALTER TABLE investment_operations ADD COLUMN %1 %2").arg(column.first, column.second);
+                }
+            }
+            steps << QStringLiteral(
+                "INSERT INTO %1(id, account_id, category_id, type, amount_minor, occurred_at, description, recipient_json, "
+                "project_id, created_at, kind, position_id, instrument_id, quantity_micros, price_micros, trade_currency, "
+                "fee_minor, tax_minor) "
+                "SELECT id, account_id, NULL, CASE WHEN cash_delta_minor >= 0 THEN 0 ELSE 1 END, ABS(cash_delta_minor), "
+                "occurred_at, description, '{}', NULL, occurred_at, kind, position_id, instrument_id, quantity_delta_micros, "
+                "trade_price_micros, trade_currency, fee_minor, tax_minor FROM investment_operations").arg(target);
+            steps << QStringLiteral("DROP TABLE investment_operations");
+        }
+        if (rebuildJournal) {
+            steps << QStringLiteral("DROP TABLE transactions");
+            steps << QStringLiteral("ALTER TABLE transactions_journal RENAME TO transactions");
+        }
+        const auto abort = [&](const QString& error) {
+            database_.rollback();
+            query.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+            setLastError(error);
+            return false;
+        };
+        for (const auto& step : steps) {
+            if (!query.exec(step)) {
+                return abort(query.lastError().text());
+            }
+        }
+        if (!query.exec(QStringLiteral("PRAGMA foreign_key_check")) || query.next()) {
+            return abort(QStringLiteral("Миграция журнала нарушила связи между таблицами"));
+        }
+        if (!database_.commit()) {
+            return abort(database_.lastError().text());
+        }
+        query.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+    }
+    QSqlQuery indexes(database_);
+    const QStringList statements{
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_kind ON transactions(kind, occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_position ON transactions(position_id, occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_occurred_at ON transactions(occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_account_date ON transactions(account_id, occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_project_date ON transactions(project_id, occurred_at DESC)")};
+    for (const auto& statement : statements) {
+        if (!indexes.exec(statement)) {
+            setLastError(indexes.lastError().text());
+            return false;
+        }
+    }
+    return true;
+}
+
+bool FinanceRepository::insertAccountCharge(const InvestmentOperation& operation)
+{
+    // A commission or a tax of the brokerage account itself: a row without a position or an instrument.
+    if(!database_.transaction()){setLastError(database_.lastError().text());return false;}
+    QString error;
+    if(!insertInvestmentOperation(database_,operation,error)){database_.rollback();setLastError(error);return false;}
+    if(!database_.commit()){database_.rollback();setLastError(database_.lastError().text());return false;}
+    return true;
+}
+
+bool FinanceRepository::migrateTaxKind()
+{
+    // Commission and tax of a sale are rows of their own, so the journal must accept the kind "tax".
+    QSqlQuery query(database_);
+    if (!query.exec(QStringLiteral("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'transactions'")) || !query.next()) {
+        setLastError(query.lastError().isValid() ? query.lastError().text() : QStringLiteral("Журнал движений не найден"));
+        return false;
+    }
+    if (query.value(0).toString().contains(QStringLiteral("'tax'"))) {
+        return true;
+    }
+    if (!query.exec(QStringLiteral("PRAGMA foreign_keys = OFF")) || !database_.transaction()) {
+        setLastError(query.lastError().isValid() ? query.lastError().text() : database_.lastError().text());
+        return false;
+    }
+    const auto abort = [&](const QString& error) {
+        database_.rollback();
+        query.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+        setLastError(error);
+        return false;
+    };
+    const QStringList steps{
+        QStringLiteral("CREATE TABLE transactions_kinds ("
+                       "id TEXT PRIMARY KEY, "
+                       "account_id TEXT NOT NULL REFERENCES accounts(id), "
+                       "category_id TEXT REFERENCES categories(id), "
+                       "type INTEGER NOT NULL CHECK(type IN (0,1)), "
+                       "amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0), "
+                       "occurred_at INTEGER NOT NULL, description TEXT NOT NULL DEFAULT '', "
+                       "recipient_json TEXT NOT NULL DEFAULT '{}', "
+                       "project_id TEXT REFERENCES projects(id) ON DELETE SET NULL, "
+                       "created_at INTEGER NOT NULL, "
+                       "kind TEXT NOT NULL CHECK(kind IN ('income','expense','transfer','buy','sell','coupon','dividend','amortization','fee','tax','margin','expiry')), "
+                       "operation_id TEXT, "
+                       "position_id TEXT REFERENCES investment_positions(id) ON DELETE SET NULL, "
+                       "instrument_id TEXT REFERENCES investment_instruments(id), "
+                       "quantity_micros INTEGER NOT NULL DEFAULT 0, "
+                       "price_micros INTEGER, trade_currency TEXT, fee_minor INTEGER, tax_minor INTEGER)"),
+        QStringLiteral("INSERT INTO transactions_kinds(id, account_id, category_id, type, amount_minor, occurred_at, description, "
+                       "recipient_json, project_id, created_at, kind, operation_id, position_id, instrument_id, quantity_micros, "
+                       "price_micros, trade_currency, fee_minor, tax_minor) "
+                       "SELECT id, account_id, category_id, type, amount_minor, occurred_at, description, recipient_json, project_id, "
+                       "created_at, kind, operation_id, position_id, instrument_id, quantity_micros, price_micros, trade_currency, "
+                       "fee_minor, tax_minor FROM transactions"),
+        QStringLiteral("DROP TABLE transactions"),
+        QStringLiteral("ALTER TABLE transactions_kinds RENAME TO transactions")};
+    for (const auto& step : steps) {
+        if (!query.exec(step)) {
+            return abort(query.lastError().text());
+        }
+    }
+    if (!query.exec(QStringLiteral("PRAGMA foreign_key_check")) || query.next()) {
+        return abort(QStringLiteral("Миграция видов операций нарушила связи между таблицами"));
+    }
+    if (!database_.commit()) {
+        return abort(database_.lastError().text());
+    }
+    query.exec(QStringLiteral("PRAGMA foreign_keys = ON"));
+    QSqlQuery indexes(database_);
+    const QStringList statements{
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_kind ON transactions(kind, occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_position ON transactions(position_id, occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_occurred_at ON transactions(occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_account_date ON transactions(account_id, occurred_at DESC)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)"),
+        QStringLiteral("CREATE INDEX IF NOT EXISTS idx_transactions_project_date ON transactions(project_id, occurred_at DESC)")};
+    for (const auto& statement : statements) {
+        if (!indexes.exec(statement)) {
+            setLastError(indexes.lastError().text());
+            return false;
+        }
+    }
+    return true;
 }
 
 bool FinanceRepository::migrateBankImportSchema()

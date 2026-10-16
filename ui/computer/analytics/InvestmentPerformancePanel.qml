@@ -12,7 +12,7 @@ Rectangle {
     property color positive: "#3F735F"
     property color negative: "#B94F48"
     readonly property var report: controller ? (controller.investmentPerformance || ({})) : ({})
-    readonly property var choices: [{id: "", name: qsTr("Все инвестиционные счета")}].concat(controller ? (controller.performanceAccounts || []) : [])
+    readonly property var choices: [{id: "", name: qsTr("Все инвестиционные счета")}, {id: "group:brokerage", name: qsTr("Все брокерские счета")}, {id: "group:deposit", name: qsTr("Все вклады")}].concat(controller ? (controller.performanceAccounts || []) : [])
     readonly property var warnings: report.warnings || []
     property bool detailsOpen: false
     color: surface

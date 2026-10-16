@@ -162,6 +162,8 @@ std::optional<qint64> Calculation::sumPoint(const Point& p,const QDate& conversi
 void Calculation::buildFlows(){
     QHash<QString,const Transaction*> txs;for(const auto& tx:in.transactions)txs.insert(tx.id(),&tx);
     for(const auto& tx:in.transactions){if(!accounts.contains(tx.accountId()))continue;
+        // A bank's commission on a deposit lowers the value of the portfolio: it is a loss, not money that left it
+        if(tx.categoryId()==QStringLiteral("bank_fee"))continue;
         Event e{tx.date().toMSecsSinceEpoch(),tx.type()==TransactionType::Income?tx.money().minorUnits():-tx.money().minorUnits(),tx.accountId(),currencyCode(tx.money().currency()),tx.categoryId()=="deposit_interest",{}};
         if(tx.categoryId()=="transfer-in" || tx.categoryId()=="transfer-out"){
             const bool incoming=tx.categoryId()=="transfer-in";const auto suffix=incoming?QStringLiteral("-in"):QStringLiteral("-out");

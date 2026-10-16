@@ -132,6 +132,35 @@ private slots:
         QCOMPARE(c.investmentPerformance().value("allocation").toMap().value("capitalMinor").toLongLong(),qint64(20100));
         QCOMPARE(c.investmentPerformance().value("payments").toMap().value("count").toInt(),1);
     }
+    void groupsKeepBrokersAndDepositsApart(){
+        QTemporaryDir dir;const auto path=dir.filePath("data.db");
+        {FinanceRepository r(path);QVERIFY(r.saveAutomaticCurrencyRates(false));
+         QVERIFY(r.insertAccount({"broker","Брокер",AssetType::Investment,AccountType::Brokerage,Currency::RUB,10000}));
+         QVERIFY(r.insertAccount({"deposit","Вклад",AssetType::Investment,AccountType::Deposit,Currency::RUB,20000}));
+         QVERIFY(r.insertAccount({"fiat","Фиат",AssetType::Fiat,AccountType::Cash,Currency::RUB,30000}));}
+        FinanceController c(nullptr,path);
+        QCOMPARE(c.investmentPerformance().value("accountCount").toInt(),2);
+        // Brokerage accounts and deposits are two portfolios; the fiat account is in neither
+        c.setPerformanceAccount("group:brokerage");QCOMPARE(c.performanceAccountId(),QString("group:brokerage"));
+        QCOMPARE(c.investmentPerformance().value("accountCount").toInt(),1);
+        QCOMPARE(c.investmentPerformance().value("closingMinor").toLongLong(),qint64(10000));
+        c.setPerformanceAccount("group:deposit");QCOMPARE(c.performanceAccountId(),QString("group:deposit"));
+        QCOMPARE(c.investmentPerformance().value("closingMinor").toLongLong(),qint64(20000));
+        // A group is chosen by its key only: an unknown group and a fiat account are refused
+        c.setPerformanceAccount("group:fiat");QCOMPARE(c.performanceAccountId(),QString("group:deposit"));
+        c.setPerformanceAccount("fiat");QCOMPARE(c.performanceAccountId(),QString("group:deposit"));
+        c.setPerformanceAccount("");QCOMPARE(c.investmentPerformance().value("accountCount").toInt(),2);
+    }
+    void depositCommissionLowersDepositValue(){
+        QTemporaryDir dir;const auto path=dir.filePath("data.db");
+        {FinanceRepository r(path);QVERIFY(r.saveAutomaticCurrencyRates(false));
+         QVERIFY(r.insertAccount({"deposit","Вклад",AssetType::Investment,AccountType::Deposit,Currency::RUB,20000}));}
+        {FinanceController c(nullptr,path);c.setSelectedAsset("investment");
+         QVERIFY(c.addExpense(100,QStringLiteral("Комиссия банка"),QStringLiteral("bank_fee"),QStringLiteral("RUB"),QStringLiteral("deposit"),QDateTime::currentDateTimeUtc()));}
+        FinanceController c(nullptr,path);
+        // The commission lowers the deposit value; the flow rule itself is checked on the calculator
+        QCOMPARE(c.investmentPerformance().value("closingMinor").toLongLong(),qint64(19900));
+    }
 };
 QTEST_GUILESS_MAIN(InvestmentPerformanceControllerTest)
 #include "InvestmentPerformanceControllerTest.moc"
