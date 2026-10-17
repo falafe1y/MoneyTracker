@@ -23,7 +23,8 @@ endif()
 
 add_library(vexa_storage STATIC
     CipherDriver.cpp CipherDriver.h DatabaseEncryption.cpp DatabaseEncryption.h
-    DatabaseProtection.cpp DatabaseProtection.h PortableBackup.cpp PortableBackup.h)
+    DatabaseProtection.cpp DatabaseProtection.h PortableBackup.cpp PortableBackup.h
+    ../services/ContentUriIo.cpp ../services/ContentUriIo.h)
 set_target_properties(vexa_storage PROPERTIES AUTOMOC ON POSITION_INDEPENDENT_CODE ON)
 target_compile_features(vexa_storage PUBLIC cxx_std_17)
 target_include_directories(vexa_storage PUBLIC ${CMAKE_CURRENT_LIST_DIR}/..)

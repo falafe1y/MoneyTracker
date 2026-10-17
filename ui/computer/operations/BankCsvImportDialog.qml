@@ -4,12 +4,16 @@ import QtQuick.Layouts
 
 Dialog {
     id: dialog
-    width: 920
+    // A phone is narrower than the desktop dialog: the dialog and its form then shrink, two columns instead of four
+    width: Math.min(920, parent ? parent.width - 24 : 920)
     height: Math.min(780, parent ? parent.height - 40 : 780)
     modal: true
     anchors.centerIn: parent
     padding: 0
     closePolicy: Popup.CloseOnEscape
+    readonly property bool narrow: width < 760
+    readonly property real formFieldWidth: narrow ? Math.max(120, importScroll.width - 190)
+                                                  : Math.max(0, (importScroll.width - 390) / 2)
 
     required property var controller
     property color panelColor: "white"
@@ -568,7 +572,7 @@ Dialog {
     component FormField: StyledTextField {
         neo: true
         Layout.minimumWidth: 0
-        Layout.preferredWidth: Math.max(0, (importScroll.width - 390) / 2)
+        Layout.preferredWidth: dialog.formFieldWidth
         Layout.maximumWidth: Layout.preferredWidth
         controlHeight: 42
         appTextColor: dialog.textColor
@@ -583,7 +587,7 @@ Dialog {
     component FormCombo: StyledComboBox {
         neo: true
         Layout.minimumWidth: 0
-        Layout.preferredWidth: Math.max(0, (importScroll.width - 390) / 2)
+        Layout.preferredWidth: dialog.formFieldWidth
         Layout.maximumWidth: Layout.preferredWidth
         controlHeight: 42
         textRole: "label"
@@ -730,6 +734,8 @@ Dialog {
             Layout.fillWidth: true
             Layout.margins: 22
             Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
                 text: qsTr("Импорт банковской выписки")
                 color: dialog.textColor
                 font.pixelSize: 21
@@ -787,7 +793,7 @@ Dialog {
                 GridLayout {
                     enabled: !dialog.inspecting
                     Layout.fillWidth: true
-                    columns: 4
+                    columns: dialog.narrow ? 2 : 4
                     columnSpacing: 10
                     rowSpacing: 8
 
@@ -861,7 +867,7 @@ Dialog {
 
                 GridLayout {
                     Layout.fillWidth: true
-                    columns: 4
+                    columns: dialog.narrow ? 2 : 4
                     columnSpacing: 10
                     rowSpacing: 8
 
@@ -1023,16 +1029,19 @@ Dialog {
                 Text {
                     Layout.fillWidth: true
                     visible: dialog.operationRows.length > 0
+                    wrapMode: Text.WordWrap
                     text: qsTr("Получатели и категории · Требуют проверки: %1 операций")
                         .arg(dialog.remainingReviews())
                     font.pixelSize: 16
                     font.weight: Font.DemiBold
                     color: dialog.textColor
                 }
-                RowLayout {
+                GridLayout {
                     visible: dialog.operationRows.length > 0
                     Layout.fillWidth: true
-                    spacing: 16
+                    columns: dialog.narrow ? 1 : 3
+                    columnSpacing: 16
+                    rowSpacing: 8
                     StyledCheckBox {
                         text: qsTr("Только требующие проверки")
                         checked: dialog.showReviewOnly
@@ -1040,7 +1049,7 @@ Dialog {
                         appTextColor: dialog.textColor
                         appAccentColor: dialog.accentColor
                     }
-                    Item { Layout.fillWidth: true }
+                    Item { Layout.fillWidth: true; visible: !dialog.narrow }
                     FormButton {
                         text: qsTr("Принять предложения")
                         onClicked: dialog.acceptSuggestions()
@@ -1166,15 +1175,21 @@ Dialog {
                                     elide: Text.ElideRight
                                 }
                             }
-                            RowLayout {
+                            GridLayout {
                                 Layout.fillWidth: true
-                                spacing: 12
-                                Text { text: qsTr("Тип операции"); color: dialog.mutedColor; font.pixelSize: 14 }
+                                columns: dialog.narrow ? 1 : 2
+                                columnSpacing: 12
+                                rowSpacing: 6
+                                Text {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    text: qsTr("Тип операции"); color: dialog.mutedColor; font.pixelSize: 14
+                                }
                                 FormCombo {
                                     id: groupTypeBox
                                     objectName: "groupTypeBox"
+                                    Layout.fillWidth: dialog.narrow
                                     Layout.preferredWidth: 240
-                                    Layout.maximumWidth: 240
+                                    Layout.maximumWidth: dialog.narrow ? 10000 : 240
                                     model: [{label: reviewGroup.modelData.statementType === "income" ? qsTr("Доход") : qsTr("Расход"),
                                             value: reviewGroup.modelData.statementType},
                                         {label: qsTr("Перевод"), value: "transfer"}]
@@ -1187,10 +1202,12 @@ Dialog {
                                 Layout.fillWidth: true
                                 row: reviewGroup.modelData.rows[0]
                             }
-                            RowLayout {
+                            GridLayout {
                                 visible: reviewGroup.modelData.type !== "transfer"
                                 Layout.fillWidth: true
-                                spacing: 12
+                                columns: dialog.narrow ? 1 : 2
+                                columnSpacing: 12
+                                rowSpacing: 8
                                 FormField {
                                     id: recipientNameField
                                     objectName: "recipientNameField"
@@ -1203,18 +1220,21 @@ Dialog {
                                 FormCombo {
                                     id: groupCategoryBox
                                     objectName: "groupCategoryBox"
+                                    Layout.fillWidth: dialog.narrow
                                     Layout.preferredWidth: 240
-                                    Layout.maximumWidth: 240
+                                    Layout.maximumWidth: dialog.narrow ? 10000 : 240
                                     model: reviewGroup.items
                                     currentIndex: reviewGroup.modelData.mixedCategory ? -1
                                         : dialog.categoryIndex(reviewGroup.items, reviewGroup.modelData.categoryId)
                                     emptyText: qsTr("Выберите категорию")
                                 }
                             }
-                            RowLayout {
+                            GridLayout {
                                 visible: reviewGroup.modelData.type !== "transfer"
                                 Layout.fillWidth: true
-                                spacing: 16
+                                columns: dialog.narrow ? 1 : 2
+                                columnSpacing: 16
+                                rowSpacing: 4
                                 FormCheckBox {
                                     id: rememberCategoryCheck
                                     text: qsTr("Запомнить категорию получателя")
@@ -1239,13 +1259,15 @@ Dialog {
                                 visible: reviewGroup.modelData.type !== "transfer" && (rememberRecipientCheck.checked
                                     || recipientNameField.text.trim() !== reviewGroup.modelData.merchant)
                                 Layout.fillWidth: true
-                                columns: 2
+                                columns: dialog.narrow ? 1 : 2
                                 columnSpacing: 12
+                                rowSpacing: 8
                                 FormCombo {
                                     id: recipientRuleFieldBox
                                     objectName: "recipientRuleFieldBox"
+                                    Layout.fillWidth: dialog.narrow
                                     Layout.preferredWidth: 240
-                                    Layout.maximumWidth: 240
+                                    Layout.maximumWidth: dialog.narrow ? 10000 : 240
                                     model: [{label: qsTr("Описание содержит"), value: "description"},
                                         {label: qsTr("Получатель из файла"), value: "bank_recipient"},
                                         {label: qsTr("ИНН / ID совпадает"), value: "recipient_id"},
@@ -1269,7 +1291,7 @@ Dialog {
                                     }
                                 }
                                 Text {
-                                    Layout.columnSpan: 2
+                                    Layout.columnSpan: dialog.narrow ? 1 : 2
                                     Layout.fillWidth: true
                                     text: qsTr("Значение подставляется из операции. Отредактируйте его: для описания оставьте целые слова без даты, суммы и номера карты. Остальные поля должны совпасть целиком. Правило сразу применяется к этой выписке и сохраняется после импорта.")
                                     color: dialog.mutedColor
@@ -1285,9 +1307,12 @@ Dialog {
                                 font.pixelSize: 14
                                 wrapMode: Text.WordWrap
                             }
-                            RowLayout {
+                            GridLayout {
                                 visible: reviewGroup.modelData.type !== "transfer"
                                 Layout.fillWidth: true
+                                columns: dialog.narrow ? 1 : 3
+                                columnSpacing: 10
+                                rowSpacing: 8
                                 FormButton {
                                     objectName: "applyRecipientGroup"
                                     text: reviewGroup.modelData.rows.length > 1 ? qsTr("Применить к группе") : qsTr("Подтвердить")
@@ -1302,7 +1327,7 @@ Dialog {
                                     text: reviewGroup.expanded ? qsTr("Скрыть операции") : qsTr("Операции и исключения")
                                     onClicked: reviewGroup.expanded = !reviewGroup.expanded
                                 }
-                                Item { Layout.fillWidth: true }
+                                Item { Layout.fillWidth: true; visible: !dialog.narrow }
                             }
                             Repeater {
                                 model: reviewGroup.expanded ? reviewGroup.modelData.rows : []
@@ -1320,12 +1345,16 @@ Dialog {
                                         font.pixelSize: 13
                                         wrapMode: Text.WordWrap
                                     }
-                                    RowLayout {
+                                    GridLayout {
                                         Layout.fillWidth: true
+                                        columns: dialog.narrow ? 1 : 3
+                                        columnSpacing: 10
+                                        rowSpacing: 8
                                         FormCombo {
                                             id: exceptionCategoryBox
+                                            Layout.fillWidth: dialog.narrow
                                             Layout.preferredWidth: 240
-                                            Layout.maximumWidth: 240
+                                            Layout.maximumWidth: dialog.narrow ? 10000 : 240
                                             model: reviewGroup.items
                                             currentIndex: dialog.categoryIndex(model, exceptionRow.modelData.categoryId)
                                         }
@@ -1474,10 +1503,12 @@ Dialog {
 
         Rectangle { Layout.fillWidth: true; height: 1; color: dialog.lineColor }
 
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
             Layout.margins: 18
-            spacing: 10
+            columns: dialog.narrow ? 2 : 5
+            columnSpacing: 10
+            rowSpacing: 10
             FormButton {
                 text: qsTr("Удалить профиль")
                 enabled: !dialog.inspecting && dialog.editingProfileId.length > 0

@@ -142,6 +142,23 @@ private slots:
         QVERIFY(PortableBackup::exportFile({path}, output, dir.filePath("work"), Password, false, "test").ok);
         QVERIFY(!PortableBackup::prepareImport(output, dir.filePath("work"), Password, keys, FinanceRepository::migrateBackup).ok);
     }
+    void sameColumnsWrittenDifferentlyAreAccepted() {
+        // A database upgraded with ALTER TABLE keeps the text of its first CREATE TABLE: only the columns and objects count
+        QTemporaryDir dir; Keys keys; const auto path = dir.filePath("source.db"), output = dir.filePath("copy.vexabackup"); QVERIFY(seed(path));
+        const auto connection = QUuid::createUuid().toString();
+        {
+            auto db = addCipherDatabase(connection); db.setDatabaseName(path); QVERIFY(db.open());
+            QSqlQuery q(db); QVERIFY(q.exec("PRAGMA writable_schema=ON"));
+            QVERIFY(q.exec("UPDATE sqlite_master SET sql = replace(sql, ' (', '  (') WHERE type='table' AND name='accounts'"));
+            QVERIFY(q.exec("PRAGMA writable_schema=OFF"));
+        }
+        QSqlDatabase::removeDatabase(connection);
+        QVERIFY(PortableBackup::exportFile({path}, output, dir.filePath("work"), Password, false, "test").ok);
+        QVERIFY(PortableBackup::prepareImport(output, dir.filePath("work"), Password, keys, FinanceRepository::migrateBackup).ok);
+        QVERIFY(sql({path}, "ALTER TABLE accounts ADD COLUMN extra TEXT"));
+        QVERIFY(PortableBackup::exportFile({path}, output, dir.filePath("work"), Password, false, "test").ok);
+        QVERIFY(!PortableBackup::prepareImport(output, dir.filePath("work"), Password, keys, FinanceRepository::migrateBackup).ok);
+    }
     void legacySnapshotsAndWal() {
         QTemporaryDir dir; Keys keys; const auto path = dir.filePath("source.db"), output = dir.filePath("legacy.sqlite3"); QVERIFY(seed(path));
         auto source = DatabaseEncryption::convert(path, true, keys); QVERIFY(source.ok); QString error;

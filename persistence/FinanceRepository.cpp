@@ -292,15 +292,37 @@ bool FinanceRepository::migrateBackup(const DatabaseAccess& access, const QStrin
     if (!candidate.isOpen() || !reference.isOpen()) {
         error = QStringLiteral("Структура копии не поддерживается этой версией Vexa."); return false;
     }
+    // Compared by meaning, not by the text of each CREATE statement: a database upgraded with ALTER TABLE keeps
+    // the text of its first CREATE, so the same columns can be written differently.
     const auto schema = [](QSqlDatabase db, QStringList& rows) {
-        QSqlQuery query(db);
-        if (!query.exec("SELECT type,name,sql FROM sqlite_master WHERE name NOT GLOB 'sqlite_*' "
-                        "AND name != 'vexa_portable_backup' AND sql IS NOT NULL ORDER BY type,name")) return false;
-        while (query.next()) {
-            rows.append(query.value(0).toString()); rows.append(query.value(1).toString());
-            rows.append(query.value(2).toString().replace("\r\n", "\n"));
+        QSqlQuery objects(db);
+        if (!objects.exec("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT GLOB 'sqlite_*' "
+                          "AND name != 'vexa_portable_backup' AND sql IS NOT NULL ORDER BY type,name")) return false;
+        while (objects.next()) {
+            const QString type = objects.value(0).toString(), name = objects.value(1).toString();
+            if (type != QStringLiteral("table")) {
+                rows.append(type + '|' + name + '|' + objects.value(2).toString() + '|' + objects.value(3).toString().simplified());
+                continue;
+            }
+            QStringList parts;
+            QSqlQuery columns(db);
+            if (!columns.exec(QStringLiteral("PRAGMA table_info(\"%1\")").arg(name))) return false;
+            while (columns.next()) {
+                parts.append(QStringLiteral("column|%1|%2|%3|%4|%5")
+                             .arg(columns.value(1).toString(), columns.value(2).toString().toUpper(),
+                                  columns.value(3).toString(), columns.value(4).toString(), columns.value(5).toString()));
+            }
+            QSqlQuery keys(db);
+            if (!keys.exec(QStringLiteral("PRAGMA foreign_key_list(\"%1\")").arg(name))) return false;
+            while (keys.next()) {
+                parts.append(QStringLiteral("key|%1|%2|%3|%4|%5|%6")
+                             .arg(keys.value(2).toString(), keys.value(3).toString(), keys.value(4).toString(),
+                                  keys.value(5).toString(), keys.value(6).toString(), keys.value(7).toString()));
+            }
+            parts.sort();
+            rows.append(QStringLiteral("table|%1|%2").arg(name, parts.join(QLatin1Char('\n'))));
         }
-        return !query.lastError().isValid();
+        return !objects.lastError().isValid();
     };
     QStringList actual, expected;
     if (!schema(candidate.database_, actual) || !schema(reference.database_, expected) || actual != expected) {

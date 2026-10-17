@@ -259,7 +259,7 @@ MobileSheet {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: modelData.date + " · " + modelData.categoryName
+                    text: Qt.formatDate(new Date(modelData.date), "dd.MM.yyyy") + " · " + modelData.categoryName
                     color: MobileTheme.muted
                     font.pixelSize: MobileTheme.sizeCaption
                     elide: Text.ElideRight

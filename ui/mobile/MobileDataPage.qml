@@ -52,7 +52,9 @@ Flickable {
 
         title: qsTr("Выберите банковскую выписку")
         fileMode: FileDialog.OpenFile
-        nameFilters: [qsTr("Банковские выписки (*.csv *.xlsx *.pdf)"), qsTr("Все файлы (*)")]
+        // Android greys out every file whose MIME type is not listed by the filters; a statement filter lists CSV's
+        // MIME type wrongly, so only "all files" is offered, as in the CSV import. The format is checked on reading.
+        nameFilters: [qsTr("Все файлы (*.*)")]
         onAccepted: page.bankStatementChosen(selectedFile)
     }
 

@@ -71,7 +71,7 @@ Item {
             spacing: 16
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Пароль позволит восстановить данные на другом компьютере или после переустановки Windows. Сохраните его: восстановить забытый пароль копии невозможно.")
+                text: qsTr("Пароль позволит восстановить данные на другом устройстве или после переустановки системы. Сохраните его: восстановить забытый пароль копии невозможно.")
                 color: "#031528"; font.pixelSize: 14; wrapMode: Text.WordWrap
             }
             StyledCheckBox {
@@ -146,7 +146,7 @@ Item {
             spacing: 16
             Text {
                 Layout.fillWidth: true
-                text: decodeURIComponent(String(openFile.selectedFile).split("/").pop())
+                text: databaseProtection.sourceName(openFile.selectedFile)
                 color: "#687483"; font.pixelSize: 14; elide: Text.ElideMiddle
             }
             StyledTextField {

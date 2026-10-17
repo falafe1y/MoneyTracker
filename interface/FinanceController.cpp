@@ -1855,7 +1855,12 @@ QVariantMap FinanceController::inspectBankCsv(
     ) const
 {
     QVariantMap result{{QStringLiteral("ok"), false}};
-    const QString filePath = fileUrl.toLocalFile();
+    const ContentUriIo::LocalCopy copy(fileUrl);
+    if (!copy.error().isEmpty()) {
+        result[QStringLiteral("error")] = copy.error();
+        return result;
+    }
+    const QString filePath = copy.path();
     if (filePath.isEmpty()) {
         result[QStringLiteral("error")] = tr("Не выбран файл выписки");
         return result;
@@ -1873,7 +1878,9 @@ int FinanceController::inspectBankCsvAsync(const QUrl& fileUrl, const int header
     const QString& delimiter, const QString& encoding)
 {
     const int requestId = ++bankCsvInspectionRequestId_;
-    const QString filePath = fileUrl.toLocalFile();
+    // The worker reads a picked document through a temporary copy, which lives until the worker has finished
+    const auto copy = std::make_shared<ContentUriIo::LocalCopy>(fileUrl);
+    const QString filePath = copy->path();
     BankCsvProfile profile;
     profile.delimiter = delimiter; profile.encoding = encoding;
     auto* watcher = new QFutureWatcher<CsvCodec::ReadResult>(this);
@@ -1884,8 +1891,13 @@ int FinanceController::inspectBankCsvAsync(const QUrl& fileUrl, const int header
             emit bankCsvInspectionFinished(requestId,
                 buildBankCsvInspection(table, filePath, headerRow));
         });
-    watcher->setFuture(QtConcurrent::run([filePath, profile] {
-        return BankCsvImporter::readTable(filePath, profile);
+    watcher->setFuture(QtConcurrent::run([copy, profile] {
+        if (!copy->error().isEmpty()) {
+            CsvCodec::ReadResult failed;
+            failed.error = copy->error();
+            return failed;
+        }
+        return BankCsvImporter::readTable(copy->path(), profile);
     }));
     return requestId;
 }
@@ -1973,7 +1985,12 @@ QVariantMap FinanceController::previewBankImport(
     const QVariantMap& values) const
 {
     QVariantMap result{{QStringLiteral("ok"), false}};
-    const QString filePath = fileUrl.toLocalFile();
+    const ContentUriIo::LocalCopy copy(fileUrl);
+    if (!copy.error().isEmpty()) {
+        result[QStringLiteral("error")] = copy.error();
+        return result;
+    }
+    const QString filePath = copy.path();
     const BankCsvProfile profile = bankCsvProfileFromVariant(values);
     if (filePath.isEmpty() || profile.dateColumn < 0 ||
         (profile.amountMode == QStringLiteral("signed") && profile.amountColumn < 0) ||
@@ -2563,7 +2580,12 @@ QVariantMap FinanceController::importBankCsv(
         {QStringLiteral("skipped"), 0},
         {QStringLiteral("rejected"), 0}
     };
-    const QString filePath = fileUrl.toLocalFile();
+    const ContentUriIo::LocalCopy copy(fileUrl);
+    if (!copy.error().isEmpty()) {
+        result[QStringLiteral("error")] = copy.error();
+        return result;
+    }
+    const QString filePath = copy.path();
     if (filePath.isEmpty()) {
         result[QStringLiteral("error")] = tr("Не выбран файл выписки");
         return result;

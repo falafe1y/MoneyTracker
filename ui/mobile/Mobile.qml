@@ -120,7 +120,7 @@ ApplicationWindow {
         if (row && row.isCreditCard)
             return qsTr("Задолженность: %1").arg(
                 root.money(row.debtMinor, row.currency, false)
-            );
+            ) + (row.countsDebt === false ? qsTr(" · не учитывается") : "");
         return row ? root.money(row.balanceMinor, row.currency, false) : "";
     }
 
@@ -502,6 +502,15 @@ ApplicationWindow {
         if (transactionSelectionCount > 0)
             transactionSelection = ({});
     }
+    // Every operation shown in the history on the overview (the current search and asset included)
+    function selectAllVisibleTransactions() {
+        const next = {};
+        root.overviewHistoryItems().forEach(function(item) {
+            if (!item.header && item.row)
+                next[transactionKey(item.row)] = item.row;
+        });
+        transactionSelection = next;
+    }
     function selectedTransactionRows() {
         return Object.keys(transactionSelection).map(function(key) { return transactionSelection[key]; });
     }
@@ -694,6 +703,10 @@ ApplicationWindow {
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
+                }
+                SoftButton {
+                    text: qsTr("Все")
+                    onClicked: root.selectAllVisibleTransactions()
                 }
                 SoftButton {
                     text: qsTr("Отмена")
@@ -1007,6 +1020,85 @@ ApplicationWindow {
 
                 function onOverviewSearchOpenChanged() {
                     Qt.callLater(overviewView.revealSearch);
+                }
+            }
+
+            // Selection by dragging, as on the computer: the row where the press starts toggles, and the rows the pointer
+            // crosses are added to the selection that was made before the drag. Near the top or bottom edge the list scrolls.
+            property var dragBase: ({})
+            property int dragStart: -1
+            property int dragEnd: -1
+            readonly property bool dragging: dragStart >= 0
+            property int dragScrollStep: 0
+            property real lastDragViewportY: 0
+
+            // Index in history.rows of the operation at this content y; above or below the list, the first or the last one
+            function historyIndexAt(contentY) {
+                const rows = history.rows;
+                let last = -1;
+                for (let i = 0; i < rows.length; ++i) {
+                    if (rows[i].kind !== "row")
+                        continue;
+                    last = i;
+                    if (contentY < rows[i].nameBase + 23)
+                        return i;
+                }
+                return last;
+            }
+
+            function beginSelectionDrag(index) {
+                const rows = history.rows;
+                if (index < 0 || index >= rows.length || rows[index].kind !== "row")
+                    return;
+                dragBase = Object.assign({}, root.transactionSelection);
+                dragStart = index;
+                dragEnd = index;
+                root.toggleTransactionSelection(rows[index].row);
+                overviewScroll.interactive = false;
+            }
+
+            function extendSelectionDrag(index) {
+                const rows = history.rows;
+                if (!dragging || rows.length === 0)
+                    return;
+                index = Math.max(0, Math.min(rows.length - 1, index));
+                if (index === dragEnd)
+                    return;
+                dragEnd = index;
+                const next = Object.assign({}, dragBase);
+                for (let i = Math.min(dragStart, index); i <= Math.max(dragStart, index); ++i) {
+                    if (rows[i].kind === "row")
+                        next[root.transactionKey(rows[i].row)] = rows[i].row;
+                }
+                root.transactionSelection = next;
+            }
+
+            // The pointer in the visible part of the list: extends the selection, and scrolls while it stays at an edge
+            function pointerDrag(viewportY) {
+                if (!dragging)
+                    return;
+                const edge = 60;
+                lastDragViewportY = viewportY;
+                dragScrollStep = viewportY < edge ? -10 : viewportY > overviewScroll.height - edge ? 10 : 0;
+                extendSelectionDrag(historyIndexAt(overviewScroll.contentY + viewportY));
+            }
+
+            function endSelectionDrag() {
+                dragStart = -1;
+                dragEnd = -1;
+                dragScrollStep = 0;
+                overviewScroll.interactive = true;
+            }
+
+            Timer {
+                interval: 16
+                repeat: true
+                running: overviewView.dragging && overviewView.dragScrollStep !== 0
+                onTriggered: {
+                    const maxY = Math.max(0, overviewScroll.contentHeight - overviewScroll.height);
+                    overviewScroll.contentY = Math.max(0, Math.min(maxY, overviewScroll.contentY + overviewView.dragScrollStep));
+                    overviewView.extendSelectionDrag(overviewView.historyIndexAt(
+                        overviewScroll.contentY + overviewView.lastDragViewportY));
                 }
             }
 
@@ -1372,6 +1464,7 @@ ApplicationWindow {
                             baseY: 70.93
                             anchorX: 68.57
                             text: root.shownAmount(root.money(accountItem.modelData.debtMinor, accountItem.modelData.currency, false))
+                                  + (accountItem.modelData.countsDebt === false ? qsTr(" · не учитывается") : "")
                             color: accountItem.selected ? MobileTheme.designLight : MobileTheme.designMuted
                             font.pixelSize: 13
                             font.weight: Font.Bold
@@ -1515,7 +1608,19 @@ ApplicationWindow {
                         id: historyItem
 
                         required property var modelData
+                        required property int index
                         readonly property bool header: modelData.kind === "header"
+
+                        // Selected operations are highlighted behind the row
+                        Rectangle {
+                            visible: !historyItem.header && root.isTransactionSelected(historyItem.modelData.row)
+                            x: 16
+                            y: historyItem.header ? 0 : historyItem.modelData.nameBase - 14
+                            width: overviewView.width - 32
+                            height: 40
+                            radius: 10
+                            color: MobileTheme.pale
+                        }
 
                         DText {
                             visible: historyItem.header
@@ -1570,6 +1675,7 @@ ApplicationWindow {
                         MouseArea {
                             property real pressX: 0
                             property real pressY: 0
+                            property bool holdHandled: false
 
                             visible: !historyItem.header
                             x: 16
@@ -1579,13 +1685,42 @@ ApplicationWindow {
                             onPressed: function (mouse) {
                                 pressX = mouse.x;
                                 pressY = mouse.y;
+                                holdHandled = false;
                                 if (mouse.button === Qt.RightButton)
                                     root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouse.x, mouse.y);
                             }
+                            onPositionChanged: function (mouse) {
+                                if (!(mouse.buttons & Qt.LeftButton))
+                                    return;
+                                if (!overviewView.dragging) {
+                                    // In selection mode a drag over the rows selects them without a long press
+                                    if (root.transactionSelectionCount === 0 || Math.abs(mouse.y - pressY) < 8)
+                                        return;
+                                    holdHandled = true;
+                                    overviewView.beginSelectionDrag(historyItem.index);
+                                }
+                                overviewView.pointerDrag(mapToItem(overviewScroll, mouse.x, mouse.y).y);
+                            }
                             onReleased: function (mouse) {
+                                if (overviewView.dragging) {
+                                    overviewView.endSelectionDrag();
+                                    return;
+                                }
                                 root.overviewSwipe(mouse.x - pressX, mouse.y - pressY);
                             }
-                            onPressAndHold: root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouseX, mouseY)
+                            onCanceled: overviewView.endSelectionDrag()
+                            onPressAndHold: {
+                                holdHandled = true;
+                                overviewView.beginSelectionDrag(historyItem.index);
+                            }
+                            onClicked: function (mouse) {
+                                if (mouse.button !== Qt.LeftButton || holdHandled)
+                                    return;
+                                if (root.transactionSelectionCount > 0)
+                                    root.toggleTransactionSelection(historyItem.modelData.row);
+                                else
+                                    root.openTransactionContextMenu(historyItem.modelData.row, historyItem, mouse.x, mouse.y);
+                            }
                         }
                     }
                 }

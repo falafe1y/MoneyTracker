@@ -181,6 +181,11 @@ int main(int argc, char *argv[])
         if (QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1)))
             return 0;
         if (!installationLock.tryLock()) return 1;
+#if defined(Q_OS_ANDROID)
+        // Android starts the app again only from the launcher, so the user reopens it
+        databaseProtection.storageFailed(QStringLiteral("Закройте Vexa и откройте её снова."));
+#else
         databaseProtection.storageFailed(QStringLiteral("Не удалось перезапустить Vexa. Повторите попытку или откройте приложение вручную."));
+#endif
     }
 }

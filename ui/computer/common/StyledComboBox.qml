@@ -31,14 +31,33 @@ ComboBox {
         elide: Text.ElideRight
     }
 
-    indicator: Text {
+    // Drawn rather than typed: the chevron glyphs are missing from the phone's fonts
+    indicator: Canvas {
+        readonly property bool open: control.popup.visible
+        readonly property color strokeColor: control.enabled ? control.appAccentColor : control.appMutedColor
         x: control.width - width - 15
         y: (control.height - height) / 2 - 1
+        width: 12
+        height: 8
         transform: Translate { y: control.neoPressShift }
-        text: control.popup.visible ? "⌃" : "⌄"
-        color: control.enabled ? control.appAccentColor : control.appMutedColor
-        font.pixelSize: 18
-        font.weight: Font.DemiBold
+        onOpenChanged: requestPaint()
+        onStrokeColorChanged: requestPaint()
+        Component.onCompleted: requestPaint()
+        onPaint: {
+            const context = getContext("2d");
+            context.reset();
+            context.strokeStyle = strokeColor;
+            context.lineWidth = 2;
+            context.lineCap = "round";
+            context.lineJoin = "round";
+            context.beginPath();
+            if (open) {
+                context.moveTo(1, 7); context.lineTo(6, 2); context.lineTo(11, 7);
+            } else {
+                context.moveTo(1, 1); context.lineTo(6, 6); context.lineTo(11, 1);
+            }
+            context.stroke();
+        }
     }
 
     background: Rectangle {

@@ -4,7 +4,10 @@
 #include <QObject>
 #include <QFutureWatcher>
 #include <QElapsedTimer>
+#include <QTemporaryDir>
 #include <QUrl>
+
+#include <memory>
 
 class DatabaseProtection final : public QObject {
     Q_OBJECT
@@ -43,6 +46,7 @@ public:
     Q_INVOKABLE void restart();
     Q_INVOKABLE void exportBackup(const QUrl& destination, const QString& password, bool plaintext);
     Q_INVOKABLE void inspectBackup(const QUrl& source, const QString& password);
+    Q_INVOKABLE QString sourceName(const QUrl& source) const;
     Q_INVOKABLE void discardBackup();
     Q_INVOKABLE void restoreBackup();
 signals:
@@ -54,7 +58,7 @@ signals:
     void backupExported(const QString& path);
 private:
     void launch(bool conversion, bool encrypted = false, std::shared_ptr<PortableBackup::Prepared> restore = {});
-    void finishBackup(bool exporting, const QString& path, quint64 generation);
+    void finishBackup(bool exporting, const QString& path, quint64 generation, const QUrl& destination);
     QString path_, error_;
     DatabaseAccess access_;
     std::shared_ptr<DatabaseKeyStore> store_;
@@ -63,6 +67,7 @@ private:
     PortableBackup::SchemaValidator schemaValidator_;
     std::shared_ptr<PortableBackup::Prepared> preview_, restoring_;
     QElapsedTimer previewAge_;
+    std::unique_ptr<QTemporaryDir> backupDirectory_; // Holds a backup until it is copied to a picked document
     QString backupError_, workspaceRoot_;
     quint64 generation_ = 0;
     bool passwordRequired_ = false, recovery_ = false;

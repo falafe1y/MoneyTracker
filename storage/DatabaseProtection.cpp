@@ -1,4 +1,5 @@
 #include "DatabaseProtection.h"
+#include "../services/ContentUriIo.h"
 #include <QCoreApplication>
 #include <QProcess>
 #include <QFileInfo>
@@ -81,16 +82,26 @@ void DatabaseProtection::launch(bool conversion, bool encrypted, std::shared_ptr
         return DatabaseEncryption::open(path, *store);
     }));
 }
-void DatabaseProtection::finishBackup(bool exporting, const QString& path, quint64 generation) {
-    const auto result = backupWorker_.result();
+void DatabaseProtection::finishBackup(bool exporting, const QString& path, quint64 generation, const QUrl& destination) {
+    auto result = backupWorker_.result();
     disconnect(&backupWorker_, nullptr, this, nullptr);
     backupWorker_.setFuture(QFuture<PortableBackup::Result>());
     busy_ = false;
-    if (generation == generation_ && admitted_) {
+    const bool current = generation == generation_ && admitted_;
+    // A picked document receives the backup only while the session that started the export is still open
+    if (exporting && result.ok && current && ContentUriIo::isContentUri(destination)
+        && !ContentUriIo::copyFileTo(path, destination, result.error)) {
+        result.ok = false;
+    }
+    backupDirectory_.reset();
+    if (current) {
         backupError_ = result.error;
         if (result.ok && !exporting) { preview_ = result.prepared; previewAge_.start(); passwordRequired_ = false; }
         emit backupChanged();
-        if (result.ok && exporting) emit backupExported(path);
+        if (result.ok && exporting) {
+            const QString name = ContentUriIo::isContentUri(destination) ? ContentUriIo::displayName(destination) : path;
+            emit backupExported(name.isEmpty() ? destination.toString() : name);
+        }
     }
     emit changed();
     if (generation != generation_ && admitted_ && !ready_) prepare();
@@ -102,6 +113,13 @@ void DatabaseProtection::exportBackup(const QUrl& destination, const QString& pa
         backupError_ = tr("Пароль копии должен содержать от 12 до 1024 символов."); emit backupChanged(); return;
     }
     QString path = destination.toLocalFile();
+    if (ContentUriIo::isContentUri(destination)) {
+        // A picked document has no path on Android: the backup is written to a temporary folder and copied over later
+        QString error;
+        backupDirectory_ = ContentUriIo::temporaryDirectory(error);
+        if (!backupDirectory_) { backupError_ = error; emit backupChanged(); return; }
+        path = backupDirectory_->filePath(QStringLiteral("backup"));
+    }
     if (path.isEmpty()) { backupError_ = tr("Выберите место сохранения копии."); emit backupChanged(); return; }
     if (QFileInfo(path).suffix().isEmpty()) path += plaintext ? ".sqlite3" : ".vexabackup";
     busy_ = true; emit changed(); emit backupChanged();
@@ -109,7 +127,7 @@ void DatabaseProtection::exportBackup(const QUrl& destination, const QString& pa
     const auto version = QCoreApplication::applicationVersion();
     disconnect(&backupWorker_, nullptr, this, nullptr);
     connect(&backupWorker_, &QFutureWatcher<PortableBackup::Result>::finished, this,
-            [this, path, generation] { finishBackup(true, path, generation); });
+            [this, path, generation, destination] { finishBackup(true, path, generation, destination); });
     backupWorker_.setFuture(QtConcurrent::run([source, path, root, password, plaintext, version] {
         return PortableBackup::exportFile(source, path, root, password, plaintext, version);
     }));
@@ -117,7 +135,10 @@ void DatabaseProtection::exportBackup(const QUrl& destination, const QString& pa
 void DatabaseProtection::inspectBackup(const QUrl& source, const QString& password) {
     if (!admitted_ || busy_ || restartRequired_ || (!ready_ && error_.isEmpty())) return;
     preview_.reset(); backupError_.clear(); passwordRequired_ = false;
-    const auto path = source.toLocalFile();
+    // A picked copy is read through a temporary file, which exists until the import has been prepared
+    const auto copy = std::make_shared<ContentUriIo::LocalCopy>(source);
+    if (!copy->error().isEmpty()) { backupError_ = copy->error(); emit backupChanged(); return; }
+    const auto path = copy->path();
     if (QFileInfo(path).canonicalFilePath() == QFileInfo(path_).canonicalFilePath()) {
         backupError_ = tr("Выберите копию, а не рабочую базу."); emit backupChanged(); return;
     }
@@ -127,10 +148,14 @@ void DatabaseProtection::inspectBackup(const QUrl& source, const QString& passwo
     const auto generation = generation_; const auto root = workspaceRoot_; const auto keys = store_; const auto validator = schemaValidator_;
     disconnect(&backupWorker_, nullptr, this, nullptr);
     connect(&backupWorker_, &QFutureWatcher<PortableBackup::Result>::finished, this,
-            [this, generation] { finishBackup(false, {}, generation); });
-    backupWorker_.setFuture(QtConcurrent::run([path, root, password, keys, validator] {
-        return PortableBackup::prepareImport(path, root, password, *keys, validator);
+            [this, generation] { finishBackup(false, {}, generation, {}); });
+    backupWorker_.setFuture(QtConcurrent::run([copy, root, password, keys, validator] {
+        return PortableBackup::prepareImport(copy->path(), root, password, *keys, validator);
     }));
+}
+QString DatabaseProtection::sourceName(const QUrl& source) const {
+    // A picked document on Android has an address made of provider ids: its name comes from the provider
+    return ContentUriIo::isContentUri(source) ? ContentUriIo::displayName(source) : QFileInfo(source.toLocalFile()).fileName();
 }
 void DatabaseProtection::discardBackup() {
     if (busy_) return;

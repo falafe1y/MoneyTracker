@@ -172,7 +172,6 @@ qt_add_qml_module(vexa
         SOURCES services/CsvCodec.h
         SOURCES services/CsvCodec.cpp
         SOURCES services/ContentUriIo.h
-        SOURCES services/ContentUriIo.cpp
         SOURCES services/BankCsvImporter.h
         SOURCES services/BankCsvImporter.cpp
         SOURCES services/BankRecipientMatcher.h
@@ -259,6 +258,11 @@ if(ANDROID AND OPENSSL_ROOT_DIR)
     set_property(TARGET vexa APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
         "${OPENSSL_ROOT_DIR}/${ANDROID_ABI}/libcrypto_3.so"
         "${OPENSSL_ROOT_DIR}/${ANDROID_ABI}/libssl_3.so")
+endif()
+# Full debug information of the Qt Quick UI does not fit the 32-bit relocations of the Android linker;
+# the APK ships without it, so the linker drops it.
+if(ANDROID)
+    target_link_options(vexa PRIVATE "-Wl,--strip-debug")
 endif()
 
 if(WIN32)
