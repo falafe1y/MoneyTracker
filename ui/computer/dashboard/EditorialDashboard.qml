@@ -25,6 +25,7 @@ Flickable {
     readonly property var accountRows: controller.selectedAsset === "crypto" ? controller.cryptoWallets : controller.accounts
     readonly property var sourceRows: Data.history(controller, host, asset, selectedId)
     readonly property var historyRows: Data.filterRows(sourceRows, host.searchText, category, sortField, sortDirection)
+    readonly property var selectedRows: historySelection.selectedRows
     readonly property var expenseGroups: Data.expenses(sourceRows)
     readonly property var expenseLegend: Data.legend(expenseGroups)
     readonly property real totalExpense: expenseGroups.reduce(function(sum, g) { return sum + g.amount; }, 0)
@@ -60,6 +61,8 @@ Flickable {
     }
     onContentHeightChanged: clampScroll()
     onHeightChanged: clampScroll()
+    onVisibleChanged: if (!visible) historySelection.clear()
+    onHistoryRowsChanged: historySelection.prune()
     onSelectedIdChanged: category = ""
     function clampScroll() { contentY = Math.max(0, Math.min(contentY, Math.max(0, contentHeight - height))); }
     function selectAsset(code) {
@@ -98,6 +101,92 @@ Flickable {
         const mod100 = count % 100, mod10 = count % 10;
         return count + " " + (mod100 >= 11 && mod100 <= 14 ? qsTr("счетов")
             : mod10 === 1 ? qsTr("счёт") : mod10 >= 2 && mod10 <= 4 ? qsTr("счёта") : qsTr("счетов"));
+    }
+    QtObject {
+        id: historySelection
+        property var keys: ({})
+        readonly property var selectedRows: view.historyRows.filter(function(row) { return contains(row); }).map(function(row) { return row.source; })
+        function key(row) {
+            const source = row.source;
+            return source.transactionId ? "crypto:" + source.walletId + ":" + source.transactionId
+                : (source.type || "operation") + ":" + source.id;
+        }
+        function contains(row) { return keys[key(row)] === true; }
+        function toggle(row) {
+            const next = Object.assign({}, keys), id = key(row);
+            if (next[id]) delete next[id]; else next[id] = true;
+            keys = next;
+        }
+        function clear() { keys = ({}); selectionMenu.close(); }
+        function selectAll() {
+            const next = ({});
+            view.historyRows.forEach(function(row) { next[key(row)] = true; });
+            keys = next;
+        }
+        function prune() {
+            const next = ({});
+            view.historyRows.forEach(function(row) { if (contains(row)) next[key(row)] = true; });
+            keys = next;
+        }
+    }
+    function openSelectionMenu(source, x, y) {
+        const point = source.mapToItem(view, x, y);
+        selectionMenu.x = Math.max(8, Math.min(point.x, view.width - selectionMenu.width - 8));
+        selectionMenu.y = Math.max(8, Math.min(point.y, view.height - selectionMenu.implicitHeight - 8));
+        selectionMenu.open();
+    }
+    // Reject the observed press so the original control still receives it.
+    Item {
+        parent: view.Window.window ? view.Window.window.contentItem : null
+        anchors.fill: parent
+        z: 1000
+        // Exclude this transparent observer from the existing scroll target lookup.
+        property bool middleScrollViewport: true
+        visible: view.visible && view.selectedRows.length > 0 && !view.host.modalDialogVisible()
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPressed: function(mouse) {
+                view.clearSelectionOutside(this, mouse.x, mouse.y);
+                mouse.accepted = false;
+            }
+        }
+    }
+    function clearSelectionOutside(source, x, y) {
+        if (selectionMenu.visible) {
+            const menuPoint = selectionMenu.contentItem.mapFromItem(source, x, y);
+            if (menuPoint.x >= 0 && menuPoint.y >= 0 && menuPoint.x < selectionMenu.contentItem.width && menuPoint.y < selectionMenu.contentItem.height) return;
+        }
+        const viewportPoint = view.mapFromItem(source, x, y);
+        const paperPoint = paper.mapFromItem(source, x, y);
+        const inHistory = viewportPoint.x >= 0 && viewportPoint.y >= 0 && viewportPoint.x < view.width && viewportPoint.y < view.height
+            && paperPoint.x >= 0 && paperPoint.x < paper.width
+            && paperPoint.y >= historyHead.y && paperPoint.y < historyFooter.y + historyFooter.height;
+        if (!inHistory) historySelection.clear();
+    }
+    Shortcut {
+        sequence: "Escape"; context: Qt.WindowShortcut
+        enabled: view.visible && view.selectedRows.length > 0 && !view.host.modalDialogVisible()
+        onActivated: historySelection.clear()
+    }
+    Menu {
+        id: selectionMenu
+        objectName: "editorialHistorySelectionMenu"
+        width: 224
+        font.family: "Arimo"; font.pixelSize: 16
+        closePolicy: Popup.CloseOnPressOutside
+        MenuItem {
+            objectName: "editorialHistorySelectAll"
+            text: qsTr("Выделить все")
+            onTriggered: historySelection.selectAll()
+        }
+        MenuItem {
+            objectName: "editorialHistoryDeleteSelected"
+            text: qsTr("Удалить")
+            enabled: view.selectedRows.length > 0
+            onTriggered: view.host.editorialDeleteHistory(historySelection)
+        }
+        background: Rectangle { color: "#f3eddf"; border.color: "#031528" }
     }
     Component.onCompleted: { if (controller.selectedAsset !== "fiat" || selectedId) asset = controller.selectedAsset; }
     Connections {
@@ -525,9 +614,12 @@ Flickable {
                     id: historyRow
                     required property int index
                     required property var modelData
+                    readonly property bool selected: historySelection.contains(modelData)
                     objectName: "editorialHistoryRow"
                     y: (view.firstVisibleRow + index) * 56; width: historyBody.width; height: 56; padding: 0; hoverEnabled: true
                     Accessible.name: modelData.type + " " + modelData.description + " " + modelData.amount
+                    Accessible.checkable: true
+                    Accessible.checked: selected
                     contentItem: Item {
                         Repeater {
                             model: [Qt.formatDate(historyRow.modelData.date, "dd.MM.yyyy"), historyRow.modelData.type.toUpperCase(), historyRow.modelData.account, historyRow.modelData.category, historyRow.modelData.description, historyRow.modelData.amount]
@@ -545,12 +637,18 @@ Flickable {
                         }
                     }
                     background: Rectangle {
-                        color: historyRow.hovered ? "#06031528" : "transparent"
-                        border.width: historyRow.activeFocus ? 1 : 0; border.color: "#b84932"
+                        color: historyRow.selected ? "#09031528" : historyRow.hovered ? "#06031528" : "transparent"
+                        border.width: 0
                         Rule { y: parent.height - 1; width: parent.width; color: "#bbb5a8" }
                     }
-                    onClicked: view.host.editorialEditOperation(modelData.source, historyRow, width / 2, height / 2)
-                    TapHandler { acceptedButtons: Qt.RightButton; onTapped: (point) => view.host.openTransactionContextMenu(historyRow.modelData.source, historyRow, point.position.x, point.position.y) }
+                    onClicked: historySelection.toggle(modelData)
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: (point) => {
+                            if (view.selectedRows.length) view.openSelectionMenu(historyRow, point.position.x, point.position.y);
+                            else view.host.openTransactionContextMenu(historyRow.modelData.source, historyRow, point.position.x, point.position.y);
+                        }
+                    }
                 }
             }
             Mono { visible: view.historyRows.length === 0; anchors.fill: parent; horizontalAlignment: Text.AlignHCenter; text: qsTr("Операций не найдено. Измените поиск или снимите фильтр.") }

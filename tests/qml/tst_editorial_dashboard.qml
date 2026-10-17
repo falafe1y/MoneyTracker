@@ -16,6 +16,8 @@ Item {
     property int editCalls: 0
     property int menuCalls: 0
     property var lastAccount: null
+    property var deletedRows: []
+    property bool deleteSucceeds: true
     Rectangle { anchors.fill: parent; color: "#f3eddf" }
     function money(value, currency, sign) { return (sign && value > 0 ? "+" : "") + Number(value / 100).toLocaleString(Qt.locale("ru_RU"), "f", 2) + " ₽"; }
     function assetAmount(code) { return code === "fiat" ? 5245554 : code === "investment" ? 21300063 : 0; }
@@ -34,6 +36,14 @@ Item {
     function editorialExport() { ++addCalls; }
     function editorialAddPosition() { ++addCalls; }
     function editorialEditOperation(row, source, x, y) { ++editCalls; }
+    function modalDialogVisible() { return false; }
+    function editorialDeleteHistory(selection) {
+        deletedRows = selection.selectedRows.slice();
+        if (!deleteSucceeds) return;
+        const ids = deletedRows.map(function(row) { return row.id; });
+        financeMock.transactions = financeMock.transactions.filter(function(row) { return ids.indexOf(row.id) < 0; });
+        selection.clear();
+    }
     function openNewOperationForSelectedAsset() { ++addCalls; }
     function openAccountContextMenu(row, source, x, y) { ++menuCalls; }
     function openTransactionContextMenu(row, source, x, y) { ++menuCalls; }
@@ -99,6 +109,8 @@ Item {
             dashboard.selectAsset("all"); dashboard.contentY = 0;
             dashboard.sortField = "date"; dashboard.sortDirection = -1;
             scene.addCalls = 0; scene.editCalls = 0; scene.menuCalls = 0;
+            scene.deletedRows = []; scene.deleteSucceeds = true;
+            dashboard.visible = false; dashboard.visible = true;
             wait(30);
         }
         function test_reference_geometry() {
@@ -222,7 +234,95 @@ Item {
             mouseClick(findChild(sidebar, "editorialNav_overview")); compare(scene.page, "overview");
             mouseClick(findChild(dashboard, "editorialAddOperation")); compare(scene.addCalls, 1);
             const rows = findChildren(dashboard, "editorialHistoryRow");
-            verify(rows.length > 0); mouseClick(rows[0]); compare(scene.editCalls, 1);
+            verify(rows.length > 0); mouseClick(rows[0]); compare(scene.editCalls, 0);
+            compare(dashboard.selectedRows.length, 1);
+        }
+        function historyItems() {
+            return findChildren(dashboard, "editorialHistoryRow").filter(function(row) {
+                const point = row.mapToItem(dashboard, 0, 0);
+                return point.y >= 0 && point.y + row.height <= dashboard.height;
+            });
+        }
+        function test_history_multiple_selection_and_escape() {
+            const rows = historyItems(); verify(rows.length >= 2);
+            mouseClick(rows[0]); mouseClick(rows[1]);
+            compare(dashboard.selectedRows.length, 2); compare(scene.editCalls, 0);
+            verify(rows[0].selected); verify(rows[1].selected);
+            compare(rows[0].background.border.width, 0);
+            compare(rows[0].background.color, Qt.rgba(3/255,21/255,40/255,9/255));
+            mouseClick(rows[0]); compare(dashboard.selectedRows.length, 1);
+            keyClick(Qt.Key_Escape); compare(dashboard.selectedRows.length, 0);
+        }
+        function test_history_selection_outside_click_does_not_eat_action() {
+
+            mouseClick(historyItems()[0]); compare(dashboard.selectedRows.length, 1);
+            mouseClick(dashboard, 8, 100); compare(dashboard.selectedRows.length, 0);
+            mouseClick(historyItems()[0]);
+            mouseClick(findChild(sidebar, "editorialNav_categories"));
+            compare(scene.page, "categories"); compare(dashboard.selectedRows.length, 0);
+            scene.page = "overview";
+            mouseClick(historyItems()[0]);
+            mouseClick(findChild(dashboard, "editorialAccountRow"));
+            compare(financeMock.selectedAccountId, "a0"); compare(dashboard.selectedRows.length, 0);
+        }
+        function test_history_selection_menu_and_select_all_filtered_rows() {
+            const original = financeMock.transactions;
+            try {
+                scene.searchText = "Пятёрочка";
+                const rows = historyItems(); verify(rows.length >= 2);
+                mouseClick(rows[0]);
+                mouseClick(rows[1], 40, 20, Qt.RightButton);
+                const menu = findChild(dashboard, "editorialHistorySelectionMenu");
+                tryCompare(menu, "visible", true); compare(scene.menuCalls, 0);
+                mouseClick(findChild(dashboard, "editorialHistorySelectAll"));
+                compare(dashboard.selectedRows.length, dashboard.historyRows.length);
+                verify(dashboard.selectedRows.length > findChildren(dashboard, "editorialHistoryRow").length);
+                mouseClick(historyItems()[0], 40, 20, Qt.RightButton);
+                tryCompare(menu, "visible", true);
+                mouseClick(findChild(dashboard, "editorialHistoryDeleteSelected"));
+                verify(scene.deletedRows.length > 0);
+                verify(scene.deletedRows.every(function(row) { return row.rawDescription.indexOf("Пятёрочка") >= 0; }));
+                compare(financeMock.transactions.length, original.length - scene.deletedRows.length);
+                compare(dashboard.selectedRows.length, 0);
+            } finally { financeMock.transactions = original; }
+        }
+        function test_history_selection_survives_scroll_sort_and_failed_delete() {
+            mouseClick(historyItems()[0]);
+            const selectedId = dashboard.selectedRows[0].id;
+            dashboard.contentY = 3000; wait(30);
+            compare(dashboard.selectedRows[0].id, selectedId);
+            mouseClick(historyItems()[0]); compare(dashboard.selectedRows.length, 2);
+            dashboard.sortBy("amount"); compare(dashboard.selectedRows.length, 2);
+            scene.deleteSucceeds = false;
+            mouseClick(historyItems()[0], 40, 20, Qt.RightButton);
+            mouseClick(findChild(dashboard, "editorialHistoryDeleteSelected"));
+            compare(scene.deletedRows.length, 2); compare(dashboard.selectedRows.length, 2);
+            scene.searchText = "несуществующая операция"; compare(dashboard.selectedRows.length, 0);
+        }
+        function test_history_single_row_context_without_selection() {
+            mouseClick(historyItems()[0], 40, 20, Qt.RightButton);
+            compare(scene.menuCalls, 1); compare(dashboard.selectedRows.length, 0);
+        }
+        function test_history_escape_and_outside_click_with_open_menu() {
+            const menu = findChild(dashboard, "editorialHistorySelectionMenu");
+            mouseClick(historyItems()[0]);
+            mouseClick(historyItems()[0], 40, 20, Qt.RightButton);
+            tryCompare(menu, "visible", true);
+            keyClick(Qt.Key_Escape);
+            tryCompare(menu, "visible", false); compare(dashboard.selectedRows.length, 0);
+            mouseClick(historyItems()[0]);
+            mouseClick(historyItems()[0], 40, 20, Qt.RightButton);
+            tryCompare(menu, "visible", true);
+            mouseClick(dashboard, 8, 100);
+            tryCompare(menu, "visible", false); compare(dashboard.selectedRows.length, 0);
+        }
+        function test_history_wheel_while_selected() {
+            mouseClick(historyItems()[0]);
+            const point = historyItems()[0].mapToItem(scroller, 40, 20);
+            compare(scroller.targetAt(point.x, point.y, null), dashboard);
+            mouseWheel(dashboard, 400, 1000, 0, -120);
+            tryVerify(function() { return dashboard.contentY > 0; });
+            compare(dashboard.selectedRows.length, 1);
         }
         function test_account_click_and_context_menu() {
             const rows = findChildren(dashboard, "editorialAccountRow");

@@ -323,6 +323,13 @@ ApplicationWindow {
     function editorialDateFilter() { dateFilterDialog.openForCurrent(); }
     function editorialExport() { exportCsvDialog.open(); }
     function editorialAddPosition() { investmentPositionDialog.openForNewPosition(); }
+    function editorialDeleteHistory(selection) {
+        if (!selection || !selection.selectedRows.length) return;
+        historySelectionMenu.selection = selection;
+        deleteSelectedHistoryDialog.rows = selection.selectedRows.slice();
+        deleteSelectedHistoryDialog.errorText = "";
+        deleteSelectedHistoryDialog.open();
+    }
     function editorialEditOperation(row, source, x, y) {
         if (row.transactionId || row.type === "investment_cash" || row.investmentTransfer)
             root.openTransactionContextMenu(row, source, x, y);
