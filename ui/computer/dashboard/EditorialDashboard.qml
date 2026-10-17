@@ -240,8 +240,7 @@ Flickable {
                         EditorialArrow { visible: assetButton.index > 0; x: parent.width - width - (view.small ? 12 : 24); y: view.compact ? 16 : 24; width: view.small ? 16 : 24; height: width }
                     }
                     background: Rectangle {
-                        color: assetButton.hovered ? "#05031528" : "transparent"
-                        border.width: assetButton.activeFocus ? 1 : 0; border.color: "#b84932"
+                        color: view.asset === assetButton.modelData[0] ? "#09031528" : assetButton.hovered ? "#05031528" : "transparent"
                         Rectangle { visible: assetButton.index !== 0 && !(view.narrow && assetButton.index === 2); width: 1; height: parent.height; color: "#031528" }
                         Rule { visible: view.asset === assetButton.modelData[0]; y: parent.height - 2; height: 2; width: parent.width }
                         Rule { visible: view.narrow && assetButton.index < 2; y: parent.height - 1; width: parent.width; color: "#bbb5a8" }
@@ -308,7 +307,6 @@ Flickable {
                         }
                         background: Rectangle {
                             color: accountButton.selected ? "#09031528" : accountButton.hovered ? "#06031528" : "transparent"
-                            border.width: accountButton.activeFocus ? 1 : 0; border.color: "#b84932"
                             Rule { y: parent.height - 1; width: parent.width; color: "#bbb5a8" }
                             Rectangle { visible: accountButton.selected; y: 8; height: 40; width: 2; color: "#031528" }
                         }

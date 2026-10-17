@@ -63,7 +63,6 @@ Rectangle {
                 }
                 background: Rectangle {
                     color: "transparent"
-                    border.width: nav.activeFocus ? 1 : 0; border.color: "#b84932"
                     Rectangle { visible: nav.selected; anchors.bottom: parent.bottom; height: 1; width: parent.width; color: "#031528" }
                 }
                 onClicked: sidebar.host.page = modelData[0]
@@ -76,15 +75,19 @@ Rectangle {
         Rectangle {
             visible: !sidebar.rail && !sidebar.shortWindow && sidebar.height >= 860
             width: parent.width; height: 128; color: "transparent"; border.color: "#031528"
+            clip: true
             EditorialText {
                 x: sidebar.host.width <= 1500 ? 12 : 16; y: 16; width: parent.width - x * 2; height: 40
                 text: "Keep count."; font.family: "Gelasio"; font.italic: true
                 font.pixelSize: sidebar.host.width <= 1500 ? 26 : 28
+                fontSizeMode: Text.Fit; minimumPixelSize: 20; elide: Text.ElideNone
             }
             EditorialText {
-                x: 16; y: 64; width: parent.width - 32; height: 32
+                x: 16; y: 64; width: parent.width - 32; height: 48
                 font.family: "Cousine"; font.pixelSize: 12
-                text: qsTr("Для тех, кто уважает\nсвои деньги")
+                text: qsTr("Для тех, кто уважает свои деньги")
+                wrapMode: Text.WordWrap; elide: Text.ElideNone
+                lineHeightMode: Text.FixedHeight; lineHeight: 16
             }
         }
         Item { width: 1; height: 16 }
@@ -101,7 +104,7 @@ Rectangle {
                 }
                 EditorialText { visible: !sidebar.rail; x: 32; width: parent.width - 32; height: parent.height; text: qsTr("Настройки"); font.pixelSize: 14; color: settings.hovered ? "#b84932" : "#031528" }
             }
-            background: Rectangle { color: "transparent"; border.width: settings.activeFocus ? 1 : 0; border.color: "#b84932" }
+            background: Rectangle { color: "transparent" }
             onClicked: sidebar.host.page = "settings"
         }
         Item {
