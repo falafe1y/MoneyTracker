@@ -22,7 +22,6 @@ Flickable {
     property string category: ""
     property string sortField: "date"
     property int sortDirection: -1
-    property int eventIndex: 0
     readonly property var accountRows: controller.selectedAsset === "crypto" ? controller.cryptoWallets : controller.accounts
     readonly property var sourceRows: Data.history(controller, host, asset, selectedId)
     readonly property var historyRows: Data.filterRows(sourceRows, host.searchText, category, sortField, sortDirection)
@@ -30,8 +29,9 @@ Flickable {
     readonly property var expenseLegend: Data.legend(expenseGroups)
     readonly property real totalExpense: expenseGroups.reduce(function(sum, g) { return sum + g.amount; }, 0)
     readonly property var schedule: controller.scheduledTransactions
-    readonly property var nextEvent: schedule.length ? schedule[Math.min(eventIndex, schedule.length - 1)] : null
+    readonly property var nextEvent: schedule.length ? schedule[0] : null
     readonly property var capitalRows: controller.capitalHistory
+    readonly property var capitalScale: Data.capitalScale(capitalRows)
     readonly property var chartColors: ["#031528", "#be7b56", "#b8ae99"]
     readonly property var columns: narrow ? [.22, .18, .32, 0, 0, .28] : [.10101, .09596, .14647, .12626, .37879, .15151]
     readonly property int firstVisibleRow: Math.max(0, Math.floor((contentY - historyBody.y - paper.y) / 56) - 3)
@@ -93,10 +93,11 @@ Flickable {
         return months[Data.dateValue(nextEvent.nextDate).getMonth()];
     }
     function caption(code) {
-        if (code === "all") return qsTr("Суммарный капитал");
-        if (code === "fiat") return controller.allAccounts.filter(function(a) { return a.asset === "fiat" && a.balanceMinor !== 0; }).length + qsTr(" активных счёта");
-        if (code === "crypto") return assetBalance(code) ? qsTr("Суммарная оценка") : qsTr("Нет активов");
-        return controller.balanceMinorUnits ? (100 * assetBalance(code) / controller.balanceMinorUnits).toFixed(1).replace(".", ",") + qsTr("% от капитала") : qsTr("Нет активов");
+        const count = Data.accountCount(controller.allAccounts, controller.cryptoWallets, code);
+        if (controller.uiLanguage === "en") return count + (count === 1 ? " account" : " accounts");
+        const mod100 = count % 100, mod10 = count % 10;
+        return count + " " + (mod100 >= 11 && mod100 <= 14 ? qsTr("счетов")
+            : mod10 === 1 ? qsTr("счёт") : mod10 >= 2 && mod10 <= 4 ? qsTr("счёта") : qsTr("счетов"));
     }
     Component.onCompleted: { if (controller.selectedAsset !== "fiat" || selectedId) asset = controller.selectedAsset; }
     Connections {
@@ -129,29 +130,27 @@ Flickable {
         id: paper
         objectName: "editorialPaper"
         x: view.pad; y: 24; width: view.mainWidth
-        height: pageFooter.y + pageFooter.height
+        height: historyFooter.y + historyFooter.height
         Item {
             id: masthead
-            width: parent.width; height: view.narrow ? 240 : view.compact ? 128 : 160
+            width: parent.width; height: view.narrow ? 196 : view.compact ? 104 : 128
             Item {
                 id: titleBlock
                 y: view.narrow ? 12 : parent.height - height - 8
                 width: view.narrow ? parent.width : Math.max(0, filters.x - 16)
-                height: (view.narrow ? 64 : view.compact ? 88 : view.medium ? 80 : 96) + (view.compact ? 24 : 32)
-                Mono { y: 0; height: 24; width: Math.min(parent.width, 192); text: qsTr("ФИНАНСОВЫЙ ОБЗОР"); color: "#031528"; font.letterSpacing: .5 }
-                Mono { x: 240; visible: parent.width >= 320; height: 24; text: "/ № 01"; color: "#b84932" }
+                height: view.narrow ? 64 : view.small ? 72 : view.compact ? 88 : view.medium ? 80 : 96
                 EditorialText {
-                    y: view.compact ? 24 : 32; height: parent.height - y; width: parent.width
+                    height: parent.height; width: parent.width
                     text: qsTr("Мои финансы."); font.family: "PT Serif"; font.italic: true
-                    font.pixelSize: view.narrow ? 52 : view.compact ? Math.min(72, Math.max(40, parent.width / 5.5)) : view.medium ? 64 : 80
-                    font.letterSpacing: -2
+                    font.pixelSize: view.narrow ? 52 : view.small ? Math.min(56, Math.max(40, view.host.width * .048)) : view.compact ? Math.min(72, Math.max(40, parent.width / 5.5)) : view.medium ? 64 : 80
+                    font.letterSpacing: view.small ? -1 : -2
                 }
             }
             Item {
                 id: filters
                 objectName: "editorialFilters"
                 anchors.right: parent.right
-                y: view.narrow ? 144 : parent.height - height - 8
+                y: view.narrow ? 92 : parent.height - height - 8
                 width: view.narrow ? parent.width : view.small ? 400 : view.medium ? 496 : 592
                 height: 80
                 readonly property int gap: view.small ? 12 : 16
@@ -159,6 +158,7 @@ Flickable {
                 readonly property int currencyWidth: view.small ? 96 : view.medium ? 128 : 160
                 EditorialAction {
                     anchors.bottom: parent.bottom; width: filters.planWidth; height: 40
+                    leftPadding: 8; rightPadding: 8
                     text: qsTr("ПЛАНОВЫЕ"); mono: false; textSize: view.small ? 14 : 16; outlined: true
                     onClicked: view.host.editorialSchedule(null)
                 }
@@ -213,7 +213,7 @@ Flickable {
             Rule { width: parent.width }
             Rule { y: parent.height - 1; width: parent.width }
             Repeater {
-                model: [ ["all", qsTr("ВСЕГО")], ["fiat", qsTr("ФИАТ")], ["crypto", qsTr("КРИПТА")], ["investment", qsTr("ИНВЕСТИЦИИ")] ]
+                model: [ ["all", qsTr("ВСЕ АКТИВЫ")], ["fiat", qsTr("ФИАТ")], ["crypto", qsTr("КРИПТО")], ["investment", qsTr("ИНВЕСТИЦИИ")] ]
                 delegate: Button {
                     id: assetButton
                     required property int index
@@ -225,7 +225,7 @@ Flickable {
                     height: view.narrow ? 144 : summary.height
                     padding: 0; hoverEnabled: true
                     objectName: "editorialAsset_" + modelData[0]
-                    Accessible.name: modelData[1] + " " + value.text
+                    Accessible.name: modelData[1] + " " + value.text + ", " + view.caption(modelData[0])
                     contentItem: Item {
                         Mono { x: assetButton.cellPad; y: view.compact ? 16 : 24; height: 24; width: parent.width - x - 16; text: "0" + (assetButton.index + 1) + " / " + assetButton.modelData[1]; font.letterSpacing: .5 }
                         Serif {
@@ -242,8 +242,8 @@ Flickable {
                     background: Rectangle {
                         color: assetButton.hovered ? "#05031528" : "transparent"
                         border.width: assetButton.activeFocus ? 1 : 0; border.color: "#b84932"
-                        Rectangle { visible: assetButton.index !== 0 && !(view.narrow && assetButton.index === 2); width: 1; height: parent.height; color: "#bbb5a8" }
-                        Rule { visible: view.asset === assetButton.modelData[0]; y: parent.height - 2; height: 2; width: parent.width - 24 }
+                        Rectangle { visible: assetButton.index !== 0 && !(view.narrow && assetButton.index === 2); width: 1; height: parent.height; color: "#031528" }
+                        Rule { visible: view.asset === assetButton.modelData[0]; y: parent.height - 2; height: 2; width: parent.width }
                         Rule { visible: view.narrow && assetButton.index < 2; y: parent.height - 1; width: parent.width; color: "#bbb5a8" }
                     }
                     onClicked: view.selectAsset(modelData[0])
@@ -269,17 +269,10 @@ Flickable {
                 readonly property int amountWidth: view.small ? 136 : view.medium ? 176 : 208
                 readonly property int arrowWidth: view.small ? 16 : 24
                 readonly property int gap: view.small ? 8 : view.medium ? 12 : 16
-                Item {
-                    id: accountColumnHead
-                    y: accountsHead.y + 40; width: parent.width - 8; height: 24
-                    Mono { width: accountsPanel.numberWidth; height: 24; text: "№" }
-                    Mono { x: accountsPanel.numberWidth + accountsPanel.gap; height: 24; width: parent.width - x - accountsPanel.amountWidth - accountsPanel.arrowWidth - accountsPanel.gap * 2; text: qsTr("НАЗВАНИЕ / ТИП") }
-                    Mono { anchors.right: parent.right; anchors.rightMargin: accountsPanel.arrowWidth + accountsPanel.gap; width: accountsPanel.amountWidth; height: 24; text: qsTr("ОСТАТОК"); horizontalAlignment: Text.AlignRight }
-                }
                 ListView {
                     id: accounts
                     objectName: "editorialAccountsScroll"
-                    y: accountColumnHead.y + accountColumnHead.height
+                    y: accountsHead.y + accountsHead.height + 8
                     width: parent.width; height: view.compact ? 152 : 168
                     clip: true; boundsBehavior: Flickable.StopAtBounds; reuseItems: true
                     model: view.accountRows
@@ -357,17 +350,6 @@ Flickable {
                         background: Rectangle { color: event.hovered ? "#06031528" : "transparent"; border.width: event.activeFocus ? 1 : 0; border.color: "#b84932" }
                         onClicked: view.host.editorialSchedule(view.nextEvent)
                     }
-                    Item {
-                        anchors.bottom: parent.bottom; width: parent.width; height: 32
-                        Rule { width: parent.width; color: "#bbb5a8" }
-                        Mono { height: 32; width: parent.width - 120; text: view.nextEvent ? qsTr("БЛИЖАЙШАЯ ОПЕРАЦИЯ") : qsTr("ВСЁ ПОД КОНТРОЛЕМ") }
-                        Row {
-                            anchors.right: parent.right; height: 32; spacing: 8
-                            EditorialAction { width: 24; text: "‹"; textSize: 20; arrow: false; enabled: view.schedule.length > 1; onClicked: view.eventIndex = (view.eventIndex - 1 + view.schedule.length) % view.schedule.length }
-                            Mono { height: 32; text: String(view.schedule.length ? Math.min(view.eventIndex + 1, view.schedule.length) : 0).padStart(2, "0") + " / " + String(view.schedule.length).padStart(2, "0") }
-                            EditorialAction { width: 24; text: "›"; textSize: 20; arrow: false; enabled: view.schedule.length > 1; onClicked: view.eventIndex = (view.eventIndex + 1) % view.schedule.length }
-                        }
-                    }
                 }
             }
         }
@@ -379,38 +361,40 @@ Flickable {
                 id: capital
                 y: view.topInset; width: view.leftWidth - (view.narrow ? 0 : view.inset); height: (view.narrow ? 264 : analytics.height) - y * 2
                 Heading { width: parent.width; number: "03."; title: qsTr("ИСТОРИЯ КАПИТАЛА"); note: view.capitalRows.length ? Data.shortDate(view.capitalRows[0].date) + " — " + Data.shortDate(view.capitalRows[view.capitalRows.length - 1].date) : "" }
-                Serif { y: view.compact ? 40 : 48; width: parent.width - 160; height: 48; text: view.money(view.controller.balanceMinorUnits, view.controller.appCurrency, false, 0); minimumPixelSize: 24; fontSizeMode: Text.Fit }
-                Mono { y: view.compact ? 40 : 48; anchors.right: parent.right; width: 152; height: 32; text: qsTr("СУММА ВСЕХ АКТИВОВ\nВ ") + view.controller.appCurrency; horizontalAlignment: Text.AlignRight }
                 Canvas {
                     id: chart
                     objectName: "editorialCapitalChart"
-                    y: (view.compact ? 40 : 48) + 48; width: parent.width; height: view.compact ? 104 : 120
+                    y: 32 + (view.compact ? 8 : 16); width: parent.width; height: view.compact ? 152 : 168
+                    Accessible.role: Accessible.Graphic
+                    Accessible.name: qsTr("История общего капитала, ") + view.controller.appCurrency
                     property var rows: view.capitalRows
+                    property var axisScale: view.capitalScale
                     onRowsChanged: requestPaint()
+                    onAxisScaleChanged: requestPaint()
                     onWidthChanged: requestPaint()
                     onHeightChanged: requestPaint()
                     onPaint: {
                         const c = getContext("2d"); c.reset();
                         if (!rows.length) return;
-                        const scaleX = width / 920, scaleY = height / 120;
-                        const values = rows.map(function(r) { return Number(r.totalMinor); });
-                        let low = Math.min.apply(null, values), high = Math.max.apply(null, values);
-                        const padding = Math.max((high - low) * .15, Math.abs(high) * .02, 1000); low -= padding; high += padding;
-                        function x(i) { return (96 + (rows.length === 1 ? .5 : i / (rows.length - 1)) * 800) * scaleX; }
-                        function y(value) { return (96 - (value - low) / (high - low) * 80) * scaleY; }
-                        c.font = "12px Cousine"; c.fillStyle = "#59616a"; c.strokeStyle = "#bbb5a8"; c.lineWidth = 1;
-                        [high, (low + high) / 2, low].forEach(function(value, i) {
-                            const yp = (16 + i * 40) * scaleY;
-                            c.beginPath(); c.moveTo(96 * scaleX, yp); c.lineTo(896 * scaleX, yp); c.stroke();
-                            c.textAlign = "right"; c.fillText(view.host.capitalAxisMoney(value, view.controller.appCurrency), 80 * scaleX, yp + 4);
+                        const scaleX = width / 920, scaleY = height / 168;
+                        const low = axisScale.minimum, high = axisScale.maximum;
+                        // Keep a readable, fixed gutter when the desktop column gets narrower.
+                        const left = 96, right = width - 24 * scaleX;
+                        function x(i) { return left + (rows.length === 1 ? .5 : i / (rows.length - 1)) * (right - left); }
+                        function y(value) { return (136 - (value - low) / (high - low) * 120) * scaleY; }
+                        c.font = "14px Cousine"; c.fillStyle = "#59616a"; c.strokeStyle = "#bbb5a8"; c.lineWidth = 1;
+                        axisScale.ticks.forEach(function(value, i) {
+                            const yp = (16 + i * 24) * scaleY;
+                            c.beginPath(); c.moveTo(left, yp); c.lineTo(right, yp); c.stroke();
+                            c.textAlign = "right"; c.fillText(Data.capitalTickLabel(value, view.controller.uiLanguage), left - 24, yp + 4);
                         });
                         c.beginPath(); rows.forEach(function(r, i) { if (i === 0) c.moveTo(x(i), y(r.totalMinor)); else c.lineTo(x(i), y(r.totalMinor)); });
-                        c.lineTo(x(rows.length - 1), 96 * scaleY); c.lineTo(x(0), 96 * scaleY); c.closePath(); c.fillStyle = "#0f031528"; c.fill();
+                        c.lineTo(x(rows.length - 1), 136 * scaleY); c.lineTo(x(0), 136 * scaleY); c.closePath(); c.fillStyle = "#0f031528"; c.fill();
                         c.beginPath(); rows.forEach(function(r, i) { if (i === 0) c.moveTo(x(i), y(r.totalMinor)); else c.lineTo(x(i), y(r.totalMinor)); });
                         c.strokeStyle = "#031528"; c.lineWidth = 2; c.stroke();
                         c.beginPath(); c.arc(x(rows.length - 1), y(rows[rows.length - 1].totalMinor), 4, 0, Math.PI * 2); c.fillStyle = "#f3eddf"; c.fill(); c.stroke();
                         c.fillStyle = "#59616a";
-                        [0, Math.floor((rows.length - 1) / 2), rows.length - 1].forEach(function(index, i) { c.textAlign = ["left", "center", "right"][i]; c.fillText(Data.shortDate(rows[index].date), (96 + i * 400) * scaleX, height - 2); });
+                        [0, Math.floor((rows.length - 1) / 2), rows.length - 1].forEach(function(index, i) { c.textAlign = ["left", "center", "right"][i]; c.fillText(Data.shortDate(rows[index].date), left + i * (right - left) / 2, 164 * scaleY); });
                     }
                 }
                 Mono { visible: !view.capitalRows.length; y: chart.y; width: parent.width; height: chart.height; text: qsTr("История капитала появится после добавления данных."); horizontalAlignment: Text.AlignHCenter }
@@ -424,27 +408,26 @@ Flickable {
                 Item {
                     x: view.narrow ? 0 : view.inset; y: view.topInset; width: parent.width - x; height: parent.height - y * 2
                     Heading { width: parent.width; number: "04."; title: qsTr("АНАТОМИЯ РАСХОДОВ"); note: view.small ? "" : view.controller.dateFilterActive ? qsTr("ЗА ПЕРИОД") : qsTr("ЗА ВСЁ ВРЕМЯ") }
-                    Serif { y: view.compact ? 40 : 48; width: parent.width - 144; height: 48; text: view.money(view.totalExpense, view.controller.appCurrency, false, 0); minimumPixelSize: 24; fontSizeMode: Text.Fit }
-                    Mono { y: view.compact ? 40 : 48; anchors.right: parent.right; width: 136; height: 32; text: qsTr("ОБЩИЙ РАСХОД\nЗА ПЕРИОД"); horizontalAlignment: Text.AlignRight }
                     Item {
-                        y: (view.compact ? 40 : 48) + 48; width: parent.width; height: view.compact ? 104 : 120
+                        y: 32 + (view.compact ? 8 : 16); width: parent.width; height: view.compact ? 152 : 168
                         Canvas {
                             id: donut
-                            width: view.compact || view.small ? 104 : 120; height: width
+                            objectName: "editorialExpenseDonut"
+                            width: view.compact ? 152 : 168; height: width
+                            Accessible.role: Accessible.Graphic
+                            Accessible.name: qsTr("Расходы по категориям: ") + view.expenseLegend.map(function(g) { return g.name + " " + view.money(g.amount, view.controller.appCurrency, false, 0); }).join(", ")
                             anchors.verticalCenter: parent.verticalCenter
                             property var groups: view.expenseLegend
                             onGroupsChanged: requestPaint()
                             onWidthChanged: requestPaint()
                             onPaint: {
                                 const c = getContext("2d"); c.reset();
-                                const radius = width / 2, thickness = width === 104 ? 16 : 20;
+                                const radius = width / 2, thickness = view.compact ? 24 : 28;
                                 let start = -Math.PI / 2;
                                 c.lineWidth = thickness;
                                 if (!view.totalExpense) { c.strokeStyle = "#bbb5a8"; c.beginPath(); c.arc(radius, radius, radius - thickness / 2, 0, Math.PI * 2); c.stroke(); return; }
                                 groups.forEach(function(g, i) { const end = start + g.amount / view.totalExpense * Math.PI * 2; c.beginPath(); c.strokeStyle = view.chartColors[i]; c.arc(radius, radius, radius - thickness / 2, start, end); c.stroke(); start = end; });
                             }
-                            Serif { y: (parent.height - 52) / 2; height: 36; width: parent.width; text: String(view.expenseGroups.length).padStart(2, "0"); font.pixelSize: 28; horizontalAlignment: Text.AlignHCenter }
-                            Mono { y: (parent.height - 52) / 2 + 36; height: 16; width: parent.width; text: qsTr("КАТЕГОРИИ"); horizontalAlignment: Text.AlignHCenter }
                         }
                         Column {
                             x: donut.width + (view.small ? 16 : 24); width: parent.width - x
@@ -576,18 +559,8 @@ Flickable {
         }
         Item {
             id: historyFooter
-            y: historyBody.y + historyBody.height; width: parent.width; height: 64
-            Rule { y: parent.height - 1; width: parent.width }
-            Mono { height: parent.height; width: parent.width - 192; text: view.historyRows.length + " / " + qsTr("ОПЕРАЦИЙ · КОНЕЦ РЕЕСТРА") }
-            EditorialAction { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: qsTr("СОХРАНИТЬ CSV"); onClicked: view.host.editorialExport() }
-        }
-        Item {
-            id: pageFooter
-            y: historyFooter.y + historyFooter.height + 24; width: parent.width; height: (view.narrow ? 80 : 32) + (view.host.csvStatus ? 48 : 0)
-            Mono { height: 32; width: view.narrow ? parent.width - 112 : parent.width * .46; text: qsTr("VEXA © 2026 — ФИНАНСЫ БЕЗ ЛИШНЕГО ШУМА") }
-            Mono { x: view.narrow ? 0 : parent.width * .48; y: view.narrow ? 40 : 0; height: 32; width: view.narrow ? parent.width : parent.width * .4; text: view.controller.selectedAsset === "crypto" ? view.controller.cryptoLastError : qsTr("НЕЗАВИСИМЫЙ УЧЁТ") }
-            EditorialAction { anchors.right: parent.right; text: qsTr("НАВЕРХ ↑"); arrow: false; onClicked: view.contentY = 0 }
-            Mono { y: view.narrow ? 80 : 40; width: parent.width; height: 32; visible: !!view.host.csvStatus; text: view.host.csvStatus; color: view.host.csvStatusOk ? "#2e5947" : "#b84932" }
+            y: historyBody.y + historyBody.height; width: parent.width; height: 48
+            Mono { height: parent.height; width: parent.width; text: view.historyRows.length + " / " + qsTr("ОПЕРАЦИЙ · КОНЕЦ РЕЕСТРА") }
         }
     }
 }

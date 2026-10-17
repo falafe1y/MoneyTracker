@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtTest
 import "../../ui/computer/dashboard"
+import "../../ui/computer/dashboard/DashboardData.js" as Data
 import "../../ui/computer/common"
 
 Item {
@@ -106,8 +107,11 @@ Item {
             const accounts = findChild(dashboard, "editorialAccountsScroll");
             compare(sidebar.width, 240);
             compare(paper.x, 48); compare(paper.width, 1584);
-            compare(head.y + paper.y, 928);
+            compare(head.y + paper.y, 896);
             compare(accounts.height, 168);
+            compare(accounts.y, 64);
+            compare(findChild(dashboard, "editorialCapitalChart").height, 168);
+            compare(findChild(dashboard, "editorialExpenseDonut").width, 168);
             verify(accounts.contentHeight > accounts.height);
             verify(dashboard.contentHeight > dashboard.height);
             compare(findChildren(dashboard, "editorialHistoryRow").length < 16, true);
@@ -123,6 +127,11 @@ Item {
                 verify(filters.x >= 0);
                 verify(filters.x + filters.width <= dashboard.mainWidth + 1);
                 verify(findChild(dashboard, "editorialAccountsScroll").height > 0);
+                const chart = findChild(dashboard, "editorialCapitalChart");
+                const donut = findChild(dashboard, "editorialExpenseDonut");
+                compare(chart.height, dashboard.compact ? 152 : 168);
+                compare(donut.width, dashboard.compact ? 152 : 168);
+                verify(donut.width + (dashboard.small ? 16 : 24) < donut.parent.width);
                 if (typeof uiCaptureDirectory !== "undefined" && uiCaptureDirectory !== "") {
                     wait(100);
                     grabImage(scene).save(uiCaptureDirectory + "/dashboard-" + widths[i] + "x" + heights[i] + ".png");
@@ -173,6 +182,39 @@ Item {
             dashboard.selectAsset("crypto"); compare(financeMock.selectedAsset, "crypto"); compare(dashboard.historyRows.length, 0);
             dashboard.selectAsset("investment"); compare(financeMock.selectedAsset, "investment");
             dashboard.selectAsset("all"); compare(financeMock.selectedAsset, "fiat"); verify(dashboard.historyRows.length > 0);
+        }
+        function test_account_counts_include_zero_balances_and_update() {
+            const original = financeMock.allAccounts;
+            try {
+                compare(dashboard.caption("fiat"), "12 счетов");
+                financeMock.allAccounts = original.concat([{id:"i1",asset:"investment",balanceMinor:0}]);
+                financeMock.cryptoWallets = [{id:"c1",asset:"crypto",balanceMinor:0},{id:"c2",asset:"crypto",balanceMinor:0}];
+                compare(dashboard.caption("all"), "15 счетов");
+                compare(dashboard.caption("investment"), "1 счёт");
+                compare(dashboard.caption("crypto"), "2 счёта");
+                dashboard.selectAsset("investment");
+                compare(dashboard.caption("all"), "15 счетов");
+                financeMock.allAccounts = financeMock.allAccounts.concat([{id:"c1",asset:"crypto",balanceMinor:0}]);
+                compare(dashboard.caption("crypto"), "2 счёта");
+                compare(dashboard.caption("all"), "15 счетов");
+            } finally {
+                financeMock.allAccounts = original; financeMock.cryptoWallets = [];
+            }
+        }
+        function test_capital_scale_edge_cases() {
+            const series = [[], [{totalMinor:0}], [{totalMinor:-100000}],
+                [{totalMinor:100},{totalMinor:100}], [{totalMinor:-100000},{totalMinor:200000}],
+                [{totalMinor:1e12},{totalMinor:2e12}]];
+            series.forEach(function(rows) {
+                const scale = Data.capitalScale(rows);
+                compare(scale.ticks.length, 6);
+                verify(scale.maximum > scale.minimum);
+                verify(scale.ticks.every(function(value, i) { return isFinite(value) && (i === 0 || value < scale.ticks[i - 1]); }));
+                rows.forEach(function(row) { verify(row.totalMinor > scale.minimum && row.totalMinor < scale.maximum); });
+            });
+            const scale = Data.capitalScale(financeMock.capitalHistory);
+            const labels = scale.ticks.map(function(value) { return Data.capitalTickLabel(value, "ru"); });
+            compare(new Set(labels).size, 6);
         }
         function test_navigation_and_actions() {
             mouseClick(findChild(sidebar, "editorialNav_categories")); compare(scene.page, "categories");

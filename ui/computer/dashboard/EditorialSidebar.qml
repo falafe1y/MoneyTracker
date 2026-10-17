@@ -21,7 +21,7 @@ Rectangle {
         EditorialText {
             width: parent.width; height: sidebar.rail ? 40 : 64
             text: "Vexa."; font.family: "Gelasio"; font.italic: true; font.bold: true
-            font.pixelSize: sidebar.rail ? 28 : 48; font.letterSpacing: sidebar.rail ? -1 : -2
+            font.pixelSize: sidebar.rail ? 20 : 48; font.letterSpacing: sidebar.rail ? -1 : -2
             fontSizeMode: Text.Fit; minimumPixelSize: sidebar.rail ? 16 : 48
         }
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: sidebar.host.page = "overview" }
@@ -94,16 +94,10 @@ Rectangle {
             width: parent.width; height: 40; padding: 0; hoverEnabled: true
             Accessible.name: qsTr("Настройки")
             contentItem: Item {
-                Canvas {
-                    width: 16; height: 16; anchors.verticalCenter: parent.verticalCenter
+                EditorialText {
+                    width: 16; height: 24; anchors.verticalCenter: parent.verticalCenter
                     x: sidebar.rail ? (parent.width - width) / 2 : 0
-                    onPaint: {
-                        const c = getContext("2d"); c.reset(); c.scale(width / 24, height / 24);
-                        c.strokeStyle = "#59616a"; c.lineWidth = 1.5;
-                        const points = [[9,3],[8,6],[5,7],[6,10],[4,12],[6,14],[5,17],[8,18],[9,21],[12,21],[13,18],[16,17],[15,14],[17,12],[15,10],[16,7],[13,6],[12,3]];
-                        c.beginPath(); points.forEach(function(p,i) { if (i === 0) c.moveTo(p[0],p[1]); else c.lineTo(p[0],p[1]); }); c.closePath(); c.stroke();
-                        c.beginPath(); c.arc(10.5,12,3,0,Math.PI*2); c.stroke();
-                    }
+                    text: "⚙"; font.pixelSize: 14; color: "#59616a"
                 }
                 EditorialText { visible: !sidebar.rail; x: 32; width: parent.width - 32; height: parent.height; text: qsTr("Настройки"); font.pixelSize: 14; color: settings.hovered ? "#b84932" : "#031528" }
             }
@@ -113,7 +107,7 @@ Rectangle {
         Item {
             width: parent.width; height: sidebar.rail ? 0 : 48; visible: !sidebar.rail
             Rectangle { width: parent.width; height: 1; color: "#031528" }
-            EditorialText { height: parent.height; text: "VEXA / 01"; font.family: "Cousine"; font.pixelSize: 12 }
+            EditorialText { height: parent.height; text: "VEXA"; font.family: "Cousine"; font.pixelSize: 12 }
             EditorialText { anchors.right: parent.right; height: parent.height; text: "© 2026"; font.family: "Cousine"; font.pixelSize: 12 }
         }
     }

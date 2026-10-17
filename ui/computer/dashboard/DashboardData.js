@@ -1,5 +1,35 @@
 .pragma library
 
+function accountCount(accounts, wallets, asset) {
+    const seen = new Set();
+    function addRows(rows) {
+        (rows || []).forEach(function(row) {
+            if (asset === "all" || row.asset === asset) seen.add(row.id);
+        });
+    }
+    addRows(accounts); addRows(wallets);
+    return seen.size;
+}
+
+function capitalScale(rows) {
+    const values = rows.map(function(row) { return Number(row.totalMinor); }).filter(function(value) { return isFinite(value); });
+    let minimum = values.length ? Math.min.apply(null, values) : 0;
+    let maximum = values.length ? Math.max.apply(null, values) : 0;
+    const padding = Math.max((maximum - minimum) * .15, Math.abs(maximum) * .02, 1000);
+    minimum -= padding; maximum += padding;
+    return {minimum: minimum, maximum: maximum,
+        ticks: Array.from({length: 6}, function(_, i) { return maximum - (maximum - minimum) * i / 5; })};
+}
+
+function capitalTickLabel(minor, language) {
+    const value = Number(minor) / 100;
+    const thousands = Math.abs(value) >= 1000;
+    const scaled = thousands ? value / 1000 : value;
+    const decimals = thousands || Math.abs(value) < 10 ? 1 : 0;
+    const label = scaled.toLocaleString(Qt.locale(language === "en" ? "en_US" : "ru_RU"), "f", decimals);
+    return (decimals ? label.replace(/[.,]0$/, "") : label) + (thousands ? "K" : "");
+}
+
 function money(minor, currency, signed, decimals, language) {
     const symbols = {RUB: "₽", USD: "$", EUR: "€", CNY: "¥"};
     const amount = Number(minor);
