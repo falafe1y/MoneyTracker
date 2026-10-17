@@ -25,6 +25,10 @@ qt_add_executable(vexa
     services/BankRecipients.qrc
 )
 
+if(NOT ANDROID AND NOT IOS)
+    target_sources(vexa PRIVATE editorial-fonts.qrc)
+endif()
+
 set_source_files_properties(
     ui/mobile/MobileTheme.qml
     ui/mobile/MobileFormat.qml
@@ -91,6 +95,12 @@ qt_add_qml_module(vexa
         ui/computer/common/StyledScrollBar.qml
         ui/computer/common/StyledTextField.qml
         ui/computer/common/SurfaceShadow.qml
+        ui/computer/dashboard/EditorialText.qml
+        ui/computer/dashboard/EditorialArrow.qml
+        ui/computer/dashboard/EditorialAction.qml
+        ui/computer/dashboard/EditorialSidebar.qml
+        ui/computer/dashboard/EditorialDashboard.qml
+        ui/computer/dashboard/DashboardData.js
         ui/computer/Desktop.qml
         ui/computer/accounts/InvestmentPositionDialog.qml
         ui/computer/accounts/InvestmentPositionsPanel.qml

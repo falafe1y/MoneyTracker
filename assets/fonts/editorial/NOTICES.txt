@@ -1,0 +1,31 @@
+Fonts extracted without modification from the supplied vexa_dashboard HTML.
+
+Gelasio-400-italic.ttf
+Copyright 2022 The Gelasio Project Authors (https://github.com/SorkinType/Gelasio)
+
+Arimo-400-normal.ttf
+Copyright 2020 The Arimo Project Authors (https://github.com/googlefonts/arimo)
+
+Arimo-700-normal.ttf
+Copyright 2020 The Arimo Project Authors (https://github.com/googlefonts/arimo)
+
+Cousine-400-normal.ttf
+Copyright 2026 The Cousine Project Authors (https://github.com/googlefonts/cousine)
+
+Cousine-700-normal.ttf
+Copyright 2026 The Cousine Project Authors (https://github.com/googlefonts/cousine)
+
+Gelasio-700-italic.ttf
+Copyright 2022 The Gelasio Project Authors (https://github.com/SorkinType/Gelasio)
+
+PTSerif-400-italic.ttf
+Copyright © 2010 ParaType Ltd. All rights reserved.
+
+PTSerif-700-italic.ttf
+Copyright © 2010 ParaType Ltd. All rights reserved.
+
+PTSerif-400-normal.ttf
+Copyright © 2010 ParaType Ltd. All rights reserved.
+
+PTSerif-700-normal.ttf
+Copyright © 2010 ParaType Ltd. All rights reserved.

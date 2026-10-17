@@ -1,0 +1,14 @@
+<RCC>
+  <qresource prefix="/fonts/editorial">
+    <file alias="Gelasio-400-italic.ttf">assets/fonts/editorial/Gelasio-400-italic.ttf</file>
+    <file alias="Arimo-400-normal.ttf">assets/fonts/editorial/Arimo-400-normal.ttf</file>
+    <file alias="Arimo-700-normal.ttf">assets/fonts/editorial/Arimo-700-normal.ttf</file>
+    <file alias="Cousine-400-normal.ttf">assets/fonts/editorial/Cousine-400-normal.ttf</file>
+    <file alias="Cousine-700-normal.ttf">assets/fonts/editorial/Cousine-700-normal.ttf</file>
+    <file alias="Gelasio-700-italic.ttf">assets/fonts/editorial/Gelasio-700-italic.ttf</file>
+    <file alias="PTSerif-400-italic.ttf">assets/fonts/editorial/PTSerif-400-italic.ttf</file>
+    <file alias="PTSerif-700-italic.ttf">assets/fonts/editorial/PTSerif-700-italic.ttf</file>
+    <file alias="PTSerif-400-normal.ttf">assets/fonts/editorial/PTSerif-400-normal.ttf</file>
+    <file alias="PTSerif-700-normal.ttf">assets/fonts/editorial/PTSerif-700-normal.ttf</file>
+  </qresource>
+</RCC>
